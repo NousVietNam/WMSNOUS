@@ -21,6 +21,7 @@ type ProductDetail = {
     target_audience?: string
     sales_channel?: string
     size?: string
+    season?: string
 }
 
 type InventoryDetail = {
