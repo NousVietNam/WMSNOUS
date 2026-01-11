@@ -1,0 +1,474 @@
+"use client"
+
+import { useEffect, useState, useRef } from "react"
+import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
+import { Checkbox } from "@/components/ui/checkbox"
+import { supabase } from "@/lib/supabase"
+import { Box as BoxIcon, Plus, Printer, Trash2, Download, Package, Search } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import QRCode from "react-qr-code"
+import * as XLSX from 'xlsx'
+
+interface Box {
+    id: string
+    code: string
+    status: 'OPEN' | 'CLOSED' | 'FULL'
+    location_id: string | null
+    created_at: string
+    locations?: { code: string }
+    inventory_items?: { quantity: number }[]
+    item_count?: number
+}
+
+export default function BoxesPage() {
+    const [boxes, setBoxes] = useState<Box[]>([])
+    const [loading, setLoading] = useState(true)
+    const [openDialog, setOpenDialog] = useState(false)
+
+    // Print State - Unified Native Print
+    const [printBox, setPrintBox] = useState<Box | null>(null) // For Modal Preview
+    const [printQueue, setPrintQueue] = useState<Box[]>([]) // For Actual Print
+    const [bulkQty, setBulkQty] = useState<string>('')
+    const [searchTerm, setSearchTerm] = useState<string>('')
+
+    const filteredBoxes = boxes.filter(b =>
+        b.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (b.locations?.code || '').toLowerCase().includes(searchTerm.toLowerCase())
+    )
+
+    // UseEffect Trigger
+    useEffect(() => {
+        if (printQueue.length > 0) {
+            const timer = setTimeout(() => {
+                window.print()
+                setPrintQueue([])
+            }, 500)
+            return () => clearTimeout(timer)
+        }
+    }, [printQueue])
+
+    // Selection
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+    // Drill Down
+    const [selectedBox, setSelectedBox] = useState<Box | null>(null)
+    const [boxItems, setBoxItems] = useState<any[]>([])
+
+    useEffect(() => {
+        fetchBoxes()
+    }, [])
+
+    const fetchBoxes = async () => {
+        setLoading(true)
+        const { data, error } = await supabase
+            .from('boxes')
+            .select('*, locations(code), inventory_items(quantity)')
+            .eq('type', 'STORAGE') // Filter STORAGE only
+            .order('created_at', { ascending: false })
+            .limit(2000)
+
+        if (!error && data) {
+            const mapped = data.map((b: any) => ({
+                ...b,
+                item_count: b.inventory_items?.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0) || 0
+            }))
+            setBoxes(mapped)
+        }
+        setLoading(false)
+    }
+
+    // Stats Computation
+    const stats = {
+        total: boxes.length,
+        empty: boxes.filter(b => !b.item_count || b.item_count === 0).length,
+        small: boxes.filter(b => (b.item_count || 0) > 0 && (b.item_count || 0) < 50).length,
+        medium: boxes.filter(b => (b.item_count || 0) >= 50 && (b.item_count || 0) < 100).length,
+        large: boxes.filter(b => (b.item_count || 0) >= 100).length
+    }
+
+    const getLocationNewId = async () => {
+        try {
+            // 1. Try to find "NEW"
+            let { data, error } = await supabase.from('locations').select('id').eq('code', 'NEW').single()
+            if (data) return data.id
+            if (error && error.code !== 'PGRST116') { // PGRST116 is "Row not found"
+                console.warn("Error finding NEW location:", error)
+            }
+        } catch (e) {
+            console.warn("Exception finding NEW location:", e)
+        }
+
+        // 2. If not exist, create it
+        const { data: newLoc, error } = await supabase.from('locations').insert({
+            code: 'NEW',
+            type: 'staging',
+            description: 'Khu vực chờ xử lý (Mặc định)'
+        }).select('id').single()
+
+        if (error || !newLoc) {
+            alert("Không thể tạo vị trí NEW: " + error?.message)
+            return null
+        }
+        return newLoc.id
+    }
+
+    const handleCreateAuto = async () => {
+        const now = new Date()
+        const month = (now.getMonth() + 1).toString().padStart(2, '0')
+        const year = now.getFullYear().toString().slice(-2)
+        const prefix = `BOX-${month}${year}-`
+
+        const newLocId = await getLocationNewId()
+        if (!newLocId) return
+
+        // Get max code
+        const { data } = await supabase.from('boxes')
+            .select('code')
+            .ilike('code', `${prefix}%`)
+            .order('code', { ascending: false })
+            .limit(1)
+
+        let newSuffix = '0001'
+        if (data && data.length > 0) {
+            const lastCode = data[0].code
+            const lastSuffix = parseInt(lastCode.split('-').pop() || '0')
+            newSuffix = (lastSuffix + 1).toString().padStart(4, '0')
+        }
+
+        const code = `${prefix}${newSuffix}`
+        const { error } = await supabase.from('boxes').insert({
+            code,
+            status: 'OPEN',
+            type: 'STORAGE',
+            location_id: newLocId
+        })
+        if (error) alert("Lỗi: " + error.message)
+        else { setOpenDialog(false); fetchBoxes() }
+    }
+
+    const handleCreateBulk = async (qty: number) => {
+        if (qty > 100) return alert("Tối đa 100 thùng/lần")
+        setLoading(true)
+
+        const newLocId = await getLocationNewId()
+        if (!newLocId) { setLoading(false); return }
+
+        const now = new Date()
+        const month = (now.getMonth() + 1).toString().padStart(2, '0')
+        const year = now.getFullYear().toString().slice(-2)
+        const prefix = `BOX-${month}${year}-`
+
+        // Fetch Max Code
+        const { data } = await supabase.from('boxes')
+            .select('code')
+            .ilike('code', `${prefix}%`)
+            .order('code', { ascending: false })
+            .limit(1)
+
+        let startSuffix = 1
+        if (data && data.length > 0) {
+            const lastCode = data[0].code
+            const lastSuffix = parseInt(lastCode.split('-').pop() || '0')
+            startSuffix = lastSuffix + 1
+        }
+
+        const boxesToInsert = []
+        for (let i = 0; i < qty; i++) {
+            const suffix = (startSuffix + i).toString().padStart(4, '0')
+            boxesToInsert.push({
+                code: `${prefix}${suffix}`,
+                status: 'OPEN',
+                type: 'STORAGE',
+                location_id: newLocId
+            })
+        }
+
+        const { error } = await supabase.from('boxes').insert(boxesToInsert)
+        if (error) alert("Lỗi: " + error.message)
+        else { setOpenDialog(false); fetchBoxes() }
+        setLoading(false)
+    }
+
+    const handleDelete = async (id: string, count: number) => {
+        if (count > 0) return alert(`Không thể xoá! Thùng này đang chứa ${count} sản phẩm.`)
+        if (!confirm("Xoá thùng rỗng này?")) return
+        const { error } = await supabase.from('boxes').delete().eq('id', id)
+        if (error) alert("Lỗi: " + error.message)
+        else {
+            setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n })
+            fetchBoxes()
+        }
+    }
+
+    // Drill down
+    const handleViewItems = async (box: Box) => {
+        setSelectedBox(box)
+        const { data } = await supabase.from('inventory_items').select('*, products(name, sku, barcode)').eq('box_id', box.id)
+        if (data) setBoxItems(data)
+    }
+
+    // Export Logic
+    const toggleSelect = (id: string) => {
+        const next = new Set(selectedIds)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        setSelectedIds(next)
+    }
+
+    const toggleAll = () => {
+        if (selectedIds.size === filteredBoxes.length) setSelectedIds(new Set())
+        else setSelectedIds(new Set(filteredBoxes.map(b => b.id)))
+    }
+
+    const handleExport = async () => {
+        if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
+        const { data } = await supabase.from('inventory_items').select('quantity, expiry_date, boxes(code), products(sku,name,barcode)').in('box_id', Array.from(selectedIds))
+        if (!data) return
+        const exportData = data.map((row: any) => ({
+            'Mã Thùng': row.boxes?.code,
+            'SKU': row.products?.sku,
+            'Barcode': row.products?.barcode,
+            'Tên SP': row.products?.name,
+            'Số Lượng': row.quantity,
+            'Hạn Sử Dụng': row.expiry_date ? new Date(row.expiry_date).toLocaleDateString('vi-VN') : '-'
+        }))
+        const ws = XLSX.utils.json_to_sheet(exportData)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, "Packing_List")
+        XLSX.writeFile(wb, `PackingList_Storage.xlsx`)
+    }
+
+    // UNIFIED PRINT
+    const triggerSinglePrint = (box: Box) => {
+        setPrintQueue([box])
+    }
+
+    return (
+        <div className="h-[calc(100vh-74px)] flex flex-col bg-slate-50 overflow-hidden">
+            {/* MAIN CONTENT */}
+            <main className="flex-1 p-6 space-y-6 h-full overflow-hidden flex flex-col print:hidden">
+                <div className="flex flex-col md:flex-row gap-6 h-full items-start overflow-hidden">
+                    {/* LEFT PANEL: DASHBOARD & FILTER */}
+                    <div className="w-full md:w-80 space-y-6 flex-shrink-0 h-full overflow-y-auto pr-1">
+                        {/* Title & Actions */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border space-y-4 sticky top-0 z-20">
+                            <h1 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                                <BoxIcon className="h-6 w-6 text-primary" /> Quản Lý Thùng
+                            </h1>
+                            <div className="relative">
+                                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                <Input
+                                    placeholder="Tìm mã thùng, vị trí..."
+                                    className="pl-9"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                            <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+                                <DialogTrigger asChild><Button className="w-full"><Plus className="mr-2 h-4 w-4" /> Tạo Mới</Button></DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader><DialogTitle>Tạo Thùng Mới</DialogTitle></DialogHeader>
+                                    <div className="py-4 space-y-6">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Tạo lẻ (1 thùng)</label>
+                                            <Button size="lg" onClick={handleCreateAuto} className="w-full" variant="outline">Tạo Mã Kế Tiếp</Button>
+                                        </div>
+
+                                        <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-muted-foreground">Hoặc tạo hàng loạt</span></div></div>
+
+                                        <div className="space-y-4 bg-slate-50 p-4 rounded-lg border">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <label className="text-xs font-bold uppercase text-slate-500">Số lượng</label>
+                                                    <input
+                                                        type="number" min="1" max="100"
+                                                        className="w-full h-10 px-3 rounded border"
+                                                        placeholder="VD: 50"
+                                                        value={bulkQty}
+                                                        onChange={(e) => setBulkQty(e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <label className="text-xs font-bold uppercase text-slate-500">Mẫu Mã</label>
+                                                    <div className="text-xs text-slate-600 font-mono bg-white p-2 rounded border truncate">
+                                                        BOX-MMYY-XXXX
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <Button onClick={() => {
+                                                const qty = parseInt(bulkQty)
+                                                if (qty > 0) handleCreateBulk(qty)
+                                                else alert("Vui lòng nhập số lượng hợp lệ")
+                                            }} className="w-full" disabled={loading}>
+                                                {loading ? 'Đang tạo...' : 'Tạo Hàng Loạt'}
+                                            </Button>
+                                            <p className="text-[10px] text-slate-400 text-center">
+                                                *Hệ thống sẽ tạo mã dạng BOX-0125-0001 đến BOX-0125-0050
+                                            </p>
+                                        </div>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
+                            <Button variant="outline" onClick={handleExport} disabled={selectedIds.size === 0} className="w-full">
+                                <Download className="mr-2 h-4 w-4" /> Xuất Excel ({selectedIds.size})
+                            </Button>
+                        </div>
+
+                        {/* Stats Dashboard */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 col-span-2">
+                                <div className="text-2xl font-bold text-blue-700">{stats.total}</div>
+                                <div className="text-xs text-blue-600 font-medium">Tổng Thùng</div>
+                            </div>
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                                <div className="text-xl font-bold text-slate-700">{stats.empty}</div>
+                                <div className="text-xs text-slate-500 font-medium">Rỗng</div>
+                            </div>
+                            <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200">
+                                <div className="text-xl font-bold text-yellow-700">{stats.small}</div>
+                                <div className="text-xs text-yellow-600 font-medium">&lt; 50 SP</div>
+                            </div>
+                            <div className="bg-orange-50 p-3 rounded-xl border border-orange-200">
+                                <div className="text-xl font-bold text-orange-700">{stats.medium}</div>
+                                <div className="text-xs text-orange-600 font-medium">50-100 SP</div>
+                            </div>
+                            <div className="bg-red-50 p-3 rounded-xl border border-red-200">
+                                <div className="text-xl font-bold text-red-700">{stats.large}</div>
+                                <div className="text-xs text-red-600 font-medium">&gt; 100 SP</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* RIGHT PANEL: TABLE */}
+                    <div className="flex-1 bg-white rounded-xl shadow-sm border flex flex-col h-full min-h-0 relative overflow-hidden">
+                        <div className="border-b p-3 bg-slate-50 flex justify-between items-center rounded-t-xl shrink-0">
+                            <h2 className="font-bold text-slate-700">Danh Sách Thùng</h2>
+                            <div className="text-xs text-slate-400">Hiển thị {filteredBoxes.length} kết quả</div>
+                        </div>
+                        <div className="overflow-auto flex-1">
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-white font-semibold text-slate-700 sticky top-0 z-10 shadow-sm">
+                                    <tr>
+                                        <th className="p-3 w-[40px] border-b"><Checkbox checked={filteredBoxes.length > 0 && selectedIds.size === filteredBoxes.length} onCheckedChange={toggleAll} /></th>
+                                        <th className="p-3 border-b">Mã Thùng</th>
+                                        <th className="p-3 border-b">Vị Trí</th>
+                                        <th className="p-3 border-b">Số Lượng</th>
+                                        <th className="p-3 border-b">Trạng Thái</th>
+                                        <th className="p-3 border-b text-right">Thao tác</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    {filteredBoxes.map(box => (
+                                        <tr key={box.id} className="hover:bg-slate-50 cursor-pointer group" onClick={() => handleViewItems(box)}>
+                                            <td className="p-3" onClick={e => e.stopPropagation()}>
+                                                <Checkbox checked={selectedIds.has(box.id)} onCheckedChange={() => toggleSelect(box.id)} />
+                                            </td>
+                                            <td className="p-3 font-bold text-primary group-hover:underline">{box.code}</td>
+                                            <td className="p-3">{box.locations?.code || <span className="text-slate-300">-</span>}</td>
+                                            <td className="p-3 font-bold">{box.item_count}</td>
+                                            <td className="p-3">
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${box.status === 'OPEN' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                                    {box.status}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 text-right flex justify-end gap-1" onClick={e => e.stopPropagation()}>
+                                                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setPrintBox(box)}><Printer className="h-4 w-4" /></Button>
+                                                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-red-50" onClick={() => handleDelete(box.id, box.item_count || 0)}><Trash2 className="h-4 w-4" /></Button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Print Dialog (Preview) */}
+                <Dialog open={!!printBox} onOpenChange={(open) => !open && setPrintBox(null)}>
+                    <DialogContent>
+                        <DialogHeader><DialogTitle>In Mã Thùng</DialogTitle></DialogHeader>
+                        <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-slate-50">
+                            {printBox && (
+                                <>
+                                    <h2 className="text-4xl font-black mb-4">{printBox.code}</h2>
+                                    <QRCode value={printBox.code} size={200} />
+                                    <p className="mt-4 text-sm text-muted-foreground">Khổ in: 100x150mm</p>
+                                </>
+                            )}
+                        </div>
+                        <DialogFooter><Button onClick={() => printBox && triggerSinglePrint(printBox)}>In Ngay</Button></DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Drill Down Items */}
+                <Dialog open={!!selectedBox} onOpenChange={(open) => !open && setSelectedBox(null)}>
+                    <DialogContent className="max-w-xl">
+                        <DialogHeader><DialogTitle>Hàng trong thùng {selectedBox?.code}</DialogTitle></DialogHeader>
+                        <div className="space-y-2">
+                            {boxItems.length === 0 ? <p className="text-center text-muted-foreground">Thùng rỗng</p> : (
+                                <div className="border rounded divide-y max-h-[50vh] overflow-y-auto">
+                                    {boxItems.map(item => (
+                                        <div key={item.id} className="p-3 flex justify-between items-center hover:bg-slate-50">
+                                            <div className="flex gap-3 items-center overflow-hidden">
+                                                <div className="h-10 w-10 bg-slate-100 rounded flex items-center justify-center shrink-0">
+                                                    <Package className="h-5 w-5 text-slate-500" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <div className="font-bold text-sm truncate">{item.products?.name || 'Sản phẩm không tên'}</div>
+                                                    <div className="text-xs text-slate-500 flex flex-wrap gap-2 mt-0.5">
+                                                        <span className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-slate-700 border">
+                                                            SKU: {item.products?.sku || '-'}
+                                                        </span>
+                                                        {item.products?.barcode && (
+                                                            <span className="bg-blue-50 px-1.5 py-0.5 rounded font-mono text-blue-700 border border-blue-100">
+                                                                BC: {item.products?.barcode}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="font-bold text-lg text-primary shrink-0 pl-2">x{item.quantity}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <Button variant="secondary" className="w-full mt-4" onClick={() => setSelectedBox(null)}>Đóng</Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            </main>
+
+            {/* PRINT AREA - VISIBLE ONLY WHEN PRINTING */}
+            <div id="print-area" className="hidden print:block">
+                {printQueue.map(box => (
+                    <div key={box.id} className="w-[100mm] h-[150mm] flex flex-col items-center justify-center break-after-page page-break text-center">
+                        <h1 className="text-4xl font-bold mb-4">STORAGE</h1>
+                        <div className="border-4 border-black p-2 rounded-xl">
+                            <QRCode value={box.code} size={320} />
+                        </div>
+                        <p className="mt-4 text-2xl text-slate-900 font-mono font-black tracking-wider">{box.code}</p>
+                        <p className="mt-2 text-base text-slate-600">{new Date().toLocaleDateString('vi-VN')}</p>
+                    </div>
+                ))}
+            </div>
+
+            <style jsx global>{`
+                @media print {
+                    @page { margin: 0; size: 100mm 150mm; }
+                    body { visibility: hidden; background: white; }
+                    #print-area { visibility: visible; position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
+                    #print-area * { visibility: visible; }
+                    
+                    /* Restoration of layout for print area */
+                    .flex { display: flex !important; }
+                    .flex-col { flex-direction: column !important; }
+                    .items-center { align-items: center !important; }
+                    .justify-center { justify-content: center !important; }
+                    
+                    .page-break { page-break-after: always; break-after: page; }
+                }
+            `}</style>
+        </div >
+    )
+}

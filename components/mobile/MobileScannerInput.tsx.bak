@@ -1,0 +1,39 @@
+"use client"
+
+import React from "react"
+import { Camera } from "lucide-react"
+
+interface MobileScannerInputProps {
+    value: string
+    onChange: (val: string) => void
+    onEnter?: () => void
+    placeholder?: string
+    className?: string
+    autoFocus?: boolean
+    // Disabled legacy prop support just in case
+    onScan?: any
+}
+
+export function MobileScannerInput({ value, onChange, onEnter, placeholder, className, autoFocus }: MobileScannerInputProps) {
+    return (
+        <div className="relative w-full">
+            <div className="relative">
+                <input
+                    type="text"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && onEnter?.()}
+                    placeholder={placeholder || "Nhập mã..."}
+                    className={`w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all ${className}`}
+                    autoFocus={autoFocus}
+                />
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Camera className="h-5 w-5" />
+                </div>
+            </div>
+            <p className="text-[10px] text-center text-slate-400 mt-1">
+                * Camera đang tạm tắt để bảo trì hệ thống (Vui lòng nhập tay)
+            </p>
+        </div>
+    )
+}
