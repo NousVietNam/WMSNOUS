@@ -109,7 +109,7 @@ export async function POST(request: Request) {
                 quantity: take, // Ensure quantity is top level if not already? Wait, picking/confirm route loop had `quantity: take` in details.
                 // details: Removed
                 user_id: task.picking_jobs?.user_id,
-                timestamp: new Date().toISOString()
+                created_at: new Date().toISOString()
             })
         }
 
