@@ -14,6 +14,7 @@ export default function TransferPage() {
     const [step, setStep] = useState<1 | 2>(1)
     const [sourceCode, setSourceCode] = useState("")
     const [currentLoc, setCurrentLoc] = useState("")
+    const [currentLocId, setCurrentLocId] = useState<string | null>(null)
     const [destCode, setDestCode] = useState("")
     const [loading, setLoading] = useState(false)
 
@@ -27,7 +28,7 @@ export default function TransferPage() {
             .select(`
                 id, 
                 code, 
-                locations (code)
+                locations (id, code)
             `)
             .eq('code', sourceCode)
             .single()
@@ -38,11 +39,14 @@ export default function TransferPage() {
             return
         }
 
-        // Fix: Explicit type casting or optional chaining for nested relationship
+        // Fix: Save ID for transaction log
         // Suppress TS error for now or fix types.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const locCode = (box.locations as any)?.code || "N/A"
+        const locId = (box.locations as any)?.id || null
+
         setCurrentLoc(locCode)
+        setCurrentLocId(locId)
         setStep(2)
         setLoading(false)
     }
@@ -75,14 +79,12 @@ export default function TransferPage() {
 
             // Log - Unified details format
             await supabase.from('transactions').insert({
-                type: 'MOVE',
+                type: 'MOVE_BOX',
                 entity_type: 'BOX',
                 entity_id: box.id,
-                details: {
-                    box_code: sourceCode,
-                    from: currentLoc,
-                    to: destCode
-                },
+                from_location_id: currentLocId,
+                to_location_id: location.id,
+                // details: Removed
                 user_id: session?.user?.id
             })
 

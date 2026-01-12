@@ -4,8 +4,10 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { MobileHeader } from "@/components/mobile/MobileHeader"
+import { useAuth } from "@/components/auth/AuthProvider"
 
 export default function ConsolidatePage() {
+    const { session } = useAuth()
     const router = useRouter()
     const [step, setStep] = useState<1 | 2>(1)
     const [sourceCode, setSourceCode] = useState("")
@@ -64,9 +66,16 @@ export default function ConsolidatePage() {
             if (moveError) throw moveError
 
             // Log
+            // Log
             await supabase.from('transactions').insert({
                 type: 'CONSOLIDATE',
-                details: { from: sourceCode, to: destCode, items: itemCount }
+                entity_type: 'BOX',
+                entity_id: source.id,
+                from_box_id: source.id,
+                to_box_id: dest.id,
+                quantity: itemCount,
+                // details: Removed
+                user_id: session?.user?.id
             })
 
             alert(`Đã gộp ${itemCount} sản phẩm sang ${destCode}!`)

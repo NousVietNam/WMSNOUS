@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase"
 import { Download, Package, Search, ChevronLeft, ChevronRight, Filter } from "lucide-react"
 import Barcode from 'react-barcode'
 import * as XLSX from 'xlsx'
+import { toast } from "sonner"
 
 interface InventoryItem {
     id: string
@@ -266,26 +267,49 @@ export default function InventoryPage() {
         return true
     })
 
-    const handleExport = () => {
-        const exportData = filteredItems.map(item => ({
-            SKU: item.products?.sku,
-            'Sản Phẩm': item.products?.name,
-            'Thương Hiệu': item.products?.brand || '-',
-            'Đối Tượng': item.products?.target_audience || '-',
-            'Nhóm Hàng': item.products?.product_group || '-',
-            'Mùa': item.products?.season || '-',
-            'Tháng MB': item.products?.launch_month || '-',
-            'Tổng Tồn': item.quantity,
-            'Hàng Giữ': item.allocated_quantity || 0,
-            'Khả Dụng': Math.max(0, item.quantity - (item.allocated_quantity || 0)),
-            'Thùng': item.boxes?.code || '-',
-            'Vị Trí': item.boxes?.locations?.code || item.locations?.code || '-'
-        }))
+    const handleExport = async () => {
+        try {
+            toast.info("Đang tải dữ liệu toàn hệ thống...")
 
-        const ws = XLSX.utils.json_to_sheet(exportData)
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, "Ton_Kho")
-        XLSX.writeFile(wb, `Inventory_${new Date().toISOString().slice(0, 10)}.xlsx`)
+            const { data, error } = await supabase
+                .from('inventory_items')
+                .select(`
+                    id, quantity, allocated_quantity, created_at,
+                    products!inner (sku, name, barcode, brand, target_audience, product_group, season, launch_month),
+                    boxes (code, locations (code)),
+                    locations (code)
+                `)
+                .order('created_at', { ascending: false })
+
+            if (error) throw error
+            if (!data) return
+
+            const exportData = data.map((item: any) => ({
+                SKU: item.products?.sku,
+                'Sản Phẩm': item.products?.name,
+                'Barcode': item.products?.barcode || '-',
+                'Thương Hiệu': item.products?.brand || '-',
+                'Đối Tượng': item.products?.target_audience || '-',
+                'Nhóm Hàng': item.products?.product_group || '-',
+                'Mùa': item.products?.season || '-',
+                'Tháng MB': item.products?.launch_month || '-',
+                'Tổng Tồn': item.quantity,
+                'Hàng Giữ': item.allocated_quantity || 0,
+                'Khả Dụng': Math.max(0, item.quantity - (item.allocated_quantity || 0)),
+                'Thùng': item.boxes?.code || '-',
+                'Vị Trí': item.boxes?.locations?.code || item.locations?.code || '-'
+            }))
+
+            const ws = XLSX.utils.json_to_sheet(exportData)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, "Ton_Kho_Full")
+            XLSX.writeFile(wb, `Inventory_Full_${new Date().toISOString().slice(0, 10)}.xlsx`)
+
+            toast.success("Xuất dữ liệu thành công!")
+        } catch (error: any) {
+            console.error(error)
+            toast.error("Lỗi xuất dữ liệu: " + error.message)
+        }
     }
 
     const clearFilters = () => {

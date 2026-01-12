@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { History, ArrowRight, Filter, RefreshCw } from "lucide-react"
+import { History, ArrowRight, Filter, RefreshCw, Download } from "lucide-react"
+import * as XLSX from "xlsx"
 
 interface Transaction {
     id: string
@@ -14,7 +15,9 @@ interface Transaction {
     created_at: string
     entity_type: 'BOX' | 'ITEM' | null
     entity_id: string | null
-    details: any
+    // details removed
+    quantity: number | null
+    sku: string | null
     user_id: string | null
     from_loc: { code: string } | null
     to_loc: { code: string } | null
@@ -32,8 +35,22 @@ export default function HistoryPage() {
     const [loading, setLoading] = useState(true)
 
     // Filters
-    const [dateFrom, setDateFrom] = useState("")
-    const [dateTo, setDateTo] = useState("")
+    // Use local date for default filter instead of UTC
+    const getLocalDate = () => {
+        const d = new Date()
+        const offset = d.getTimezoneOffset() * 60000
+        return new Date(d.getTime() - offset).toISOString().split('T')[0]
+    }
+
+    const getPastDate = (days: number) => {
+        const d = new Date()
+        d.setDate(d.getDate() - days)
+        const offset = d.getTimezoneOffset() * 60000
+        return new Date(d.getTime() - offset).toISOString().split('T')[0]
+    }
+
+    const [dateFrom, setDateFrom] = useState(getPastDate(30))
+    const [dateTo, setDateTo] = useState(getLocalDate())
     const [filterType, setFilterType] = useState("ALL")
     const [filterSearch, setFilterSearch] = useState("") // Searches Box, SKU, Location
 
@@ -60,10 +77,11 @@ export default function HistoryPage() {
         if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59')
         if (filterType !== 'ALL') query = query.eq('type', filterType)
 
-        // Server-side Search for better results
+        // Server-side Search (Limited to columns now)
         if (filterSearch) {
             const term = `%${filterSearch}%`
-            query = query.ilike('details::text', term)
+            // Search mostly on sku or type, logic simplified due to no details column
+            query = query.or(`sku.ilike.${term},type.ilike.${term}`)
         }
 
         const { data: txData, error } = await query
@@ -76,7 +94,7 @@ export default function HistoryPage() {
 
         const rawTxs = txData as any[]
 
-        // Collect IDs to fetch details
+        // Collect IDs to fetch extra info (product name for entity_id if needed)
         const boxIds = new Set<string>()
         const itemIds = new Set<string>()
         const userIds = new Set<string>()
@@ -112,25 +130,25 @@ export default function HistoryPage() {
             let code = 'N/A'
             let name = ''
             if (tx.entity_type === 'BOX' && tx.entity_id) {
-                code = boxMap[tx.entity_id] || tx.details?.box_code || 'Deleted Box'
+                code = boxMap[tx.entity_id] || 'Deleted Box'
                 name = 'Thùng hàng'
             } else if (tx.entity_type === 'ITEM' && tx.entity_id) {
                 const item = itemMap[tx.entity_id]
-                code = item?.sku || tx.details?.sku || 'Deleted Item'
-                name = item?.name || tx.details?.product_name || ''
+                code = item?.sku || 'Deleted Item'
+                name = item?.name || ''
             }
             return { ...tx, computed_entity_code: code, computed_entity_name: name, computed_user_name: userMap[tx.user_id] || 'Unknown' }
         })
 
-        // Client-side Filter for "Search" term if DB search is too complex for 'details' JSONB without index
-        // If filterSearch exists, filter the enriched list
+        // Client-side Filter
         let finalDisplay = enriched
         if (filterSearch) {
             const lower = filterSearch.toLowerCase()
             finalDisplay = enriched.filter(tx =>
                 tx.computed_entity_code?.toLowerCase().includes(lower) ||
-                tx.details?.box_code?.toLowerCase().includes(lower) ||
-                JSON.stringify(tx.details).toLowerCase().includes(lower)
+                tx.sku?.toLowerCase().includes(lower) ||
+                tx.from_box?.code?.toLowerCase().includes(lower) ||
+                tx.to_box?.code?.toLowerCase().includes(lower)
             )
         }
 
@@ -138,62 +156,26 @@ export default function HistoryPage() {
         setLoading(false)
     }
 
-    const renderEntity = (tx: Transaction) => {
-        // Quantity Logic
-        const qty = tx.details?.quantity || (tx.entity_type === 'BOX' ? '-' : 1)
 
-        // 1. Try to read from detailed JSON log first (Rich info)
-        if (tx.details?.product_sku || tx.details?.sku) {
-            return (
-                <div className="flex justify-between items-center">
-                    <div className="flex flex-col">
-                        <span className="font-bold text-green-600">🌭 {tx.details.product_sku || tx.details.sku}</span>
-                        <span className="text-xs text-muted-foreground">{tx.details.product_name || tx.computed_entity_name || 'Item'}</span>
-                    </div>
-                    {qty !== '-' && <span className="font-bold bg-slate-100 px-2 rounded">x{qty}</span>}
-                </div>
-            )
-        }
-        if (tx.details?.box_code || tx.details?.box) {
-            return <div className="font-bold text-blue-600">📦 {tx.details.box_code || tx.details.box}</div>
-        }
 
-        // 2. Fallback to Entity ID lookup
-        if (tx.entity_type === 'BOX') {
-            return <div className="font-bold text-blue-600">📦 {tx.computed_entity_code}</div>
-        }
-        if (tx.entity_type === 'ITEM') {
-            return (
-                <div className="flex justify-between items-center">
-                    <div className="flex flex-col">
-                        <span className="font-bold text-green-600">🌭 {tx.computed_entity_code}</span>
-                        <span className="text-xs text-muted-foreground">{tx.computed_entity_name}</span>
-                    </div>
-                    <span className="font-bold bg-slate-100 px-2 rounded">x{qty}</span>
-                </div>
-            )
-        }
-        return <span className="italic text-gray-400">N/A</span>
-    }
+    const handleExport = () => {
+        const data = transactions.map(tx => ({
+            'Thời Gian': new Date(tx.created_at).toLocaleString('vi-VN'),
+            'Người Dùng': tx.computed_user_name || (tx.user_id ? 'Staff' : 'Unknown'),
+            'Loại': tx.type,
+            'Mã SKU': tx.sku || tx.computed_entity_code || '-',
+            'Tên Hàng': tx.computed_entity_name || (tx.entity_type === 'BOX' ? 'Thùng Hàng' : '-'),
+            'Số Lượng': tx.quantity || 1,
+            'Thùng Đi': tx.from_box?.code || '-',
+            'Vị Trí Đi': tx.from_loc?.code || '-',
+            'Thùng Đến': tx.to_box?.code || '-',
+            'Vị Trí Đến': tx.to_loc?.code || '-'
+        }))
 
-    const renderFrom = (tx: Transaction) => {
-        if (tx.details?.from) return <span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold">{tx.details.from}</span>
-        if (tx.from_box) return <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">Box {tx.from_box.code}</span>
-        if (tx.from_loc) return <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-bold">Loc {tx.from_loc.code}</span>
-        return <span className="text-gray-400 text-xs">-</span>
-    }
-
-    const renderTo = (tx: Transaction) => {
-        if (tx.details?.to || tx.details?.location_code || tx.details?.box_code) {
-            // Smart display based on context
-            if (tx.details.to) return <span className="bg-slate-100 px-2 py-1 rounded text-xs font-bold">{tx.details.to}</span>
-            // If Import:
-            if (tx.type === 'IMPORT' && tx.details.box_code) return <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">Box {tx.details.box_code}</span>
-        }
-
-        if (tx.to_box) return <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">Box {tx.to_box.code}</span>
-        if (tx.to_loc) return <span className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs font-bold">Loc {tx.to_loc.code}</span>
-        return <span className="text-gray-400 text-xs">-</span>
+        const ws = XLSX.utils.json_to_sheet(data)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, "History")
+        XLSX.writeFile(wb, `LichSu_${new Date().toISOString().split('T')[0]}.xlsx`)
     }
 
     return (
@@ -203,6 +185,9 @@ export default function HistoryPage() {
                     <History className="h-8 w-8 text-primary" />
                     Lịch Sử Giao Dịch
                 </h1>
+                <Button variant="outline" onClick={handleExport} className="gap-2">
+                    <Download className="h-4 w-4" /> Xuất Excel
+                </Button>
             </div>
 
             {/* FILTERS */}
@@ -223,7 +208,7 @@ export default function HistoryPage() {
                             <SelectItem value="ALL">Tất Cả</SelectItem>
                             <SelectItem value="IMPORT">Nhập (Import)</SelectItem>
                             <SelectItem value="EXPORT">Xuất (Export)</SelectItem>
-                            <SelectItem value="MOVE">Di Chuyển (Move)</SelectItem>
+                            <SelectItem value="MOVE_BOX">Di Chuyển Thùng (Move Box)</SelectItem>
                             <SelectItem value="AUDIT">Kiểm Kê (Audit)</SelectItem>
                         </SelectContent>
                     </Select>
@@ -252,47 +237,106 @@ export default function HistoryPage() {
                                 <th className="p-4 w-[160px]">Thời Gian</th>
                                 <th className="p-4 w-[120px]">Người Dùng</th>
                                 <th className="p-4 w-[100px]">Loại</th>
-                                <th className="p-4">Đối Tượng</th>
-                                <th className="p-4">Nơi Đi (From)</th>
-                                <th className="p-4">Nơi Đến (To)</th>
+                                <th className="p-4 w-[120px]">Mã SKU</th>
+                                <th className="p-4 w-[120px]">Mã Box</th>
+                                <th className="p-4">Tên Hàng / Nội Dung</th>
+                                <th className="p-4 w-[80px] text-center">SL</th>
+                                <th className="p-4">Thùng Đi (From Box)</th>
+                                <th className="p-4">Vị trí Đi (From Loc)</th>
+                                <th className="p-4">Thùng Đến (To Box)</th>
+                                <th className="p-4">Vị trí Đến (To Loc)</th>
                             </tr>
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</td></tr>
+                                <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Đang tải dữ liệu...</td></tr>
                             ) : transactions.length === 0 ? (
-                                <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Không tìm thấy giao dịch nào.</td></tr>
+                                <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Không tìm thấy giao dịch nào.</td></tr>
                             ) : (
-                                transactions.map(tx => (
-                                    <tr key={tx.id} className="border-t hover:bg-slate-50">
-                                        <td className="p-4 text-muted-foreground text-xs">
-                                            {new Date(tx.created_at).toLocaleString('vi-VN')}
-                                        </td>
-                                        <td className="p-4 font-medium text-sm">
-                                            {/* Staff1 Logic: Checking both users relation and direct user_id/details */}
-                                            {tx.computed_user_name || tx.details?.user_name || tx.details?.staff || (tx.user_id ? 'Staff' : 'Unknown')}
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold
-                                                        ${tx.type === 'IMPORT' ? 'bg-green-100 text-green-700' :
-                                                    tx.type === 'EXPORT' ? 'bg-red-100 text-red-700' :
-                                                        tx.type === 'AUDIT' ? 'bg-purple-100 text-purple-700' :
-                                                            tx.type === 'MOVE' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
-                                                }`}>
-                                                {tx.type}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-sm">
-                                            {renderEntity(tx)}
-                                        </td>
-                                        <td className="p-4">
-                                            {renderFrom(tx)}
-                                        </td>
-                                        <td className="p-4">
-                                            {renderTo(tx)}
-                                        </td>
-                                    </tr>
-                                ))
+                                transactions.map(tx => {
+                                    // Extract data
+                                    let sku = '-'
+                                    let boxCode = '-'
+                                    let name = '-'
+                                    let qty: any = '-'
+
+                                    // SKU Logic (Column Priority)
+                                    if (tx.sku) {
+                                        sku = tx.sku
+                                        name = tx.computed_entity_name || '-'
+                                        qty = tx.quantity || 1
+                                    } else if (tx.entity_type === 'ITEM') {
+                                        // Fallback to computed if sku column null but linked to item
+                                        sku = tx.computed_entity_code || '-'
+                                        name = tx.computed_entity_name || '-'
+                                        qty = tx.quantity || 1
+                                    }
+
+                                    // Box Logic
+                                    if (tx.entity_type === 'BOX') {
+                                        boxCode = tx.computed_entity_code || '-'
+                                        name = 'Thùng Hàng'
+                                    }
+
+                                    // Resolve Location/Box Displays
+                                    const fromBox = tx.from_box?.code || '-'
+                                    const fromLoc = tx.from_loc?.code || '-'
+                                    const toBox = tx.to_box?.code || '-'
+                                    const toLoc = tx.to_loc?.code || '-'
+
+                                    return (
+                                        <tr key={tx.id} className="border-t hover:bg-slate-50">
+                                            <td className="p-4 text-muted-foreground text-xs">
+                                                {new Date(tx.created_at).toLocaleString('vi-VN')}
+                                            </td>
+                                            <td className="p-4 font-medium text-sm">
+                                                {tx.computed_user_name || (tx.user_id ? 'Staff' : 'Unknown')}
+                                            </td>
+                                            <td className="p-4">
+                                                <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold
+                                                            ${tx.type === 'IMPORT' ? 'bg-green-100 text-green-700' :
+                                                        tx.type === 'EXPORT' ? 'bg-red-100 text-red-700' :
+                                                            tx.type === 'AUDIT' ? 'bg-purple-100 text-purple-700' :
+                                                                tx.type === 'MOVE_BOX' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
+                                                    }`}>
+                                                    {tx.type}
+                                                </span>
+                                            </td>
+                                            {/* SKU */}
+                                            <td className="p-4 font-mono font-bold text-slate-700">
+                                                {sku !== '-' ? sku : ''}
+                                            </td>
+                                            {/* Box */}
+                                            <td className="p-4 font-mono font-bold text-blue-600">
+                                                {boxCode !== '-' ? `📦 ${boxCode}` : ''}
+                                            </td>
+                                            {/* Name */}
+                                            <td className="p-4 text-slate-600">
+                                                {name}
+                                            </td>
+                                            {/* Qty */}
+                                            <td className="p-4 text-center font-bold">
+                                                {qty !== '-' ? `x${qty}` : '-'}
+                                            </td>
+                                            {/* From Box */}
+                                            <td className="p-4 text-blue-700 font-medium text-sm">
+                                                {fromBox !== '-' ? `📦 ${fromBox}` : '-'}
+                                            </td>
+                                            {/* From Loc */}
+                                            <td className="p-4 text-green-700 font-medium text-sm">
+                                                {fromLoc !== '-' ? `📍 ${fromLoc}` : '-'}
+                                            </td>
+                                            {/* To Box */}
+                                            <td className="p-4 text-blue-700 font-medium text-sm">
+                                                {toBox !== '-' ? `📦 ${toBox}` : '-'}
+                                            </td>
+                                            {/* To Loc */}
+                                            <td className="p-4 text-green-700 font-medium text-sm">
+                                                {toLoc !== '-' ? `📍 ${toLoc}` : '-'}
+                                            </td>
+                                        </tr>
+                                    )
+                                })
                             )}
                         </tbody>
                     </table>

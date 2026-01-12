@@ -16,13 +16,14 @@ interface AuditItem {
     actual_qty: number
 }
 
+import { useAuth } from "@/components/auth/AuthProvider"
+
+// ...
+
 export default function AuditPage() {
+    const { session } = useAuth()
     const router = useRouter()
-    const [boxCode, setBoxCode] = useState("")
-    const [items, setItems] = useState<AuditItem[]>([])
-    const [isScanning, setIsScanning] = useState(true)
-    const [loading, setLoading] = useState(false)
-    const [reason, setReason] = useState("")
+    const [boxId, setBoxId] = useState("")
 
     const handleScanBox = async () => {
         if (!boxCode) return
@@ -39,8 +40,24 @@ export default function AuditPage() {
                 setLoading(false)
                 return
             }
+            setBoxId(box.id)
+            setBoxId(box.id)
+            // ... (rest of function) ...
 
-            const { data: inventory, error: invError } = await supabase
+            // ... in handleSaveAudit ...
+            const delta = item.actual_qty - item.expected_qty
+            const { error } = await supabase.from('transactions').insert({
+                type: 'AUDIT',
+                entity_type: 'ITEM',
+                entity_id: item.id,
+                from_box_id: boxId, // Changed from to_box_id
+                quantity: delta,
+                details: {
+                    box_code: boxCode,
+                    // ...
+                },
+                user_id: session?.user?.id
+            })
                 .from('inventory_items')
                 .select(`
                 id,
@@ -93,15 +110,17 @@ export default function AuditPage() {
                         .eq('id', item.id)
 
                     // Log discrepancy
+                    // Log discrepancy
+                    const delta = item.actual_qty - item.expected_qty
                     const { error } = await supabase.from('transactions').insert({
                         type: 'AUDIT',
-                        note: reason, // Save reason here
-                        details: {
-                            box: boxCode,
-                            sku: item.products?.sku,
-                            expected: item.expected_qty,
-                            actual: item.actual_qty
-                        },
+                        entity_type: 'ITEM',
+                        entity_id: item.id, // Inventory Item ID
+                        from_box_id: boxId,
+                        quantity: delta,
+                        sku: item.products?.sku, // Fix: Populate top-level SKU
+                        // details: Removed
+                        user_id: session?.user?.id
                     })
                     if (error) {
                         console.error('Transaction error', error)

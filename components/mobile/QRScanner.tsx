@@ -22,7 +22,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
         }
 
         const script = document.createElement("script")
-        script.src = "https://unpkg.com/html5-qrcode"
+        script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
         script.onload = () => {
             console.log("Manual script loaded")
             setScriptLoaded(true)
@@ -62,7 +62,10 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 // @ts-ignore
                 const scanner = new window.Html5Qrcode(scannerId, {
                     formatsToSupport: formats,
-                    verbose: false
+                    verbose: false,
+                    experimentalFeatures: {
+                        useBarCodeDetectorIfSupported: true
+                    }
                 })
 
                 scannerRef.current = scanner
@@ -77,7 +80,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                     {
                         fps: 10,
                         qrbox: qrBoxSize,
-                        aspectRatio: 1.0,
+                        disableFlip: false, // Prevent mirroring which breaks text scanning
                     },
                     (decodedText: string) => {
                         onScan(decodedText)

@@ -38,25 +38,16 @@ export default function LocationDetailPage() {
                 item_count: b.inventory_items?.[0]?.count || 0
             })) || [])
 
-            // 3. Get History (Mocked/Simulated logic for demo, or real if transactions supported)
-            // Just fetching recent transactions generally for now or use dummy
-            // Ideally: .or(`details->>from.eq.${loc.code},details->>to.eq.${loc.code}`)
-            // Checking if we can query jsonb easily. 
-            // For safety, I'll fetch recent transactions and filter in client if volume low, 
-            // OR just show placeholder if too complex.
-            // Let's try simple filter by code if possible.
+            // 3. Get History (Real query using columns)
             const { data: trans } = await supabase
                 .from('transactions')
                 .select('*')
+                .or(`to_location_id.eq.${id},from_location_id.eq.${id}`)
                 .order('created_at', { ascending: false })
                 .limit(20)
 
-            // Client side filter for safety
             if (trans) {
-                const related = trans.filter((t: any) =>
-                    JSON.stringify(t.details).includes(loc.code)
-                )
-                setHistory(related)
+                setHistory(trans)
             }
         }
         setLoading(false)
@@ -142,7 +133,8 @@ export default function LocationDetailPage() {
                                         <span className="text-xs text-slate-400">{new Date(h.created_at).toLocaleDateString('vi-VN')}</span>
                                     </div>
                                     <div className="text-xs text-slate-500 mt-1 lines-clamp-2">
-                                        {JSON.stringify(h.details)}
+                                        {h.sku ? `SKU: ${h.sku}` : ''} {h.quantity ? `x${h.quantity}` : ''}
+                                        {h.entity_type === 'BOX' && ' (Box Operation)'}
                                     </div>
                                 </div>
                             </div>

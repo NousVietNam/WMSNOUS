@@ -41,8 +41,8 @@ export default function LoginPage() {
                 <div className="glass-strong rounded-2xl p-8 elevation-xl">
                     {/* Logo */}
                     <div className="flex justify-center mb-6">
-                        <div className="h-16 w-16 gradient-primary rounded-full flex items-center justify-center elevation-lg animate-pulse-subtle">
-                            <Package className="h-8 w-8 text-white" />
+                        <div className="h-24 w-24 bg-white rounded-full flex items-center justify-center elevation-lg animate-pulse-subtle p-2">
+                            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
                     </div>
 

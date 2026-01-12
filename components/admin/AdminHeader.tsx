@@ -34,8 +34,8 @@ export function AdminHeader() {
             <div className="flex items-center justify-between px-6 py-4">
                 <div className="flex items-center gap-6">
                     <Link href="/admin" className="text-xl font-bold text-white flex items-center gap-2 hover:scale-105 transition-transform">
-                        <div className="h-10 w-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                            <Box className="h-5 w-5 text-white" />
+                        <div className="h-10 w-10 rounded-full bg-white flex items-center justify-center p-1">
+                            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
                         </div>
                         <span>WMS Admin</span>
                     </Link>

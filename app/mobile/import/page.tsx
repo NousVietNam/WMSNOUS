@@ -29,9 +29,10 @@ export default function ImportPage() {
             // For this demo, let's assume we have a way to find product or just insert if we are loose
             // But schema requires UUID.
             // Let's first search for the product
+            // 1. Get Product ID from SKU
             const { data: product, error: prodError } = await supabase
                 .from('products')
-                .select('id')
+                .select('id, name') // Fetch name too
                 .eq('sku', sku)
                 .single()
 
@@ -54,8 +55,7 @@ export default function ImportPage() {
                 return
             }
 
-            // 2. Get Box ID (Strict Hierarchy: Items must go into a Box)
-            // We removed Location lookup to enforce "No loose items".
+            // 2. Get Box ID
             const { data: box, error: boxError } = await supabase
                 .from('boxes')
                 .select('id, location_id, code')
@@ -68,8 +68,17 @@ export default function ImportPage() {
                 return
             }
 
+            // Check if Box is in RECEIVING
+            const { data: receivingLoc } = await supabase.from('locations').select('id, code').ilike('code', '%receiving%').maybeSingle()
+
+            if (receivingLoc && box.location_id !== receivingLoc.id) {
+                alert(`Lỗi: Thùng ${box.code} không ở khu vực Nhận Hàng (RECEIVING)!\nVui lòng chuyển thùng về Receiving trước khi nhập hàng.`)
+                setLoading(false)
+                return
+            }
+
             // 3. Insert Inventory Item
-            const { error: insertError } = await supabase
+            const { data: newInv, error: insertError } = await supabase
                 .from('inventory_items')
                 .insert({
                     product_id: productId,
@@ -77,13 +86,23 @@ export default function ImportPage() {
                     quantity: parseInt(quantity),
                     // location_id is implicitly defined by box.location_id, avoiding redundancy/anomaly
                 })
+                .select()
+                .single()
 
             if (insertError) throw insertError
 
             // 4. Log Transaction
+            // receivingLoc is already fetched above for validation
+
             await supabase.from('transactions').insert({
                 type: 'IMPORT',
-                details: { sku, box_code: box.code, quantity },
+                entity_type: 'ITEM', // Changed to ITEM per user request
+                entity_id: newInv.id, // Link to specific inventory item
+                to_box_id: box.id,
+                to_location_id: receivingLoc?.id, // Default to Receiving
+                quantity: parseInt(quantity),
+                sku: sku, // Fix: Populate top-level SKU
+                // details: Removed as requested
                 user_id: session?.user?.id
             })
 

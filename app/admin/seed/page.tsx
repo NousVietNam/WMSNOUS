@@ -9,11 +9,18 @@ import { Database, Play, Trash2 } from "lucide-react"
 export default function SeedPage() {
     const [loading, setLoading] = useState(false)
     const [logs, setLogs] = useState<string[]>([])
+    const [confirming, setConfirming] = useState(false)
 
     const addLog = (msg: string) => setLogs(prev => [...prev, `${new Date().toLocaleTimeString()}: ${msg}`])
 
     const handleSeed = async () => {
-        if (!confirm("Hành động này sẽ xoá dữ liệu cũ và tạo dữ liệu 'Bản Đồ Random' (80 Vị trí, 0-15 Thùng/kệ, 0-100 hàng/thùng). Tiếp tục?")) return
+        // Confirmation is handled by button state now
+        if (!confirming) {
+            setConfirming(true)
+            setTimeout(() => setConfirming(false), 3000)
+            return
+        }
+        setConfirming(false)
         setLoading(true)
         setLogs([])
 
@@ -45,8 +52,15 @@ export default function SeedPage() {
 
             // 4. Create 80 Locations (4 Aisles A-D, 5 Racks 1-5, 4 Levels 1-4)
             // 4 * 5 * 4 = 80
-            addLog("Đang tạo 80 Vị Trí...")
+            addLog("Đang tạo 80 Vị Trí + RECEIVING...")
             const locParams = []
+
+            // Add RECEIVING
+            locParams.push({
+                code: 'RECEIVING',
+                type: 'SHELF', // AREA violated constraint, using SHELF
+                capacity: 1000
+            })
 
             // Layout Logic for Map:
             // Aisle A: X=0..10, Y=0
@@ -75,6 +89,8 @@ export default function SeedPage() {
             const boxParams = []
 
             for (const loc of locs) {
+                if (loc.code === 'RECEIVING') continue // Don't fill receiving yet
+
                 // Random count 0 to 15
                 const boxCount = Math.floor(Math.random() * 16)
 
@@ -112,7 +128,7 @@ export default function SeedPage() {
                 }
             }
 
-            const { error: invErr } = await supabase.from('inventory_items').insert(invParams)
+            const { data: createdInv, error: invErr } = await supabase.from('inventory_items').insert(invParams).select()
             if (invErr) throw new Error("Lỗi tồn kho: " + invErr.message)
 
             addLog(`Đã thêm hàng vào ${invParams.length} thùng.`)
@@ -180,34 +196,49 @@ export default function SeedPage() {
             // 8. Transactions History
             addLog("Đang tạo Lịch sử giao dịch ảo...")
             const transactions = []
+
+            // Get RECEIVING ID properly (searching from locs we just created)
+            const receivingId = locs.find(l => l.code === 'RECEIVING')?.id
+            if (!receivingId) throw new Error("Không tìm thấy vị trí RECEIVING trong danh sách vừa tạo!")
+
             for (let i = 0; i < 50; i++) {
                 const isImport = Math.random() > 0.5
-                const type = isImport ? 'IMPORT' : 'MOVE'
-                const randomBox = boxes[Math.floor(Math.random() * boxes.length)] // Use created boxes
-                const randomLoc = locs[Math.floor(Math.random() * locs.length)] // Us created locs
-                const randomProd = allProds[Math.floor(Math.random() * allProds.length)]
 
-                const details: any = {}
-                if (type === 'IMPORT') {
-                    details.box_code = randomBox.code
-                    details.sku = randomProd.sku
-                    details.product_name = randomProd.name
-                    details.quantity = Math.ceil(Math.random() * 50)
-                    details.to = randomBox.code
+                if (isImport && createdInv && createdInv.length > 0) {
+                    // Simulating IMPORT of an existing item
+                    const randomInv = createdInv[Math.floor(Math.random() * createdInv.length)]
+                    // Find product info
+                    const prod = allProds.find(p => p.id === randomInv.product_id)
+
+                    transactions.push({
+                        type: 'IMPORT',
+                        entity_type: 'ITEM',
+                        entity_id: randomInv.id,
+                        to_box_id: randomInv.box_id,
+                        to_location_id: receivingId, // Assume imported at receiving
+                        quantity: randomInv.quantity, // Use actual qty
+                        sku: prod?.sku,
+                        created_at: new Date(Date.now() - Math.floor(Math.random() * 1000000000)).toISOString(),
+                        // details: removed
+                        user_id: (await supabase.auth.getUser()).data.user?.id
+                    })
                 } else {
-                    details.box_code = randomBox.code
-                    details.from = `RECEIVING`
-                    details.to = randomLoc.code
-                }
+                    // MOVE Box
+                    const randomBox = boxes[Math.floor(Math.random() * boxes.length)]
+                    const randomLoc = locs[Math.floor(Math.random() * locs.length)]
 
-                transactions.push({
-                    type,
-                    entity_type: 'BOX',
-                    entity_id: randomBox.id,
-                    timestamp: new Date(Date.now() - Math.floor(Math.random() * 1000000000)).toISOString(),
-                    details,
-                    user_id: (await supabase.auth.getUser()).data.user?.id
-                })
+                    transactions.push({
+                        type: 'MOVE_BOX',
+                        entity_type: 'BOX',
+                        entity_id: randomBox.id,
+                        from_location_id: receivingId, // Fake move from receiving
+                        to_location_id: randomLoc.id,
+                        // sku: null for box move
+                        created_at: new Date(Date.now() - Math.floor(Math.random() * 1000000000)).toISOString(),
+                        // details: removed
+                        user_id: (await supabase.auth.getUser()).data.user?.id
+                    })
+                }
             }
             await supabase.from('transactions').insert(transactions)
 
@@ -257,9 +288,14 @@ export default function SeedPage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    <Button className="w-full" size="lg" onClick={handleSeed} disabled={loading}>
+                    <Button
+                        className={`w-full ${confirming ? 'bg-red-600 hover:bg-red-700' : ''}`}
+                        size="lg"
+                        onClick={handleSeed}
+                        disabled={loading}
+                    >
                         <Play className="mr-2 h-4 w-4" />
-                        {loading ? 'Đang Xử Lý...' : 'Tạo Dữ Liệu Mẫu (Reset)'}
+                        {loading ? 'Đang Xử Lý...' : confirming ? '⚠️ Bấm Lần Nữa Để Xác Nhận!' : 'Tạo Dữ Liệu Mẫu (Reset)'}
                     </Button>
 
                     <Button variant="destructive" className="w-full" onClick={handleClear} disabled={loading}>

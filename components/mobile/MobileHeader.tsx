@@ -16,7 +16,8 @@ export function MobileHeader({ title, backLink, rightElement }: { title?: string
                     </Link>
                 )}
                 <div>
-                    <div className="font-bold text-xl text-slate-900 leading-tight">
+                    <div className="font-bold text-xl text-slate-900 leading-tight flex items-center gap-2">
+                        {!backLink && <img src="/logo.png" alt="Logo" className="h-8 w-8 object-contain" />}
                         {title || "WMS Mobile"}
                     </div>
                 </div>

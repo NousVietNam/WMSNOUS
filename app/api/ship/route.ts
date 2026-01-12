@@ -26,12 +26,9 @@ export async function POST(request: Request) {
             entity_type: 'ITEM',
             entity_id: item.id, // ID will be gone, but we log it
             from_box_id: box.id,
-            details: {
-                sku: item.products?.sku,
-                quantity: item.quantity,
-                box_code: box.code,
-                order_id: box.order_id
-            },
+            sku: item.products?.sku, // Fix: Populate top-level SKU
+            quantity: item.quantity,
+            // details: Removed
             timestamp: new Date().toISOString()
         }))
 

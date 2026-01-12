@@ -23,14 +23,11 @@ export default function MobileMenu() {
     return (
         <div className="min-h-screen bg-slate-50 pb-24">
             <MobileHeader
-                title={profile ? `Xin chào, ${profile.name || profile.full_name || 'Nhân Viên'}` : 'Tổng Quan'}
+                title="WMS Nous App"
                 rightElement={
-                    <div className="flex flex-col items-end mr-1">
-                        <div className="text-xs font-bold text-slate-700">
+                    <div className="mr-2 text-right">
+                        <div className="text-[11px] font-bold text-slate-700 truncate max-w-[120px] leading-tight">
                             {profile?.name || profile?.full_name || session?.user?.email?.split('@')[0] || 'User'}
-                        </div>
-                        <div className="text-[10px] text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200">
-                            {profile?.role || 'Staff'}
                         </div>
                     </div>
                 }

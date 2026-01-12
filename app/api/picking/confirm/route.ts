@@ -100,19 +100,14 @@ export async function POST(request: Request) {
 
             // Log Transaction (MOVE)
             transactionLog.push({
-                type: 'MOVE', // Changed to 'MOVE' to match DB check constraint (presumably same as Transfer)
+                type: 'MOVE_BOX', // Changed to 'MOVE_BOX' to match DB check constraint (presumably same as Transfer)
                 entity_type: 'ITEM',
                 entity_id: inv.id,
                 from_box_id: task.box_id,
                 to_box_id: outboxId,
-                details: {
-                    subtype: 'PACKING', // specific subtype
-                    product_sku: task.products?.sku,
-                    quantity: take,
-                    from_box_code: task.boxes?.code || 'UNKNOWN',
-                    to_outbox_code: outbox.code,
-                    job_id: task.job_id
-                },
+                sku: task.products?.sku, // Fix: Populate top-level SKU
+                quantity: take, // Ensure quantity is top level if not already? Wait, picking/confirm route loop had `quantity: take` in details.
+                // details: Removed
                 user_id: task.picking_jobs?.user_id,
                 timestamp: new Date().toISOString()
             })
