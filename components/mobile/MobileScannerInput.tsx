@@ -19,6 +19,17 @@ interface MobileScannerInputProps {
 export default function MobileScannerInput({ value, onChange, onEnter, placeholder, className, autoFocus, mode }: MobileScannerInputProps) {
     const [showScanner, setShowScanner] = useState(false)
 
+    // Preload Scanner Script
+    React.useEffect(() => {
+        // @ts-ignore
+        if (typeof window !== 'undefined' && !window.Html5Qrcode) {
+            const script = document.createElement("script")
+            script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
+            script.async = true
+            document.body.appendChild(script)
+        }
+    }, [])
+
     // Helper to handle scan result
     const handleScan = (code: string) => {
         onChange(code)
