@@ -24,6 +24,11 @@ export default function AuditPage() {
     const { session } = useAuth()
     const router = useRouter()
     const [boxId, setBoxId] = useState("")
+    const [boxCode, setBoxCode] = useState("")
+    const [loading, setLoading] = useState(false)
+    const [isScanning, setIsScanning] = useState(true)
+    const [items, setItems] = useState<AuditItem[]>([])
+    const [reason, setReason] = useState("")
 
     const handleScanBox = async () => {
         if (!boxCode) return
@@ -41,23 +46,8 @@ export default function AuditPage() {
                 return
             }
             setBoxId(box.id)
-            setBoxId(box.id)
-            // ... (rest of function) ...
 
-            // ... in handleSaveAudit ...
-            const delta = item.actual_qty - item.expected_qty
-            const { error } = await supabase.from('transactions').insert({
-                type: 'AUDIT',
-                entity_type: 'ITEM',
-                entity_id: item.id,
-                from_box_id: boxId, // Changed from to_box_id
-                quantity: delta,
-                details: {
-                    box_code: boxCode,
-                    // ...
-                },
-                user_id: session?.user?.id
-            })
+            const { data: inventory, error: invError } = await supabase
                 .from('inventory_items')
                 .select(`
                 id,
