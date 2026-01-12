@@ -236,7 +236,8 @@ function PutAwayContent() {
                     product_name: item.name,
                     quantity: item.qty,
                     to: boxCode
-                }
+                },
+                created_at: new Date().toISOString()
             }))
 
             await supabase.from('transactions').insert(transactions)

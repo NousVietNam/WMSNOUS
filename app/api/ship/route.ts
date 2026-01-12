@@ -29,7 +29,7 @@ export async function POST(request: Request) {
             sku: item.products?.sku, // Fix: Populate top-level SKU
             quantity: item.quantity,
             // details: Removed
-            timestamp: new Date().toISOString()
+            created_at: new Date().toISOString()
         }))
 
         const { error: txError } = await supabase.from('transactions').insert(transactions)

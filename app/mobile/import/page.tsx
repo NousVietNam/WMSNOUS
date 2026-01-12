@@ -103,7 +103,8 @@ export default function ImportPage() {
                 quantity: parseInt(quantity),
                 sku: sku, // Fix: Populate top-level SKU
                 // details: Removed as requested
-                user_id: session?.user?.id
+                user_id: session?.user?.id,
+                created_at: new Date().toISOString()
             })
 
             alert("Nhập kho thành công!")

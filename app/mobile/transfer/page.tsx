@@ -85,7 +85,8 @@ export default function TransferPage() {
                 from_location_id: currentLocId,
                 to_location_id: location.id,
                 // details: Removed
-                user_id: session?.user?.id
+                user_id: session?.user?.id,
+                created_at: new Date().toISOString()
             })
 
             alert("Chuyển thành công!")

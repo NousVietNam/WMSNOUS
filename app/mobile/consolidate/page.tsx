@@ -75,7 +75,8 @@ export default function ConsolidatePage() {
                 to_box_id: dest.id,
                 quantity: itemCount,
                 // details: Removed
-                user_id: session?.user?.id
+                user_id: session?.user?.id,
+                created_at: new Date().toISOString()
             })
 
             alert(`Đã gộp ${itemCount} sản phẩm sang ${destCode}!`)
