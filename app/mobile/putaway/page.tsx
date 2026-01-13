@@ -173,11 +173,14 @@ function PutAwayContent() {
         }
 
         // Fetch Existing Items
-        const { data: currentInv } = await supabase
+        const { data: currentInv, error: invError } = await supabase
             .from('inventory_items')
-            .select('quantity, products(sku, name, barcode)')
+            .select('quantity, product_id, products!product_id(sku, name, barcode)')
             .eq('box_id', data.id)
             .gt('quantity', 0)
+
+        console.log('📦 Existing items in box:', currentInv)
+        if (invError) console.error('❌ Error fetching existing items:', invError)
 
         setExistingItems(currentInv || [])
         setStep(2)
