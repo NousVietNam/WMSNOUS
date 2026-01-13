@@ -552,7 +552,6 @@ export default function InventoryPage() {
                                     <th className="p-3 w-[80px] text-center">Mùa</th>
                                     <th className="p-3 w-[70px] text-center">Tháng</th>
                                     <th className="p-3 w-[70px] text-center">Tổng Tồn</th>
-                                    <th className="p-3 w-[80px] text-center text-purple-600">Đơn Duyệt</th>
                                     <th className="p-3 w-[70px] text-center text-orange-600">Hàng Giữ</th>
                                     <th className="p-3 w-[70px] text-center text-green-600">Khả Dụng</th>
                                     <th className="p-3 w-[110px]">Thùng</th>
@@ -569,21 +568,19 @@ export default function InventoryPage() {
                                     <td></td><td></td><td></td><td></td><td></td><td></td>
 
                                     <td className="p-3 text-center text-slate-800 text-base">{calculatingTotals ? '...' : totals.quantity}</td>
-                                    <td className="p-3 text-center text-purple-700 text-base">{calculatingTotals ? '...' : totals.approved}</td>
                                     <td className="p-3 text-center text-orange-700 text-base">{calculatingTotals ? '...' : totals.allocated}</td>
                                     <td className="p-3 text-center text-green-700 text-base">{calculatingTotals ? '...' : totals.available}</td>
                                     <td colSpan={2}></td>
                                 </tr>
 
                                 {loading ? (
-                                    <tr><td colSpan={14} className="p-8 text-center">Đang tải...</td></tr>
+                                    <tr><td colSpan={13} className="p-8 text-center">Đang tải...</td></tr>
                                 ) : filteredItems.length === 0 ? (
-                                    <tr><td colSpan={14} className="p-8 text-center text-muted-foreground">Không tìm thấy.</td></tr>
+                                    <tr><td colSpan={13} className="p-8 text-center text-muted-foreground">Không tìm thấy.</td></tr>
                                 ) : (
                                     filteredItems.map(item => {
                                         const allocated = item.allocated_quantity || 0
                                         const available = Math.max(0, item.quantity - allocated)
-                                        const approvedQty = item.products?.id ? (approvedDemand[item.products.id] || 0) : 0
 
                                         return (
                                             <tr key={item.id} className="border-t hover:bg-slate-50 text-xs">
@@ -621,13 +618,6 @@ export default function InventoryPage() {
                                                 <td className="p-2 text-center text-xs">{item.products?.season || '-'}</td>
                                                 <td className="p-2 text-center text-xs">{item.products?.launch_month || '-'}</td>
                                                 <td className="p-2 text-center font-bold text-base text-slate-700">{item.quantity}</td>
-                                                <td className="p-2 text-center font-bold text-base text-purple-600">
-                                                    {approvedQty > 0 ? (
-                                                        <button className="hover:underline hover:bg-purple-50 px-2 rounded" onClick={() => showApprovedDetails(item)}>
-                                                            {approvedQty}
-                                                        </button>
-                                                    ) : '-'}
-                                                </td>
                                                 <td className="p-2 text-center font-bold text-base text-orange-600">
                                                     {allocated > 0 ? (
                                                         <button className="hover:underline hover:bg-orange-50 px-2 rounded" onClick={() => showAllocatedDetails(item)}>
@@ -698,28 +688,16 @@ export default function InventoryPage() {
                                         ) : detailData.length === 0 ? (
                                             <tr><td colSpan={4} className="p-4 text-center text-muted-foreground">Không có dữ liệu chi tiết</td></tr>
                                         ) : detailData.map((row, idx) => {
-                                            if (detailType === 'APPROVED') {
-                                                const order = row.orders
-                                                return (
-                                                    <tr key={idx}>
-                                                        <td className="p-2 font-medium">{order?.code} <span className="text-xs font-normal text-slate-500">({order?.status})</span></td>
-                                                        <td className="p-2">{order?.users?.name || '-'}</td>
-                                                        <td className="p-2 text-right font-bold">{row.quantity}</td>
-                                                        <td className="p-2 text-right text-xs text-slate-400">{order?.created_at ? new Date(order.created_at).toLocaleDateString() : '-'}</td>
-                                                    </tr>
-                                                )
-                                            } else {
-                                                const order = row.picking_jobs?.orders
-                                                const user = row.picking_jobs?.users
-                                                return (
-                                                    <tr key={idx}>
-                                                        <td className="p-2 font-medium">{order?.code || 'Job #' + row.picking_jobs?.id}</td>
-                                                        <td className="p-2">{user?.name || '-'}</td>
-                                                        <td className="p-2 text-right font-bold text-orange-600">{row.quantity}</td>
-                                                        <td className="p-2 text-right text-xs text-slate-400">{new Date(row.created_at).toLocaleDateString()}</td>
-                                                    </tr>
-                                                )
-                                            }
+                                            const order = row.picking_jobs?.orders
+                                            const user = row.picking_jobs?.users
+                                            return (
+                                                <tr key={idx}>
+                                                    <td className="p-2 font-medium">{order?.code || 'Job #' + row.picking_jobs?.id}</td>
+                                                    <td className="p-2">{user?.name || '-'}</td>
+                                                    <td className="p-2 text-right font-bold text-orange-600">{row.quantity}</td>
+                                                    <td className="p-2 text-right text-xs text-slate-400">{new Date(row.created_at).toLocaleDateString()}</td>
+                                                </tr>
+                                            )
                                         })}
                                     </tbody>
                                 </table>
