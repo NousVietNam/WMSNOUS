@@ -233,6 +233,15 @@ function PutAwayContent() {
             return
         }
 
+        // CRITICAL: Check if product.id exists
+        if (!product.id) {
+            console.error('❌ CRITICAL: product.id is missing!', product)
+            alert(`Lỗi: Sản phẩm không có ID. SKU: ${product.sku}`)
+            return
+        }
+
+        console.log('✅ Adding product to list:', { id: product.id, sku: product.sku, name: product.name })
+
         // Update preview just in case
         setScannedProduct({ name: product.name, sku: product.sku, barcode: product.barcode })
 
