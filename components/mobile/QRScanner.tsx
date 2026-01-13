@@ -120,9 +120,12 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                     <button onClick={onClose} className="p-2 text-slate-500">✕</button>
                 </div>
 
-                <div id={scannerId} className="w-full bg-black shrink-0 min-h-[300px] overflow-hidden rounded-lg relative">
+                {/* Loading/Error overlay - OUTSIDE scanner div to prevent DOM conflicts */}
+                <div className="relative w-full shrink-0">
+                    <div id={scannerId} className="w-full bg-black min-h-[300px] overflow-hidden rounded-lg"></div>
+
                     {!scriptLoaded && (
-                        <div className="absolute inset-0 flex items-center justify-center text-white text-sm">
+                        <div className="absolute inset-0 flex items-center justify-center text-white text-sm bg-black rounded-lg">
                             <div className="text-center">
                                 <div className="animate-spin h-8 w-8 border-4 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
                                 Đang tải thư viện...
@@ -130,7 +133,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                         </div>
                     )}
                     {scriptLoaded && !cameraStarted && !error && (
-                        <div className="absolute inset-0 flex items-center justify-center text-white text-sm">
+                        <div className="absolute inset-0 flex items-center justify-center text-white text-sm bg-black rounded-lg">
                             <div className="text-center">
                                 <div className="animate-spin h-8 w-8 border-4 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
                                 Đang khởi động camera...
@@ -138,7 +141,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                         </div>
                     )}
                     {error && (
-                        <div className="absolute inset-0 flex items-center justify-center text-red-400 text-sm p-4 text-center">
+                        <div className="absolute inset-0 flex items-center justify-center text-red-400 text-sm p-4 text-center bg-black rounded-lg">
                             <div>
                                 <div className="text-4xl mb-2">⚠️</div>
                                 {error}
