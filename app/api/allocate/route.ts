@@ -200,20 +200,49 @@ export async function POST(request: Request) {
             })
 
             for (const [pid, qty] of Object.entries(allocatedTotals)) {
-                // We need to increment the DB value. 
-                // Using RPC would be atomicaly safer, but for now strict read-update.
-                const { data: current } = await supabase.from('order_items').select('allocated_quantity').eq('order_id', orderId).eq('product_id', pid).single()
-                if (current) {
-                    const { error: updateError } = await supabase.from('order_items')
-                        .update({ allocated_quantity: (current.allocated_quantity || 0) + qty })
-                        .eq('order_id', orderId)
-                        .eq('product_id', pid)
+                // Fetch ALL rows for this product (handle duplicates)
+                const { data: rows } = await supabase.from('order_items')
+                    .select('id, quantity, allocated_quantity')
+                    .eq('order_id', orderId)
+                    .eq('product_id', pid)
 
-                    if (updateError) {
-                        console.error(`Failed to update order_item ${pid}:`, updateError)
-                        // Don't throw, try to finish others? Or throw?
-                        // If we don't update allocated_qty, we risk over-selling. Critical.
-                        throw new Error(`Failed to update allocation count: ${updateError.message}`)
+                if (rows && rows.length > 0) {
+                    let remainingToAdd = qty
+
+                    for (const row of rows) {
+                        if (remainingToAdd <= 0) break
+
+                        // Calculate capacity for this row
+                        const currentAlloc = row.allocated_quantity || 0
+                        const capacity = row.quantity - currentAlloc
+
+                        // We shouldn't over-allocate a row, but if we have extra, dump it?
+                        // Better to fill up to demand.
+                        // If remainingToAdd > capacity, we fill this row and move to next.
+                        const add = Math.min(remainingToAdd, capacity)
+
+                        // Edge case: If add is 0 (row full) but we have remainingToAdd?
+                        // This implies our Aggregate Demand Calculation saw need, so there MUST be space.
+                        // However, if capacity is 0, we skip.
+
+                        if (add > 0) {
+                            const { error: updateError } = await supabase.from('order_items')
+                                .update({ allocated_quantity: currentAlloc + add })
+                                .eq('id', row.id)
+
+                            if (updateError) {
+                                console.error(`Failed to update order_item ${row.id}:`, updateError)
+                                // Continue to try other rows
+                            } else {
+                                remainingToAdd -= add
+                            }
+                        }
+                    }
+
+                    // If remainingToAdd > 0 here, it means we allocated MORE than total demand?
+                    // Should be impossible if demandMap logic is correct.
+                    if (remainingToAdd > 0) {
+                        console.warn(`Leftover allocation qty ${remainingToAdd} for product ${pid} could not be stored in order_items rows.`)
                     }
                 }
             }
