@@ -85,7 +85,29 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
         return () => {
             clearTimeout(timer)
             if (scannerRef.current) {
-                scannerRef.current.stop().catch((err: any) => console.error(err)).finally(() => scannerRef.current.clear())
+                try {
+                    scannerRef.current
+                        .stop()
+                        .then(() => {
+                            if (scannerRef.current) {
+                                scannerRef.current.clear()
+                            }
+                        })
+                        .catch((err: any) => {
+                            console.warn("Scanner stop error (safe to ignore):", err)
+                            // Attempt to clear anyway
+                            try {
+                                if (scannerRef.current) {
+                                    scannerRef.current.clear()
+                                }
+                            } catch (clearErr) {
+                                console.warn("Scanner clear error (safe to ignore):", clearErr)
+                            }
+                        })
+                } catch (err) {
+                    console.warn("Scanner cleanup error (safe to ignore):", err)
+                }
+                scannerRef.current = null
             }
         }
     }, [scriptLoaded, onScan, mode])
