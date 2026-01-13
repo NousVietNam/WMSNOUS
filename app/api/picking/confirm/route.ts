@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
         // Find best inventory match (Storage Box)
         let invQuery = supabase.from('inventory_items')
-            .select('id, quantity, box_id')
+            .select('id, quantity, allocated_quantity, box_id')
             .eq('product_id', task.product_id)
             .gt('quantity', 0)
 
@@ -71,7 +71,10 @@ export async function POST(request: Request) {
             if (inv.quantity - take === 0) {
                 await supabase.from('inventory_items').delete().eq('id', inv.id)
             } else {
-                await supabase.from('inventory_items').update({ quantity: inv.quantity - take }).eq('id', inv.id)
+                await supabase.from('inventory_items').update({
+                    quantity: inv.quantity - take,
+                    allocated_quantity: Math.max(0, (inv.allocated_quantity || 0) - take)
+                }).eq('id', inv.id)
             }
 
             // B. Add to Outbox
