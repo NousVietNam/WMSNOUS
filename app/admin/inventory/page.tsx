@@ -99,34 +99,55 @@ export default function InventoryPage() {
     }
 
     const showAllocatedDetails = async (item: InventoryItem) => {
-        // We need box_id or location_id.
         const boxId = (item as any).box_id
         const locationId = (item as any).location_id
 
         if (!item.products?.id) return
 
+        console.log('🔍 Querying picking_tasks for:', {
+            productId: item.products.id,
+            boxId,
+            locationId
+        })
+
         let query = supabase
             .from('picking_tasks')
-            .select('quantity, status, created_at, picking_jobs!inner(orders(code), users(name))')
+            .select(`
+                quantity, 
+                status,
+                job_id,
+                picking_jobs!job_id(
+                    order_id,
+                    user_id,
+                    orders(code),
+                    users(name)
+                )
+            `)
             .eq('product_id', item.products.id)
             .neq('status', 'COMPLETED')
 
         if (boxId) {
             query = query.eq('box_id', boxId)
-            setDetailTitle(`Items Giữ Ở Thùng ${item.boxes?.code || 'Unknown'} - ${item.products.sku}`)
+            setDetailTitle(`Hàng Giữ Ở Thùng ${item.boxes?.code || 'Unknown'} - ${item.products.sku}`)
         } else if (locationId) {
             query = query.eq('location_id', locationId)
-            setDetailTitle(`Items Giữ Ở Vị Trí ${item.locations?.code || 'Unknown'} - ${item.products.sku}`)
+            setDetailTitle(`Hàng Giữ Ở Vị Trí ${item.locations?.code || 'Unknown'} - ${item.products.sku}`)
         } else {
-            toast.error("Không xác định được nơi lưu trữ (Thùng/Vị trí) để tra cứu")
+            toast.error("Không xác định được nơi lưu trữ")
             return
         }
 
-        setDetailType('ALLOCATED')
         setDetailOpen(true)
         setDetailLoading(true)
 
-        const { data } = await query
+        const { data, error } = await query
+
+        if (error) {
+            console.error('❌ Query error:', error)
+            toast.error(`Lỗi: ${error.message}`)
+        } else {
+            console.log('✅ Query success:', data)
+        }
 
         setDetailData(data || [])
         setDetailLoading(false)
@@ -679,23 +700,21 @@ export default function InventoryPage() {
                                             <th className="p-2 text-left">Đơn Hàng</th>
                                             <th className="p-2 text-left">Người Xử Lý</th>
                                             <th className="p-2 text-right">Số Lượng</th>
-                                            <th className="p-2 text-right text-slate-500">Ngày Tạo</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y">
                                         {detailLoading ? (
-                                            <tr><td colSpan={4} className="p-4 text-center">Đang tải...</td></tr>
+                                            <tr><td colSpan={3} className="p-4 text-center">Đang tải...</td></tr>
                                         ) : detailData.length === 0 ? (
-                                            <tr><td colSpan={4} className="p-4 text-center text-muted-foreground">Không có dữ liệu chi tiết</td></tr>
+                                            <tr><td colSpan={3} className="p-4 text-center text-muted-foreground">Không có dữ liệu chi tiết</td></tr>
                                         ) : detailData.map((row, idx) => {
                                             const order = row.picking_jobs?.orders
                                             const user = row.picking_jobs?.users
                                             return (
                                                 <tr key={idx}>
-                                                    <td className="p-2 font-medium">{order?.code || 'Job #' + row.picking_jobs?.id}</td>
+                                                    <td className="p-2 font-medium">{order?.code || 'Job #' + row.job_id}</td>
                                                     <td className="p-2">{user?.name || '-'}</td>
                                                     <td className="p-2 text-right font-bold text-orange-600">{row.quantity}</td>
-                                                    <td className="p-2 text-right text-xs text-slate-400">{new Date(row.created_at).toLocaleDateString()}</td>
                                                 </tr>
                                             )
                                         })}
