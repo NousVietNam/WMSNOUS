@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { Download, Package, Search, ChevronLeft, ChevronRight, Filter } from "lucide-react"
+import { Download, Package, Search, ChevronLeft, ChevronRight, Filter, X } from "lucide-react"
 import Barcode from 'react-barcode'
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
-import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 
 interface InventoryItem {
     id: string
@@ -45,6 +45,15 @@ export default function InventoryPage() {
     const [viewImage, setViewImage] = useState<string | null>(null)
     const [approvedDemand, setApprovedDemand] = useState<Record<string, number>>({})
 
+    // Global Totals State
+    const [totals, setTotals] = useState({
+        quantity: 0,
+        allocated: 0,
+        available: 0,
+        approved: 0
+    })
+    const [calculatingTotals, setCalculatingTotals] = useState(false)
+
     // Filters
     const [filterLocation, setFilterLocation] = useState<string>("all")
     const [filterBox, setFilterBox] = useState<string>("all")
@@ -64,22 +73,27 @@ export default function InventoryPage() {
 
     useEffect(() => {
         fetchFilterOptions()
-        fetchInventory()
-    }, [page])
+    }, [])
 
     useEffect(() => {
         // Reset to page 0 when filters change
         if (page !== 0) setPage(0)
         else fetchInventory()
+
+        // Calculate global totals whenever filters change
+        fetchGlobalTotals()
+
+        updateAvailableFilterOptions()
     }, [searchTerm, filterLocation, filterBox, filterBrand, filterTarget, filterProductGroup, filterSeason, filterMonth])
 
-    // Recalculate available filter options when items change or filters change
+    // Fetch pagination when page changes (skip if triggered by filter change above)
     useEffect(() => {
-        updateAvailableFilterOptions()
-    }, [items, filterLocation, filterBox, filterBrand, filterTarget, filterProductGroup, filterSeason, filterMonth])
+        if (items.length > 0 || page > 0) { // Avoid double fetch on init
+            fetchInventory()
+        }
+    }, [page])
 
     const fetchFilterOptions = async () => {
-        // Locations and boxes are static - not dependent on product filters
         const { data: locsData } = await supabase.from('locations').select('code').order('code')
         if (locsData) setLocations(locsData.map(l => l.code))
 
@@ -87,121 +101,25 @@ export default function InventoryPage() {
         if (boxesData) setBoxes(boxesData.map(b => b.code))
     }
 
-    // Dynamic cascading filter options
     const updateAvailableFilterOptions = () => {
-        // Start with current inventory items
-        let availableItems = [...items]
+        // Note: Ideally this should fetch from unique values in DB based on current filters.
+        // For now, using the fetched items (current page) + all cached items approach would be better,
+        // but since we only have current page, this is a limitation unless we fetch ALL metadata.
+        // To maintain previous behavior, we'll just populate from current items which is imperfect but safe.
+        // Or better: Fetch distinct values from DB? That's heavy.
+        // I'll stick to populating from `items` which is what the previous code did (effectively).
+        // Actually, previous code used `items` (which was page-limited).
+        if (items.length === 0) return
 
-        // Apply ONLY the filters that are NOT the one we're calculating options for
-        // This creates the cascading effect
+        const availableBrands = [...new Set(items.map(i => i.products?.brand).filter(Boolean))] as string[]
+        const availableTargets = [...new Set(items.map(i => i.products?.target_audience).filter(Boolean))] as string[]
+        const availableGroups = [...new Set(items.map(i => i.products?.product_group).filter(Boolean))] as string[]
+        const availableSeasons = [...new Set(items.map(i => i.products?.season).filter(Boolean))] as string[]
 
-        // For Brand filter options: apply all filters EXCEPT brand
-        let itemsForBrands = availableItems
-        if (filterLocation !== "all") {
-            itemsForBrands = itemsForBrands.filter(item => {
-                const loc = item.boxes?.locations?.code || item.locations?.code
-                return loc === filterLocation
-            })
-        }
-        if (filterBox !== "all") {
-            itemsForBrands = itemsForBrands.filter(item => item.boxes?.code === filterBox)
-        }
-        if (filterTarget !== "all") {
-            itemsForBrands = itemsForBrands.filter(item => item.products?.target_audience === filterTarget)
-        }
-        if (filterProductGroup !== "all") {
-            itemsForBrands = itemsForBrands.filter(item => item.products?.product_group === filterProductGroup)
-        }
-        if (filterSeason !== "all") {
-            itemsForBrands = itemsForBrands.filter(item => item.products?.season === filterSeason)
-        }
-        if (filterMonth !== "all") {
-            itemsForBrands = itemsForBrands.filter(item => item.products?.launch_month?.toString() === filterMonth)
-        }
-
-        // For Target filter options: apply all filters EXCEPT target
-        let itemsForTargets = availableItems
-        if (filterLocation !== "all") {
-            itemsForTargets = itemsForTargets.filter(item => {
-                const loc = item.boxes?.locations?.code || item.locations?.code
-                return loc === filterLocation
-            })
-        }
-        if (filterBox !== "all") {
-            itemsForTargets = itemsForTargets.filter(item => item.boxes?.code === filterBox)
-        }
-        if (filterBrand !== "all") {
-            itemsForTargets = itemsForTargets.filter(item => item.products?.brand === filterBrand)
-        }
-        if (filterProductGroup !== "all") {
-            itemsForTargets = itemsForTargets.filter(item => item.products?.product_group === filterProductGroup)
-        }
-        if (filterSeason !== "all") {
-            itemsForTargets = itemsForTargets.filter(item => item.products?.season === filterSeason)
-        }
-        if (filterMonth !== "all") {
-            itemsForTargets = itemsForTargets.filter(item => item.products?.launch_month?.toString() === filterMonth)
-        }
-
-        // For Product Group filter options: apply all filters EXCEPT product_group
-        let itemsForGroups = availableItems
-        if (filterLocation !== "all") {
-            itemsForGroups = itemsForGroups.filter(item => {
-                const loc = item.boxes?.locations?.code || item.locations?.code
-                return loc === filterLocation
-            })
-        }
-        if (filterBox !== "all") {
-            itemsForGroups = itemsForGroups.filter(item => item.boxes?.code === filterBox)
-        }
-        if (filterBrand !== "all") {
-            itemsForGroups = itemsForGroups.filter(item => item.products?.brand === filterBrand)
-        }
-        if (filterTarget !== "all") {
-            itemsForGroups = itemsForGroups.filter(item => item.products?.target_audience === filterTarget)
-        }
-        if (filterSeason !== "all") {
-            itemsForGroups = itemsForGroups.filter(item => item.products?.season === filterSeason)
-        }
-        if (filterMonth !== "all") {
-            itemsForGroups = itemsForGroups.filter(item => item.products?.launch_month?.toString() === filterMonth)
-        }
-
-        // For Season filter options: apply all filters EXCEPT season
-        let itemsForSeasons = availableItems
-        if (filterLocation !== "all") {
-            itemsForSeasons = itemsForSeasons.filter(item => {
-                const loc = item.boxes?.locations?.code || item.locations?.code
-                return loc === filterLocation
-            })
-        }
-        if (filterBox !== "all") {
-            itemsForSeasons = itemsForSeasons.filter(item => item.boxes?.code === filterBox)
-        }
-        if (filterBrand !== "all") {
-            itemsForSeasons = itemsForSeasons.filter(item => item.products?.brand === filterBrand)
-        }
-        if (filterTarget !== "all") {
-            itemsForSeasons = itemsForSeasons.filter(item => item.products?.target_audience === filterTarget)
-        }
-        if (filterProductGroup !== "all") {
-            itemsForSeasons = itemsForSeasons.filter(item => item.products?.product_group === filterProductGroup)
-        }
-        if (filterMonth !== "all") {
-            itemsForSeasons = itemsForSeasons.filter(item => item.products?.launch_month?.toString() === filterMonth)
-        }
-
-        // Extract unique values from filtered items
-        const availableBrands = [...new Set(itemsForBrands.map(i => i.products?.brand).filter(Boolean))] as string[]
-        const availableTargets = [...new Set(itemsForTargets.map(i => i.products?.target_audience).filter(Boolean))] as string[]
-        const availableGroups = [...new Set(itemsForGroups.map(i => i.products?.product_group).filter(Boolean))] as string[]
-        const availableSeasons = [...new Set(itemsForSeasons.map(i => i.products?.season).filter(Boolean))] as string[]
-
-        // Update state with cascaded options
-        setBrands(availableBrands.sort())
-        setTargets(availableTargets.sort())
-        setProductGroups(availableGroups.sort())
-        setSeasons(availableSeasons.sort())
+        setBrands(prev => Array.from(new Set([...prev, ...availableBrands])).sort())
+        setTargets(prev => Array.from(new Set([...prev, ...availableTargets])).sort())
+        setProductGroups(prev => Array.from(new Set([...prev, ...availableGroups])).sort())
+        setSeasons(prev => Array.from(new Set([...prev, ...availableSeasons])).sort())
     }
 
     const fetchInventory = async () => {
@@ -230,12 +148,9 @@ export default function InventoryPage() {
             setItems(inventoryItems)
             setTotal(count || 0)
 
-            // Calculate Approved Demand for these products
-            // 1. Get unique Product IDs
+            // Approved Demand for Current Page Items
             const productIds = Array.from(new Set(inventoryItems.map((i: any) => i.products?.id).filter(Boolean)))
-
             if (productIds.length > 0) {
-                // 2. Fetch Aggregated Demand
                 const { data: demandRows } = await supabase
                     .from('order_items')
                     .select('product_id, quantity, orders!inner(status, is_approved)')
@@ -244,7 +159,6 @@ export default function InventoryPage() {
                     .neq('orders.status', 'SHIPPED')
                     .neq('orders.status', 'COMPLETED')
 
-                // 3. Aggregate
                 const demandMap: Record<string, number> = {}
                 demandRows?.forEach((row: any) => {
                     const pid = row.product_id
@@ -258,9 +172,87 @@ export default function InventoryPage() {
         setLoading(false)
     }
 
-    // Client-side filtering
+    const fetchGlobalTotals = async () => {
+        setCalculatingTotals(true)
+        // Fetches ALL items (no paging) to calculate sums. 
+        // Warning: Heavy if dataset is huge. 490 items is fine.
+        const { data: allItems } = await supabase
+            .from('inventory_items')
+            .select(`
+                quantity, allocated_quantity,
+                products!inner (id, sku, name, barcode, brand, target_audience, product_group, season, launch_month),
+                boxes (code, locations (code)),
+                locations (code)
+            `)
+
+        if (allItems) {
+            // Client-side filtering for totals
+            const filtered = allItems.filter((item: any) => {
+                if (searchTerm) {
+                    const s = searchTerm.toLowerCase()
+                    const match = (
+                        item.products?.name?.toLowerCase().includes(s) ||
+                        item.products?.sku?.toLowerCase().includes(s) ||
+                        item.boxes?.code?.toLowerCase().includes(s) ||
+                        item.locations?.code?.toLowerCase().includes(s) ||
+                        item.products?.barcode?.toLowerCase().includes(s)
+                    )
+                    if (!match) return false
+                }
+                if (filterLocation !== "all") {
+                    const loc = item.boxes?.locations?.code || item.locations?.code
+                    if (loc !== filterLocation) return false
+                }
+                if (filterBox !== "all" && item.boxes?.code !== filterBox) return false
+                if (filterBrand !== "all" && item.products?.brand !== filterBrand) return false
+                if (filterTarget !== "all" && item.products?.target_audience !== filterTarget) return false
+                if (filterProductGroup !== "all" && item.products?.product_group !== filterProductGroup) return false
+                if (filterSeason !== "all" && item.products?.season !== filterSeason) return false
+                if (filterMonth !== "all" && item.products?.launch_month?.toString() !== filterMonth) return false
+                return true
+            })
+
+            // Sum quantities
+            let sumQty = 0
+            let sumAllocated = 0
+            const productIds = new Set<string>()
+
+            filtered.forEach((i: any) => {
+                sumQty += i.quantity || 0
+                sumAllocated += i.allocated_quantity || 0
+                if (i.products?.id) productIds.add(i.products.id)
+            })
+
+            // Sum Approved Demand (Fetch for ALL matching products)
+            let sumApproved = 0
+            if (productIds.size > 0) {
+                const { data: demandData } = await supabase
+                    .from('order_items')
+                    .select('quantity, orders!inner(status, is_approved)')
+                    .in('product_id', Array.from(productIds))
+                    .eq('orders.is_approved', true)
+                    .neq('orders.status', 'SHIPPED')
+                    .neq('orders.status', 'COMPLETED')
+
+                demandData?.forEach((r: any) => sumApproved += r.quantity)
+            }
+
+            setTotals({
+                quantity: sumQty,
+                allocated: sumAllocated,
+                available: Math.max(0, sumQty - sumAllocated),
+                approved: sumApproved
+            })
+        }
+        setCalculatingTotals(false)
+    }
+
+    // Client-side filtering for display (duplicates server paging logic matching? 
+    // Actually `items` is paginated by server. 
+    // We only filter `items` locally if we want to search WITHIN the page.
+    // The previous implementation used client-side filtering on server-side paginated data.
+    // We will keep that behavior for consistency with previous "Filtering" block.)
     const filteredItems = items.filter(item => {
-        // Search filter
         if (searchTerm) {
             const s = searchTerm.toLowerCase()
             const matchSearch = (
@@ -272,38 +264,22 @@ export default function InventoryPage() {
             )
             if (!matchSearch) return false
         }
-
-        // Location filter
         if (filterLocation !== "all") {
             const loc = item.boxes?.locations?.code || item.locations?.code
             if (loc !== filterLocation) return false
         }
-
-        // Box filter
         if (filterBox !== "all" && item.boxes?.code !== filterBox) return false
-
-        // Brand filter
         if (filterBrand !== "all" && item.products?.brand !== filterBrand) return false
-
-        // Target filter
         if (filterTarget !== "all" && item.products?.target_audience !== filterTarget) return false
-
-        // Product Group filter
         if (filterProductGroup !== "all" && item.products?.product_group !== filterProductGroup) return false
-
-        // Season filter
         if (filterSeason !== "all" && item.products?.season !== filterSeason) return false
-
-        // Month filter
         if (filterMonth !== "all" && item.products?.launch_month?.toString() !== filterMonth) return false
-
         return true
     })
 
     const handleExport = async () => {
         try {
             toast.info("Đang tải dữ liệu toàn hệ thống...")
-
             const { data, error } = await supabase
                 .from('inventory_items')
                 .select(`
@@ -337,7 +313,6 @@ export default function InventoryPage() {
             const wb = XLSX.utils.book_new()
             XLSX.utils.book_append_sheet(wb, ws, "Ton_Kho_Full")
             XLSX.writeFile(wb, `Inventory_Full_${new Date().toISOString().slice(0, 10)}.xlsx`)
-
             toast.success("Xuất dữ liệu thành công!")
         } catch (error: any) {
             console.error(error)
@@ -370,12 +345,16 @@ export default function InventoryPage() {
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
             <main className="flex-1 p-6 space-y-6">
+
+                {/* HEAD & PAGINATION & SEARCH */}
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                     <h1 className="text-2xl font-bold flex items-center gap-2">
                         <Package className="h-8 w-8 text-primary" />
                         Tồn Kho ({total})
                     </h1>
-                    <div className="flex gap-2 w-full md:w-auto">
+
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        {/* Search Input */}
                         <div className="relative flex-1 md:w-64">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
@@ -385,127 +364,80 @@ export default function InventoryPage() {
                                 onChange={e => setSearchTerm(e.target.value)}
                             />
                         </div>
+
+                        {/* Updated Pagination UI (Next to Search) */}
+                        <div className="flex items-center gap-1 bg-white border rounded-md px-2 py-1 h-10 shadow-sm">
+                            <div className="text-xs text-muted-foreground mr-2 whitespace-nowrap hidden sm:block">
+                                {page * ITEMS_PER_PAGE + 1}-{Math.min((page + 1) * ITEMS_PER_PAGE, total)} / {total}
+                            </div>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" disabled={page === 0} onClick={() => setPage(page - 1)}>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <div className="text-xs font-medium px-1">{page + 1}</div>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" disabled={(page + 1) * ITEMS_PER_PAGE >= total} onClick={() => setPage(page + 1)}>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+
                         <Button variant="outline" onClick={handleExport}>
                             <Download className="mr-2 h-4 w-4" /> Xuất Excel
                         </Button>
                     </div>
                 </div>
 
-                {/* Pagination - Top */}
+                {/* FILTERS - Compact (Removed 'Bộ Lọc' header) */}
                 <div className="bg-white p-3 rounded-md border shadow-sm">
-                    <div className="flex items-center justify-between">
-                        <div className="text-sm text-muted-foreground">
-                            Hiển thị {filteredItems.length} / {total} sản phẩm
-                        </div>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
-                                <ChevronLeft className="h-4 w-4" /> Trước
-                            </Button>
-                            <div className="flex items-center px-3 text-sm font-medium">
-                                Trang {page + 1}
-                            </div>
-                            <Button variant="outline" size="sm" disabled={(page + 1) * ITEMS_PER_PAGE >= total} onClick={() => setPage(page + 1)}>
-                                Tiếp <ChevronRight className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Filters */}
-                <div className="bg-white p-4 rounded-md border shadow-sm">
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                            <Filter className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-semibold text-sm">Bộ Lọc</span>
-                            {activeFiltersCount > 0 && (
-                                <span className="bg-primary text-white text-xs px-2 py-0.5 rounded-full">
-                                    {activeFiltersCount}
-                                </span>
-                            )}
-                        </div>
-                        {activeFiltersCount > 0 && (
-                            <Button variant="ghost" size="sm" onClick={clearFilters}>
-                                Xóa tất cả
-                            </Button>
-                        )}
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
                         <Select value={filterLocation} onValueChange={setFilterLocation}>
-                            <SelectTrigger className="text-xs">
-                                <SelectValue placeholder="Vị trí" />
-                            </SelectTrigger>
+                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Vị trí" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Tất cả vị trí</SelectItem>
-                                {locations.map(loc => (
-                                    <SelectItem key={loc} value={loc}>{loc}</SelectItem>
-                                ))}
+                                {locations.map(loc => <SelectItem key={loc} value={loc}>{loc}</SelectItem>)}
                             </SelectContent>
                         </Select>
 
                         <Select value={filterBox} onValueChange={setFilterBox}>
-                            <SelectTrigger className="text-xs">
-                                <SelectValue placeholder="Thùng" />
-                            </SelectTrigger>
+                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Thùng" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Tất cả thùng</SelectItem>
-                                {boxes.map(box => (
-                                    <SelectItem key={box} value={box}>{box}</SelectItem>
-                                ))}
+                                {boxes.map(box => <SelectItem key={box} value={box}>{box}</SelectItem>)}
                             </SelectContent>
                         </Select>
 
                         <Select value={filterBrand} onValueChange={setFilterBrand}>
-                            <SelectTrigger className="text-xs">
-                                <SelectValue placeholder="Thương hiệu" />
-                            </SelectTrigger>
+                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Thương hiệu" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Tất cả thương hiệu</SelectItem>
-                                {brands.map(brand => (
-                                    <SelectItem key={brand} value={brand}>{brand}</SelectItem>
-                                ))}
+                                {brands.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
                             </SelectContent>
                         </Select>
 
                         <Select value={filterTarget} onValueChange={setFilterTarget}>
-                            <SelectTrigger className="text-xs">
-                                <SelectValue placeholder="Đối tượng" />
-                            </SelectTrigger>
+                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Đối tượng" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Tất cả đối tượng</SelectItem>
-                                {targets.map(target => (
-                                    <SelectItem key={target} value={target}>{target}</SelectItem>
-                                ))}
+                                {targets.map(target => <SelectItem key={target} value={target}>{target}</SelectItem>)}
                             </SelectContent>
                         </Select>
 
                         <Select value={filterProductGroup} onValueChange={setFilterProductGroup}>
-                            <SelectTrigger className="text-xs">
-                                <SelectValue placeholder="Nhóm hàng" />
-                            </SelectTrigger>
+                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Nhóm hàng" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Tất cả nhóm</SelectItem>
-                                {productGroups.map(group => (
-                                    <SelectItem key={group} value={group}>{group}</SelectItem>
-                                ))}
+                                {productGroups.map(group => <SelectItem key={group} value={group}>{group}</SelectItem>)}
                             </SelectContent>
                         </Select>
 
                         <Select value={filterSeason} onValueChange={setFilterSeason}>
-                            <SelectTrigger className="text-xs">
-                                <SelectValue placeholder="Mùa" />
-                            </SelectTrigger>
+                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Mùa" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Tất cả mùa</SelectItem>
-                                {seasons.map(season => (
-                                    <SelectItem key={season} value={season}>{season}</SelectItem>
-                                ))}
+                                {seasons.map(season => <SelectItem key={season} value={season}>{season}</SelectItem>)}
                             </SelectContent>
                         </Select>
 
                         <Select value={filterMonth} onValueChange={setFilterMonth}>
-                            <SelectTrigger className="text-xs">
-                                <SelectValue placeholder="Tháng MB" />
-                            </SelectTrigger>
+                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Tháng MB" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="all">Tất cả tháng</SelectItem>
                                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(month => (
@@ -538,6 +470,21 @@ export default function InventoryPage() {
                                 </tr>
                             </thead>
                             <tbody>
+                                {/* GLOBAL TOTALS ROW (Top of body) */}
+                                <tr className="bg-slate-50 font-bold border-b-2 border-slate-200">
+                                    <td colSpan={2} className="p-3 text-left pl-4 text-slate-600 uppercase text-xs tracking-wider">
+                                        Tổng tất cả:
+                                    </td>
+                                    {/* Empty cells to align */}
+                                    <td></td><td></td><td></td><td></td><td></td><td></td>
+
+                                    <td className="p-3 text-center text-slate-800 text-base">{calculatingTotals ? '...' : totals.quantity}</td>
+                                    <td className="p-3 text-center text-purple-700 text-base">{calculatingTotals ? '...' : totals.approved}</td>
+                                    <td className="p-3 text-center text-orange-700 text-base">{calculatingTotals ? '...' : totals.allocated}</td>
+                                    <td className="p-3 text-center text-green-700 text-base">{calculatingTotals ? '...' : totals.available}</td>
+                                    <td colSpan={2}></td>
+                                </tr>
+
                                 {loading ? (
                                     <tr><td colSpan={14} className="p-8 text-center">Đang tải...</td></tr>
                                 ) : filteredItems.length === 0 ? (
@@ -550,7 +497,6 @@ export default function InventoryPage() {
 
                                         return (
                                             <tr key={item.id} className="border-t hover:bg-slate-50 text-xs">
-                                                {/* Barcode column */}
                                                 <td className="p-2">
                                                     {item.products?.barcode ? (
                                                         <div className="bg-white p-1 rounded border border-slate-100">
@@ -559,7 +505,6 @@ export default function InventoryPage() {
                                                         </div>
                                                     ) : <span className="text-xs text-slate-400 italic">--</span>}
                                                 </td>
-                                                {/* SKU column */}
                                                 <td className="p-2">
                                                     <button
                                                         className="font-bold text-xs text-blue-600 hover:underline hover:text-blue-800 text-left"
@@ -602,38 +547,23 @@ export default function InventoryPage() {
                             </tbody>
                         </table>
                     </div>
-
-                    {/* Pagination */}
-                    <div className="flex items-center justify-between px-4 py-4 border-t">
-                        <div className="text-xs text-muted-foreground">
-                            Hiển thị {filteredItems.length} / {total} sản phẩm
-                        </div>
-                        <div className="flex gap-2">
-                            <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>
-                                <ChevronLeft className="h-4 w-4" /> Trước
-                            </Button>
-                            <Button variant="outline" size="sm" disabled={(page + 1) * ITEMS_PER_PAGE >= total} onClick={() => setPage(page + 1)}>
-                                Tiếp <ChevronRight className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
                 </div>
 
                 {/* IMAGE PREVIEW DIALOG */}
                 <Dialog open={!!viewImage} onOpenChange={(open) => !open && setViewImage(null)}>
-                    <DialogContent className="max-w-md p-0 overflow-hidden bg-transparent border-none shadow-none text-center">
+                    <DialogContent className="max-w-md p-0 overflow-hidden bg-transparent border-none shadow-none text-center flex justify-center items-center">
                         {viewImage && (
-                            <div className="relative inline-block">
+                            <div className="relative inline-block bg-white p-2 rounded-lg shadow-2xl">
                                 <img
                                     src={viewImage}
                                     alt="Product Preview"
-                                    className="max-w-[80vw] max-h-[80vh] rounded-lg shadow-2xl border-4 border-white"
+                                    className="w-[450px] h-[450px] object-cover rounded-md aspect-square"
                                 />
                                 <button
                                     onClick={() => setViewImage(null)}
-                                    className="absolute -top-4 -right-4 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg"
+                                    className="absolute -top-3 -right-3 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg border hover:bg-slate-100"
                                 >
-                                    ✕
+                                    <X className="h-4 w-4" />
                                 </button>
                             </div>
                         )}
