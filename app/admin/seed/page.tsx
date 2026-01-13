@@ -133,73 +133,8 @@ export default function SeedPage() {
 
             addLog(`Đã thêm hàng vào ${invParams.length} thùng.`)
 
-            // 7. Generate Test Orders (REMOVED REQUEST)
-            // addLog("Skipping Order Generation in Random Seed...")
-            // const createTestOrders = async () => { ... } 
-
-            // NOTE: User requested to remove random order generation here in favor of specific test orders in Admin Order tab.
-
-            /*
-            // 7. Generate Test Orders (20 Orders, 10 Lines Each)
-            addLog("Đang tạo 20 Đơn hàng Test (4 nhóm x 5 đơn/nhóm)...")
-
-            // Helper to create multiple orders
-            // Define 3 logical groups by Index for Scenario (A: Safe, B: Short, C: Empty)
-            const getGroup = (idx: number) => {
-                const mod = idx % 3
-                if (mod === 0) return 'SAFE'
-                if (mod === 1) return 'SHORT'
-                return 'EMPTY'
-            }
-            // Use same product list logic
-            const scenarioProds = allProds.length > 30 ? allProds.slice(0, 30) : allProds
-
-
-            const createTestOrders = async (prefix: string, name: string, filterGroup: string | 'MIXED') => {
-                for (let i = 1; i <= 5; i++) {
-                    const code = `${prefix}-${i}`
-                    const { data: order } = await supabase.from('orders').insert({
-                        code,
-                        customer_name: `${name} ${i}`,
-                        status: 'PENDING'
-                    }).select().single()
-
-                    if (order) {
-                        const lines = []
-                        let targetProds = []
-                        if (filterGroup === 'MIXED') {
-                            targetProds = scenarioProds
-                        } else {
-                            targetProds = scenarioProds.filter((p, idx) => getGroup(idx) === filterGroup)
-                        }
-                        if (targetProds.length === 0) targetProds = [allProds[0]]
-
-                        // Generate 10 lines
-                        for (let k = 0; k < 10; k++) {
-                            const prod = targetProds[k % targetProds.length]
-                            lines.push({
-                                order_id: order.id,
-                                product_id: prod.id,
-                                quantity: 5,
-                                allocated_quantity: 0
-                            })
-                        }
-                        await supabase.from('order_items').insert(lines)
-                    }
-                }
-            }
-
-            // 1. SAFE Order
-            await createTestOrders('TEST-SAFE', 'KH Đủ Hàng', 'SAFE')
-            // 2. EMPTY Order
-            await createTestOrders('TEST-EMPTY', 'KH Thiếu Hết', 'EMPTY')
-            // 3. SHORT Order
-            await createTestOrders('TEST-SHORT', 'KH Thiếu Số Lượng', 'SHORT')
-            // 4. MIXED Order
-            await createTestOrders('TEST-MIXED', 'KH Hỗn Hợp', 'MIXED')
-
-            addLog("Đã tạo xong 20 đơn hàng kiểm thử.")
-            */
+            // 7. Generate Test Orders (REMOVED)
+            // Logic moved to /admin/orders -> "Create Test Orders" button
 
             // 8. Transactions History
             addLog("Đang tạo Lịch sử giao dịch ảo...")

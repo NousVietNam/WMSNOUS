@@ -559,17 +559,17 @@ export default function InventoryPage() {
                 <Dialog open={!!viewImage} onOpenChange={(open) => !open && setViewImage(null)}>
                     <DialogContent className="max-w-md p-0 overflow-hidden bg-transparent border-none shadow-none text-center flex justify-center items-center [&>button]:hidden">
                         {viewImage && (
-                            <div className="relative inline-block bg-white p-2 rounded-lg shadow-2xl">
+                            <div className="relative inline-block bg-white p-2 rounded-xl shadow-2xl">
                                 <img
                                     src={viewImage}
                                     alt="Product Preview"
-                                    className="w-[450px] h-[450px] object-cover rounded-md aspect-square"
+                                    className="w-[450px] h-[450px] object-cover rounded-lg aspect-square"
                                 />
                                 <button
                                     onClick={() => setViewImage(null)}
-                                    className="absolute -top-3 -right-3 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg border hover:bg-slate-100"
+                                    className="absolute top-4 right-4 bg-white/90 hover:bg-white text-slate-800 rounded-full w-9 h-9 flex items-center justify-center shadow-sm backdrop-blur-sm transition-all border border-white/20"
                                 >
-                                    <X className="h-4 w-4" />
+                                    <X className="h-5 w-5" />
                                 </button>
                             </div>
                         )}
