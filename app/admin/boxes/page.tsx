@@ -87,27 +87,27 @@ export default function BoxesPage() {
         large: boxes.filter(b => (b.item_count || 0) >= 100).length
     }
 
-    const getLocationNewId = async () => {
+    const getLocationReceivingId = async () => {
         try {
-            // 1. Try to find "NEW"
-            let { data, error } = await supabase.from('locations').select('id').eq('code', 'NEW').single()
+            // 1. Try to find "RECEIVING"
+            let { data, error } = await supabase.from('locations').select('id').eq('code', 'RECEIVING').single()
             if (data) return data.id
             if (error && error.code !== 'PGRST116') { // PGRST116 is "Row not found"
-                console.warn("Error finding NEW location:", error)
+                console.warn("Error finding RECEIVING location:", error)
             }
         } catch (e) {
-            console.warn("Exception finding NEW location:", e)
+            console.warn("Exception finding RECEIVING location:", e)
         }
 
         // 2. If not exist, create it
         const { data: newLoc, error } = await supabase.from('locations').insert({
-            code: 'NEW',
-            type: 'staging',
-            description: 'Khu vực chờ xử lý (Mặc định)'
+            code: 'RECEIVING',
+            type: 'receiving',
+            description: 'Khu vực tiếp nhận hàng (Mặc định)'
         }).select('id').single()
 
         if (error || !newLoc) {
-            alert("Không thể tạo vị trí NEW: " + error?.message)
+            alert("Không thể tạo vị trí RECEIVING: " + error?.message)
             return null
         }
         return newLoc.id
@@ -119,8 +119,8 @@ export default function BoxesPage() {
         const year = now.getFullYear().toString().slice(-2)
         const prefix = `BOX-${month}${year}-`
 
-        const newLocId = await getLocationNewId()
-        if (!newLocId) return
+        const receivingLocId = await getLocationReceivingId()
+        if (!receivingLocId) return
 
         // Get max code
         const { data } = await supabase.from('boxes')
@@ -141,7 +141,7 @@ export default function BoxesPage() {
             code,
             status: 'OPEN',
             type: 'STORAGE',
-            location_id: newLocId
+            location_id: receivingLocId
         })
         if (error) alert("Lỗi: " + error.message)
         else { setOpenDialog(false); fetchBoxes() }
@@ -151,8 +151,8 @@ export default function BoxesPage() {
         if (qty > 100) return alert("Tối đa 100 thùng/lần")
         setLoading(true)
 
-        const newLocId = await getLocationNewId()
-        if (!newLocId) { setLoading(false); return }
+        const receivingLocId = await getLocationReceivingId()
+        if (!receivingLocId) { setLoading(false); return }
 
         const now = new Date()
         const month = (now.getMonth() + 1).toString().padStart(2, '0')
@@ -180,7 +180,7 @@ export default function BoxesPage() {
                 code: `${prefix}${suffix}`,
                 status: 'OPEN',
                 type: 'STORAGE',
-                location_id: newLocId
+                location_id: receivingLocId
             })
         }
 
