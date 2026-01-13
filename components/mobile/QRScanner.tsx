@@ -42,27 +42,27 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
             try {
                 // @ts-ignore
                 const scanner = new window.Html5Qrcode(scannerId, {
-                    verbose: false,
+                    verbose: true, // Enable verbose logging temporarily for debugging
                     experimentalFeatures: {
-                        useBarCodeDetectorIfSupported: false // iOS stability
+                        useBarCodeDetectorIfSupported: true // Re-enable for better detection
                     }
                 })
 
                 scannerRef.current = scanner
 
-                // Responsive qrbox: 70% of min dimension
+                // Responsive qrbox: smaller for better focus
                 const qrBoxFunction = (viewfinderWidth: number, viewfinderHeight: number) => {
                     const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
                     return {
-                        width: Math.floor(minEdge * 0.8), // Increased from 0.7 to 0.8 for larger scan area
-                        height: Math.floor(minEdge * (mode === "BARCODE" ? 0.5 : 0.8))
+                        width: Math.floor(minEdge * 0.65), // Reduced to 0.65 for better focus
+                        height: Math.floor(minEdge * (mode === "BARCODE" ? 0.35 : 0.65))
                     }
                 }
 
                 await scanner.start(
                     { facingMode: "environment" },
                     {
-                        fps: 30, // Increased from 15 to 30 for better detection
+                        fps: 10, // Reduced from 30 to 10 - optimal for mobile
                         qrbox: qrBoxFunction,
                         disableFlip: false,
                         aspectRatio: 1.0,
