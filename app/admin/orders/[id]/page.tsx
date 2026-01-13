@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
-import { AlertCircle, ArrowLeft, Box, CheckCircle, ClipboardList, Play, Truck, User, Lock, Edit, ShieldCheck } from "lucide-react"
+import { AlertCircle, ArrowLeft, Box, CheckCircle, ClipboardList, Play, Truck, User, Lock, Edit, ShieldCheck, Plus } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { Input } from "@/components/ui/input"
@@ -35,6 +35,41 @@ export default function OrderDetailPage() {
     const [editMode, setEditMode] = useState(false)
     const [editingItems, setEditingItems] = useState<any[]>([])
     const [savingEdit, setSavingEdit] = useState(false)
+
+    // Add Item State
+    const [addItemOpen, setAddItemOpen] = useState(false)
+    const [searchTerm, setSearchTerm] = useState("")
+    const [foundProducts, setFoundProducts] = useState<any[]>([])
+
+    const searchProducts = async (term: string) => {
+        if (!term || term.length < 2) {
+            setFoundProducts([])
+            return
+        }
+        const { data } = await supabase
+            .from('products')
+            .select('id, sku, name')
+            .or(`sku.ilike.%${term}%,name.ilike.%${term}%`)
+            .limit(10)
+        setFoundProducts(data || [])
+    }
+
+    const addItemToOrder = (product: any) => {
+        // Check if exists
+        const exists = editingItems.find(i => i.product_id === product.id)
+        if (exists) {
+            alert("Sản phẩm đã có trong đơn hàng!")
+            return
+        }
+        // Add new
+        setEditingItems([...editingItems, {
+            product_id: product.id,
+            products: product, // For display
+            quantity: 1,
+            allocated_quantity: 0,
+            picked_quantity: 0
+        }])
+    }
 
     useEffect(() => {
         if (id) fetchOrder()
@@ -275,6 +310,50 @@ export default function OrderDetailPage() {
                             <CardTitle>Danh Sách Hàng Hoá ({items.length})</CardTitle>
                             {editMode && (
                                 <div className="flex gap-2">
+                                    {/* ADD ITEM DIALOG */}
+                                    <Dialog open={addItemOpen} onOpenChange={setAddItemOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button variant="outline" size="sm" onClick={() => { setSearchTerm(""); setFoundProducts([]) }}>
+                                                <Plus className="mr-2 h-4 w-4" /> Thêm SP
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent>
+                                            <DialogHeader><DialogTitle>Thêm Sản Phẩm</DialogTitle></DialogHeader>
+                                            <div className="space-y-4 pt-4">
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        placeholder="Tìm mã SKU hoặc Tên..."
+                                                        value={searchTerm}
+                                                        onChange={e => {
+                                                            setSearchTerm(e.target.value)
+                                                            searchProducts(e.target.value)
+                                                        }}
+                                                    />
+                                                </div>
+                                                <div className="border rounded-md max-h-[300px] overflow-auto">
+                                                    {foundProducts.length === 0 ? (
+                                                        <div className="p-4 text-center text-slate-500 text-sm">Nhập từ khóa để tìm kiếm...</div>
+                                                    ) : (
+                                                        foundProducts.map(p => (
+                                                            <div key={p.id} className="p-3 hover:bg-slate-100 cursor-pointer flex justify-between items-center border-b last:border-0"
+                                                                onClick={() => {
+                                                                    addItemToOrder(p)
+                                                                    setAddItemOpen(false)
+                                                                }}
+                                                            >
+                                                                <div>
+                                                                    <div className="font-bold text-sm">{p.sku}</div>
+                                                                    <div className="text-xs text-slate-500">{p.name}</div>
+                                                                </div>
+                                                                <Button size="sm" variant="ghost"><Plus className="h-4 w-4" /></Button>
+                                                            </div>
+                                                        ))
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </DialogContent>
+                                    </Dialog>
+
                                     <Button variant="ghost" size="sm" onClick={() => {
                                         setEditMode(false)
                                         setEditingItems(JSON.parse(JSON.stringify(items))) // Reset

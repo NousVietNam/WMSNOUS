@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/lib/supabase"
-import { AlertCircle, FileText, Plus, Upload, Eye } from "lucide-react"
+import { AlertCircle, FileText, Plus, Upload, Eye, ShieldCheck } from "lucide-react"
 import Link from "next/link"
 import Papa from "papaparse"
 
@@ -303,6 +303,7 @@ export default function OrdersPage() {
                                 <th className="p-4">Số Mặt Hàng</th>
                                 <th className="p-4">Nhân Viên Gán</th>
                                 <th className="p-4">Trạng Thái</th>
+                                <th className="p-4">Duyệt</th>
                                 <th className="p-4">Ngày Tạo</th>
                                 <th className="p-4 text-right">Thao tác</th>
                             </tr>
@@ -333,6 +334,15 @@ export default function OrdersPage() {
                                             }`}>
                                             {order.status}
                                         </span>
+                                    </td>
+                                    <td className="p-4">
+                                        {order.is_approved ? (
+                                            <span className="text-green-600 font-bold text-xs flex items-center gap-1">
+                                                <ShieldCheck className="w-4 h-4" /> Đã duyệt
+                                            </span>
+                                        ) : (
+                                            <span className="text-slate-400 text-xs italic">Chưa duyệt</span>
+                                        )}
                                     </td>
                                     <td className="p-4 text-muted-foreground">{new Date(order.created_at).toLocaleDateString('vi-VN')}</td>
                                     <td className="p-4 text-right flex justify-end gap-2">

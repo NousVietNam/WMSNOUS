@@ -38,7 +38,7 @@ export async function POST() {
             const numItems = Math.floor(Math.random() * 5) + 1; // 1-5 items per order
 
             // Create Order
-            const code = `TEST-${Date.now()}-${i}`;
+            const code = `TEST-${Date.now()}-${i}${isShortageOrder ? '-SHORT' : ''}`;
             const { data: order, error: orderError } = await supabase
                 .from('orders')
                 .insert({
