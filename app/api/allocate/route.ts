@@ -15,7 +15,7 @@ export async function POST(request: Request) {
         // 1. Fetch Order Items
         const { data: orderItems } = await supabase
             .from('order_items')
-            .select('product_id, quantity, allocated_quantity')
+            .select('id, product_id, quantity, allocated_quantity')
             .eq('order_id', orderId)
 
         if (!orderItems || orderItems.length === 0)
@@ -189,7 +189,6 @@ export async function POST(request: Request) {
         if (tasks.length > 0) {
             await supabase.from('picking_tasks').insert(tasks)
 
-            // Update order_items allocated_qty
             // Re-calculate totals from tasks just created (simplest way approx)
             // Or better: Use the delta we tracked.
 
@@ -199,52 +198,45 @@ export async function POST(request: Request) {
                 allocatedTotals[t.product_id] = (allocatedTotals[t.product_id] || 0) + t.quantity
             })
 
-            for (const [pid, qty] of Object.entries(allocatedTotals)) {
-                // Fetch ALL rows for this product (handle duplicates)
-                const { data: rows } = await supabase.from('order_items')
-                    .select('id, quantity, allocated_quantity')
-                    .eq('order_id', orderId)
-                    .eq('product_id', pid)
+            const updatePromises: any[] = []
 
-                if (rows && rows.length > 0) {
+            for (const [pid, qty] of Object.entries(allocatedTotals)) {
+                // Use in-memory items (Step 1) instead of re-fetching
+                // Note: orderItems must include 'id' now
+                const rows = orderItems?.filter(i => i.product_id === pid) || []
+
+                if (rows.length > 0) {
                     let remainingToAdd = qty
 
                     for (const row of rows) {
                         if (remainingToAdd <= 0) break
 
-                        // Calculate capacity for this row
                         const currentAlloc = row.allocated_quantity || 0
                         const capacity = row.quantity - currentAlloc
-
-                        // We shouldn't over-allocate a row, but if we have extra, dump it?
-                        // Better to fill up to demand.
-                        // If remainingToAdd > capacity, we fill this row and move to next.
                         const add = Math.min(remainingToAdd, capacity)
 
-                        // Edge case: If add is 0 (row full) but we have remainingToAdd?
-                        // This implies our Aggregate Demand Calculation saw need, so there MUST be space.
-                        // However, if capacity is 0, we skip.
-
                         if (add > 0) {
-                            const { error: updateError } = await supabase.from('order_items')
-                                .update({ allocated_quantity: currentAlloc + add })
-                                .eq('id', row.id)
-
-                            if (updateError) {
-                                console.error(`Failed to update order_item ${row.id}:`, updateError)
-                                // Continue to try other rows
-                            } else {
-                                remainingToAdd -= add
-                            }
+                            // Push promise to array
+                            updatePromises.push(
+                                supabase.from('order_items')
+                                    .update({ allocated_quantity: currentAlloc + add })
+                                    .eq('id', row.id)
+                                    .then(({ error }) => {
+                                        if (error) console.error(`Failed to update order_item ${row.id}:`, error)
+                                    })
+                            )
+                            remainingToAdd -= add
                         }
                     }
 
-                    // If remainingToAdd > 0 here, it means we allocated MORE than total demand?
-                    // Should be impossible if demandMap logic is correct.
                     if (remainingToAdd > 0) {
                         console.warn(`Leftover allocation qty ${remainingToAdd} for product ${pid} could not be stored in order_items rows.`)
                     }
                 }
+            }
+
+            if (updatePromises.length > 0) {
+                await Promise.all(updatePromises)
             }
 
             const { error: statusError } = await supabase.from('orders').update({ status: 'ALLOCATED' }).eq('id', orderId)
