@@ -136,8 +136,9 @@ function PutAwayContent() {
         }
 
         // Check if box is at RECEIVING location
-        if (data.locations?.code !== 'RECEIVING') {
-            alert(`Thùng này đang ở vị trí ${data.locations?.code || 'Unknown'}.\nChỉ được đóng hàng vào thùng ở vị trí RECEIVING!`)
+        const location = (data as any).locations
+        if (location?.code !== 'RECEIVING') {
+            alert(`Thùng này đang ở vị trí ${location?.code || 'Unknown'}.\nChỉ được đóng hàng vào thùng ở vị trí RECEIVING!`)
             setLoading(false)
             return
         }
