@@ -53,7 +53,7 @@ export async function POST() {
             if (orderError) continue;
 
             // Pick random products
-            const selectedProducts = [];
+            const selectedProducts: { id: string, sku: string }[] = [];
             for (let j = 0; j < numItems; j++) {
                 const randomProd = products[Math.floor(Math.random() * products.length)];
                 if (!selectedProducts.find(p => p.id === randomProd.id)) {
