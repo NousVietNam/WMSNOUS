@@ -15,6 +15,7 @@ export async function POST(request: Request) {
         const { data: box } = await supabase.from('boxes').select('id, code, type, order_id').eq('code', code).single()
 
         if (!box) return NextResponse.json({ success: false, error: 'Không tìm thấy thùng này' })
+        if (box.type !== 'OUTBOX') return NextResponse.json({ success: false, error: 'Chỉ được phép xuất (Ship) thùng OUTBOX!' })
 
         // 2. Fetch Items
         const { data: items } = await supabase.from('inventory_items').select('*, products(sku)').eq('box_id', box.id)
@@ -46,7 +47,41 @@ export async function POST(request: Request) {
         // Box doesn't have status column in schema shown earlier, but Order does.
         // Let's just update the Order linked to this box if possible.
         if (box.order_id) {
-            await supabase.from('orders').update({ status: 'SHIPPED' }).eq('id', box.order_id)
+            // Check if Order is fully shipped
+            // 1. Get all items in this order
+            // 2. Compare picked vs shipped?
+            // Simpler: Check if any "OUTBOX" for this order still has items?
+            // Or better: calculated 'shipped_quantity' on order_items?
+            // Let's rely on 'picked_quantity' vs 'shipped_quantity' if we track it.
+            // Current schema has 'picked_quantity'. We probably need 'shipped_quantity' or check inventory.
+
+            // Alternative: Check if any other boxes (OUTBOX) still exist for this order containing items?
+            // If No other boxes -> SHIPPED.
+            // Assumption: All picked items go to boxes blocked by 'OUTBOX' type.
+
+            const { data: remainingBoxes } = await supabase
+                .from('boxes')
+                .select('id, inventory_items(count)')
+                .eq('order_id', box.order_id)
+                .neq('id', box.id) // Exclude current one (which is about to be empty/deleted?)
+            // Wait, we just deleted items from this box above. 
+            // We need to check if ANY box for this order still has inventory.
+
+            // Check global inventory for this order?
+            // Boxes are linked to order_id.
+
+            // Let's count total items remaining in ALL boxes belonging to this order
+            const { data: remainingItems } = await supabase
+                .from('inventory_items')
+                .select('id, boxes!inner(order_id)')
+                .eq('boxes.order_id', box.order_id)
+                .limit(1)
+
+            if (!remainingItems || remainingItems.length === 0) {
+                await supabase.from('orders').update({ status: 'SHIPPED' }).eq('id', box.order_id)
+            } else {
+                await supabase.from('orders').update({ status: 'PACKED' }).eq('id', box.order_id)
+            }
         }
 
         return NextResponse.json({ success: true, count: items.length })

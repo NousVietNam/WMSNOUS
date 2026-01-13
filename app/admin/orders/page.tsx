@@ -207,144 +207,146 @@ export default function OrdersPage() {
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">            <main className="flex-1 p-6 space-y-6">
-                <div className="flex items-center justify-between">
-                    {/* ... Header same ... */}
-                    <h1 className="text-2xl font-bold flex items-center gap-2">
-                        <FileText className="h-8 w-8 text-primary" />
-                        Quản Lý Đơn Hàng
-                    </h1>
-                    <div className="flex gap-2">
-                        {/* ... Create Buttons same ... */}
-                        <Link href="/admin/orders/create">
-                            <Button><Plus className="mr-2 h-4 w-4" /> Tạo Đơn Mới</Button>
-                        </Link>
-                        {/* ... Import / Dialog same ... */}
-                        <div className="relative">
-                            <input
-                                type="file"
-                                id="import-csv"
-                                className="hidden"
-                                accept=".csv"
-                                onChange={handleFileUpload}
-                            />
-                            <Button variant="outline" disabled={importLoading} onClick={() => document.getElementById('import-csv')?.click()}>
-                                <Upload className="mr-2 h-4 w-4" /> Import CSV
-                            </Button>
-                        </div>
-                        <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                            <DialogTrigger asChild>
-                                <Button><Plus className="mr-2 h-4 w-4" /> Tạo Đơn Lẻ</Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader><DialogTitle>Tạo Đơn Hàng Mới</DialogTitle></DialogHeader>
-                                <div className="space-y-4 py-4">
-                                    <div className="space-y-2">
-                                        <label>Mã Đơn Hàng</label>
-                                        <Input placeholder="DH-001" value={newCode} onChange={e => setNewCode(e.target.value)} />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label>Khách Hàng</label>
-                                        <Input placeholder="Tên khách hàng" value={newCustomer} onChange={e => setNewCustomer(e.target.value)} />
-                                    </div>
-                                    <Button onClick={handleCreate} className="w-full">Tạo Đơn</Button>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
-
-                        {/* Assign Dialog */}
-                        <Dialog open={assignDialog} onOpenChange={setAssignDialog}>
-                            <DialogContent>
-                                <DialogHeader><DialogTitle>Gán Nhân Viên Picking</DialogTitle></DialogHeader>
-                                <div className="space-y-4 py-4">
-                                    <div className="font-bold">Đơn hàng: {selectedOrder?.code}</div>
-                                    <div className="space-y-2">
-                                        <label>Chọn Nhân Viên</label>
-                                        <select
-                                            className="w-full p-2 border rounded"
-                                            value={selectedStaff}
-                                            onChange={e => setSelectedStaff(e.target.value)}
-                                        >
-                                            <option value="">-- Chọn Staff --</option>
-                                            {users.map(u => (
-                                                <option key={u.id} value={u.id}>{u.name} ({u.staff_code})</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <Button onClick={handleAssign} className="w-full" disabled={!selectedStaff}>Xác Nhận Gán</Button>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
+            <div className="flex items-center justify-between">
+                {/* ... Header same ... */}
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                    <FileText className="h-8 w-8 text-primary" />
+                    Quản Lý Đơn Hàng
+                </h1>
+                <div className="flex gap-2">
+                    {/* ... Create Buttons same ... */}
+                    <Link href="/admin/orders/create">
+                        <Button><Plus className="mr-2 h-4 w-4" /> Tạo Đơn Mới</Button>
+                    </Link>
+                    {/* ... Import / Dialog same ... */}
+                    <div className="relative">
+                        <input
+                            type="file"
+                            id="import-csv"
+                            className="hidden"
+                            accept=".csv"
+                            onChange={handleFileUpload}
+                        />
+                        <Button variant="outline" disabled={importLoading} onClick={() => document.getElementById('import-csv')?.click()}>
+                            <Upload className="mr-2 h-4 w-4" /> Import CSV
+                        </Button>
                     </div>
-                </div>
+                    <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+                        <DialogTrigger asChild>
+                            <Button><Plus className="mr-2 h-4 w-4" /> Tạo Đơn Lẻ</Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader><DialogTitle>Tạo Đơn Hàng Mới</DialogTitle></DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="space-y-2">
+                                    <label>Mã Đơn Hàng</label>
+                                    <Input placeholder="DH-001" value={newCode} onChange={e => setNewCode(e.target.value)} />
+                                </div>
+                                <div className="space-y-2">
+                                    <label>Khách Hàng</label>
+                                    <Input placeholder="Tên khách hàng" value={newCustomer} onChange={e => setNewCustomer(e.target.value)} />
+                                </div>
+                                <Button onClick={handleCreate} className="w-full">Tạo Đơn</Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
 
-                <div className="bg-white p-4 rounded-md border shadow-sm flex-1 flex flex-col min-h-0">
-                    <div className="rounded-md border overflow-auto relative flex-1">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-100 font-medium text-slate-700 sticky top-0 z-10 shadow-sm">
-                                <tr>
-                                    <th className="p-4">Mã Đơn</th>
-                                    <th className="p-4">Khách Hàng</th>
-                                    <th className="p-4">Số Mặt Hàng</th>
-                                    <th className="p-4">Nhân Viên Gán</th>
-                                    <th className="p-4">Trạng Thái</th>
-                                    <th className="p-4">Ngày Tạo</th>
-                                    <th className="p-4 text-right">Thao tác</th>
+                    {/* Assign Dialog */}
+                    <Dialog open={assignDialog} onOpenChange={setAssignDialog}>
+                        <DialogContent>
+                            <DialogHeader><DialogTitle>Gán Nhân Viên Picking</DialogTitle></DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div className="font-bold">Đơn hàng: {selectedOrder?.code}</div>
+                                <div className="space-y-2">
+                                    <label>Chọn Nhân Viên</label>
+                                    <select
+                                        className="w-full p-2 border rounded"
+                                        value={selectedStaff}
+                                        onChange={e => setSelectedStaff(e.target.value)}
+                                    >
+                                        <option value="">-- Chọn Staff --</option>
+                                        {users.map(u => (
+                                            <option key={u.id} value={u.id}>{u.name} ({u.staff_code})</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <Button onClick={handleAssign} className="w-full" disabled={!selectedStaff}>Xác Nhận Gán</Button>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-md border shadow-sm flex-1 flex flex-col min-h-0">
+                <div className="rounded-md border overflow-auto relative flex-1">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-100 font-medium text-slate-700 sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th className="p-4">Mã Đơn</th>
+                                <th className="p-4">Khách Hàng</th>
+                                <th className="p-4">Số Mặt Hàng</th>
+                                <th className="p-4">Nhân Viên Gán</th>
+                                <th className="p-4">Trạng Thái</th>
+                                <th className="p-4">Ngày Tạo</th>
+                                <th className="p-4 text-right">Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {orders.map(order => (
+                                <tr key={order.id} className="border-t hover:bg-slate-50">
+                                    <td className="p-4 font-bold text-primary">{order.code}</td>
+                                    <td className="p-4">{order.customer_name}</td>
+                                    <td className="p-4 font-bold">{order.order_items?.[0]?.count || 0}</td>
+                                    <td className="p-4">
+                                        {(() => {
+                                            const staff = users.find(u => u.id === order.assigned_staff_id)
+                                            return staff ? (
+                                                <span className="font-semibold text-blue-700">{staff.name}</span>
+                                            ) : (
+                                                <span className="text-slate-400 italic">Chưa gán</span>
+                                            )
+                                        })()}
+                                    </td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${order.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                                            order.status === 'ALLOCATED' ? 'bg-blue-100 text-blue-800' :
+                                                order.status === 'PICKING' ? 'bg-purple-100 text-purple-800' :
+                                                    order.status === 'PACKED' ? 'bg-orange-100 text-orange-800' :
+                                                        order.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : // Legacy
+                                                            order.status === 'SHIPPED' ? 'bg-slate-800 text-white' : 'bg-slate-100'
+                                            }`}>
+                                            {order.status}
+                                        </span>
+                                    </td>
+                                    <td className="p-4 text-muted-foreground">{new Date(order.created_at).toLocaleDateString('vi-VN')}</td>
+                                    <td className="p-4 text-right flex justify-end gap-2">
+                                        {order.status === 'PENDING' && (
+                                            <Button size="sm" onClick={() => handleAllocate(order)}>
+                                                Điều phối
+                                            </Button>
+                                        )}
+                                        {order.status === 'ALLOCATED' && (
+                                            <Button size="sm" variant="outline" onClick={() => {
+                                                setSelectedOrder(order)
+                                                setSelectedStaff(order.assigned_staff_id || "")
+                                                setAssignDialog(true)
+                                            }}>
+                                                Gán Staff
+                                            </Button>
+                                        )}
+                                        <Link href={`/admin/orders/${order.id}`}>
+                                            <Button size="sm" variant="ghost">
+                                                <Eye className="h-4 w-4 mr-1" /> Chi tiết
+                                            </Button>
+                                        </Link>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                {orders.map(order => (
-                                    <tr key={order.id} className="border-t hover:bg-slate-50">
-                                        <td className="p-4 font-bold text-primary">{order.code}</td>
-                                        <td className="p-4">{order.customer_name}</td>
-                                        <td className="p-4 font-bold">{order.order_items?.[0]?.count || 0}</td>
-                                        <td className="p-4">
-                                            {(() => {
-                                                const staff = users.find(u => u.id === order.assigned_staff_id)
-                                                return staff ? (
-                                                    <span className="font-semibold text-blue-700">{staff.name}</span>
-                                                ) : (
-                                                    <span className="text-slate-400 italic">Chưa gán</span>
-                                                )
-                                            })()}
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold ${order.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
-                                                order.status === 'ALLOCATED' ? 'bg-blue-100 text-blue-800' :
-                                                    order.status === 'PICKING' ? 'bg-purple-100 text-purple-800' :
-                                                        order.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : 'bg-slate-100'
-                                                }`}>
-                                                {order.status}
-                                            </span>
-                                        </td>
-                                        <td className="p-4 text-muted-foreground">{new Date(order.created_at).toLocaleDateString('vi-VN')}</td>
-                                        <td className="p-4 text-right flex justify-end gap-2">
-                                            {order.status === 'PENDING' && (
-                                                <Button size="sm" onClick={() => handleAllocate(order)}>
-                                                    Điều phối
-                                                </Button>
-                                            )}
-                                            {order.status === 'ALLOCATED' && (
-                                                <Button size="sm" variant="outline" onClick={() => {
-                                                    setSelectedOrder(order)
-                                                    setSelectedStaff(order.assigned_staff_id || "")
-                                                    setAssignDialog(true)
-                                                }}>
-                                                    Gán Staff
-                                                </Button>
-                                            )}
-                                            <Link href={`/admin/orders/${order.id}`}>
-                                                <Button size="sm" variant="ghost">
-                                                    <Eye className="h-4 w-4 mr-1" /> Chi tiết
-                                                </Button>
-                                            </Link>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
-            </main>
+            </div>
+        </main>
 
             {/* SHORTAGE DIALOG */}
             <Dialog open={shortageDialog} onOpenChange={setShortageDialog}>

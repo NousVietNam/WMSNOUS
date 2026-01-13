@@ -163,7 +163,7 @@ export async function POST(request: Request) {
                 .neq('status', 'COMPLETED')
 
             if (pendingJobs === 0) {
-                await supabase.from('orders').update({ status: 'COMPLETED' }).eq('id', task.picking_jobs.order_id)
+                await supabase.from('orders').update({ status: 'PACKED' }).eq('id', task.picking_jobs.order_id)
             }
         }
 
