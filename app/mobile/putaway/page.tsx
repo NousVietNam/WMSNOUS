@@ -319,7 +319,24 @@ function PutAwayContent() {
                 created_at: new Date().toISOString()
             }))
 
-            await supabase.from('transactions').insert(transactions)
+
+            console.log('📝 Inserting transactions:', {
+                count: transactions.length,
+                user_id: session?.user?.id,
+                user_email: session?.user?.email,
+                sample: transactions[0]
+            })
+
+            const { data: txData, error: txError } = await supabase.from('transactions').insert(transactions).select()
+
+            if (txError) {
+                console.error('❌ Transaction insert failed:', txError)
+                alert(`Lỗi khi lưu giao dịch:\n${txError.message}\nCode: ${txError.code || 'N/A'}`)
+                throw txError
+            }
+
+            console.log('✅ Transactions saved:', txData?.length || 0)
+
 
             // Show Recap
             const totalQty = items.reduce((a, b) => a + b.qty, 0)
