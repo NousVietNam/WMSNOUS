@@ -60,13 +60,9 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 }
 
                 await scanner.start(
+                    { facingMode: "environment" },
                     {
-                        facingMode: "environment",
-                        // @ts-ignore: focusMode is supported by many browsers but not in standard types
-                        focusMode: "continuous"
-                    },
-                    {
-                        fps: 15, // Higher FPS
+                        fps: 15,
                         qrbox: qrBoxFunction,
                         disableFlip: false,
                         aspectRatio: 1.0
