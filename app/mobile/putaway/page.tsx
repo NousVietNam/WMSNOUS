@@ -54,15 +54,28 @@ function PutAwayContent() {
         const start = historyDate + 'T00:00:00'
         const end = historyDate + 'T23:59:59'
 
-        const { data } = await supabase
+        // Check if user is admin
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session?.user?.id)
+            .single()
+
+        let query = supabase
             .from('transactions')
-            .select('created_at, sku, quantity, to_box:to_box_id(code)')
-            .eq('user_id', session?.user?.id)
+            .select('created_at, sku, quantity, to_box:to_box_id(code), user_id, profiles!user_id(name)')
             .eq('type', 'IMPORT')
-            .eq('entity_type', 'ITEM') // Changed from BOX to ITEM as per new logic
+            .eq('entity_type', 'ITEM')
             .gte('created_at', start)
             .lte('created_at', end)
             .order('created_at', { ascending: false })
+
+        // If not admin, filter by user_id
+        if (profile?.role !== 'admin') {
+            query = query.eq('user_id', session?.user?.id)
+        }
+
+        const { data } = await query
 
         if (data) {
             // Group by Box and Time (roughly same batch defined by time)
@@ -71,12 +84,8 @@ function PutAwayContent() {
                 const boxCode = curr.to_box?.code || 'Unknown'
                 const qty = curr.quantity || 0
                 const sku = curr.sku || 'Unknown'
-                const name = 'Sản phẩm' // We don't fetch product name here yet to keep it simple, or we could join entity_id -> inventory -> product. 
-                // For performance, let's skip name for now or fetch it if really needed. 
-                // Wait, user wants name in details? 
-                // Previous code layout: name was used. 
-                // To get name, assuming sku is enough or I need to join inventory_items(product_id(name)).
-                // entity_id is inventory_item. id.
+                const name = 'Sản phẩm'
+                const userName = (curr.profiles as any)?.name || 'Unknown User' // For admin view
 
                 const existing = acc.find(h => h.boxCode === boxCode && h.time === time)
                 if (existing) {
@@ -97,7 +106,8 @@ function PutAwayContent() {
                         boxCode,
                         totalQty: qty,
                         skuCount: 1,
-                        items: [{ sku, name, qty }]
+                        items: [{ sku, name, qty }],
+                        userName // Store user name for admin view
                     })
                 }
                 return acc
