@@ -10,6 +10,8 @@ interface ScannerProps {
 
 export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
     const [scriptLoaded, setScriptLoaded] = useState(false)
+    const [cameraStarted, setCameraStarted] = useState(false)
+    const [error, setError] = useState<string>("")
     const scannerRef = useRef<any>(null)
     const scannerId = "d-qr-reader"
 
@@ -23,6 +25,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
         const script = document.createElement("script")
         script.src = "https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"
         script.onload = () => setScriptLoaded(true)
+        script.onerror = () => setError("Không thể tải thư viện QR Scanner")
         document.body.appendChild(script)
     }, [])
 
@@ -31,7 +34,10 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
 
         const initScanner = async () => {
             // @ts-ignore
-            if (!window.Html5Qrcode) return
+            if (!window.Html5Qrcode) {
+                setError("Thư viện QR chưa sẵn sàng")
+                return
+            }
 
             try {
                 // @ts-ignore
@@ -70,8 +76,11 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                     },
                     () => { }
                 )
-            } catch (e) {
+
+                setCameraStarted(true)
+            } catch (e: any) {
                 console.error("Scanner init failed", e)
+                setError(e.message || "Không thể khởi động camera. Vui lòng cấp quyền truy cập camera.")
             }
         }
 
@@ -94,12 +103,36 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 </div>
 
                 <div id={scannerId} className="w-full bg-black shrink-0 min-h-[300px] overflow-hidden rounded-lg relative">
-                    {/* Scanner area */}
+                    {!scriptLoaded && (
+                        <div className="absolute inset-0 flex items-center justify-center text-white text-sm">
+                            <div className="text-center">
+                                <div className="animate-spin h-8 w-8 border-4 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
+                                Đang tải thư viện...
+                            </div>
+                        </div>
+                    )}
+                    {scriptLoaded && !cameraStarted && !error && (
+                        <div className="absolute inset-0 flex items-center justify-center text-white text-sm">
+                            <div className="text-center">
+                                <div className="animate-spin h-8 w-8 border-4 border-white border-t-transparent rounded-full mx-auto mb-2"></div>
+                                Đang khởi động camera...
+                            </div>
+                        </div>
+                    )}
+                    {error && (
+                        <div className="absolute inset-0 flex items-center justify-center text-red-400 text-sm p-4 text-center">
+                            <div>
+                                <div className="text-4xl mb-2">⚠️</div>
+                                {error}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="mt-4 space-y-3 shrink-0">
                     <p className="text-center text-sm text-slate-500">
-                        Di chuyển camera vào mã cần quét
+                        {cameraStarted && "Di chuyển camera vào mã cần quét"}
+                        {error && "Kiểm tra quyền camera trong cài đặt trình duyệt"}
                     </p>
 
                     <button
