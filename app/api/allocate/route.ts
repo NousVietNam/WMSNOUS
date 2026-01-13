@@ -201,18 +201,25 @@ export async function POST(request: Request) {
 
             for (const [pid, qty] of Object.entries(allocatedTotals)) {
                 // We need to increment the DB value. 
-                // Supabase generic RPC or loop update.
-                // Loop update for now (few items).
+                // Using RPC would be atomicaly safer, but for now strict read-update.
                 const { data: current } = await supabase.from('order_items').select('allocated_quantity').eq('order_id', orderId).eq('product_id', pid).single()
                 if (current) {
-                    await supabase.from('order_items')
+                    const { error: updateError } = await supabase.from('order_items')
                         .update({ allocated_quantity: (current.allocated_quantity || 0) + qty })
                         .eq('order_id', orderId)
                         .eq('product_id', pid)
+
+                    if (updateError) {
+                        console.error(`Failed to update order_item ${pid}:`, updateError)
+                        // Don't throw, try to finish others? Or throw?
+                        // If we don't update allocated_qty, we risk over-selling. Critical.
+                        throw new Error(`Failed to update allocation count: ${updateError.message}`)
+                    }
                 }
             }
 
-            await supabase.from('orders').update({ status: 'ALLOCATED' }).eq('id', orderId)
+            const { error: statusError } = await supabase.from('orders').update({ status: 'ALLOCATED' }).eq('id', orderId)
+            if (statusError) throw statusError
         }
 
         return NextResponse.json({ success: true, jobCount: 1, tasks: tasks.length })
