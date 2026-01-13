@@ -54,18 +54,29 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 const qrBoxFunction = (viewfinderWidth: number, viewfinderHeight: number) => {
                     const minEdge = Math.min(viewfinderWidth, viewfinderHeight)
                     return {
-                        width: Math.floor(minEdge * 0.7),
-                        height: Math.floor(minEdge * (mode === "BARCODE" ? 0.4 : 0.7))
+                        width: Math.floor(minEdge * 0.8), // Increased from 0.7 to 0.8 for larger scan area
+                        height: Math.floor(minEdge * (mode === "BARCODE" ? 0.5 : 0.8))
                     }
                 }
 
                 await scanner.start(
                     { facingMode: "environment" },
                     {
-                        fps: 15,
+                        fps: 30, // Increased from 15 to 30 for better detection
                         qrbox: qrBoxFunction,
                         disableFlip: false,
-                        aspectRatio: 1.0
+                        aspectRatio: 1.0,
+                        // Support various barcode formats
+                        formatsToSupport: [
+                            0,  // QR_CODE
+                            8,  // CODE_128
+                            7,  // CODE_93
+                            6,  // CODE_39
+                            13, // EAN_13
+                            12, // EAN_8
+                            14, // UPC_A
+                            15  // UPC_E
+                        ]
                     },
                     (decodedText: string) => {
                         console.log("✅ QR Scanner detected code:", decodedText)
