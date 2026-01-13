@@ -122,10 +122,22 @@ function PutAwayContent() {
         }
 
         setLoading(true)
-        // Verify box exists
-        const { data, error } = await supabase.from('boxes').select('id, code').eq('code', boxCode).single()
+        // Verify box exists and is at RECEIVING location
+        const { data, error } = await supabase
+            .from('boxes')
+            .select('id, code, location_id, locations(code)')
+            .eq('code', boxCode)
+            .single()
+
         if (error || !data) {
             alert("Không tìm thấy thùng này!")
+            setLoading(false)
+            return
+        }
+
+        // Check if box is at RECEIVING location
+        if (data.locations?.code !== 'RECEIVING') {
+            alert(`Thùng này đang ở vị trí ${data.locations?.code || 'Unknown'}.\nChỉ được đóng hàng vào thùng ở vị trí RECEIVING!`)
             setLoading(false)
             return
         }
