@@ -68,9 +68,16 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                         aspectRatio: 1.0
                     },
                     (decodedText: string) => {
+                        console.log("✅ QR Scanner detected code:", decodedText)
+                        // Vibrate on successful scan (if supported)
+                        if (navigator.vibrate) {
+                            navigator.vibrate(200)
+                        }
                         onScan(decodedText)
                     },
-                    () => { }
+                    (errorMessage: string) => {
+                        // Error callback - fires frequently, don't log
+                    }
                 )
 
                 setCameraStarted(true)
