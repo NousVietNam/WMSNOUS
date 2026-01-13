@@ -99,27 +99,31 @@ export default function InventoryPage() {
     }
 
     const showAllocatedDetails = async (item: InventoryItem) => {
-        // We need box_id. We'll ensure it's fetched.
+        // We need box_id or location_id.
         const boxId = (item as any).box_id
-        if (!boxId || !item.products?.id) {
-            // If no box (e.g. location item?), we can't trace easily by box.
-            // But valid inventory usually has box or location.
-            // For now assume Box based allocation.
-            toast.error("Mục này không liên kết với thùng cụ thể để tra cứu")
+        const locationId = (item as any).location_id
+
+        if (!item.products?.id) return
+
+        let query = supabase
+            .from('picking_tasks')
+            .select('quantity, status, created_at, picking_jobs!inner(orders(code), users(name))')
+            .eq('product_id', item.products.id)
+            .neq('status', 'COMPLETED')
+
+        if (boxId) {
+            query = query.eq('box_id', boxId)
+            setDetailTitle(`Items Giữ Ở Thùng ${item.boxes?.code || 'Unknown'} - ${item.products.sku}`)
+        } else if (locationId) {
+            toast.error("Không xác định được nơi lưu trữ (Thùng/Vị trí) để tra cứu")
             return
         }
 
         setDetailType('ALLOCATED')
-        setDetailTitle(`Chi Tiết Giữ Hàng - ${item.boxes?.code} - ${item.products.sku}`)
         setDetailOpen(true)
         setDetailLoading(true)
 
-        const { data } = await supabase
-            .from('picking_tasks')
-            .select('quantity, status, created_at, picking_jobs!inner(orders(code), users(name))')
-            .eq('box_id', boxId)
-            .eq('product_id', item.products.id)
-            .neq('status', 'COMPLETED')
+        const { data } = await query
 
         setDetailData(data || [])
         setDetailLoading(false)
@@ -182,7 +186,7 @@ export default function InventoryPage() {
         let query = supabase
             .from('inventory_items')
             .select(`
-                id, quantity, allocated_quantity, created_at,
+                id, quantity, allocated_quantity, created_at, box_id, location_id,
                 products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
                 boxes (code, locations (code)),
                 locations (code)
