@@ -508,7 +508,13 @@ export default function InventoryPage() {
                                                 <td className="p-2">
                                                     <button
                                                         className="font-bold text-xs text-blue-600 hover:underline hover:text-blue-800 text-left"
-                                                        onClick={() => item.products?.image_url && setViewImage(item.products.image_url)}
+                                                        onClick={() => {
+                                                            if (item.products?.image_url) {
+                                                                setViewImage(item.products.image_url)
+                                                            } else {
+                                                                toast.error("Sản phẩm chưa có hình ảnh")
+                                                            }
+                                                        }}
                                                         title="Xem ảnh sản phẩm"
                                                     >
                                                         {item.products?.sku}

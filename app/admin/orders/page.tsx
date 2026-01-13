@@ -233,7 +233,7 @@ export default function OrdersPage() {
                         <Button
                             variant="secondary"
                             onClick={async () => {
-                                if (!confirm("Tạo 5 đơn hàng test ngẫu nhiên?")) return;
+                                if (!confirm("Tạo bộ dữ liệu test (9 đơn: 3 Đủ, 3 Thiếu, 3 Hết)?")) return;
                                 const res = await fetch('/api/seed-orders', { method: 'POST' });
                                 const data = await res.json();
                                 if (data.success) {
@@ -244,7 +244,7 @@ export default function OrdersPage() {
                                 }
                             }}
                         >
-                            ⚡ Tạo Data Test
+                            ⚡ Tạo Bộ Đơn Test
                         </Button>
                     </div>
                     <Dialog open={openDialog} onOpenChange={setOpenDialog}>

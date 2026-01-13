@@ -133,6 +133,13 @@ export default function SeedPage() {
 
             addLog(`Đã thêm hàng vào ${invParams.length} thùng.`)
 
+            // 7. Generate Test Orders (REMOVED REQUEST)
+            // addLog("Skipping Order Generation in Random Seed...")
+            // const createTestOrders = async () => { ... } 
+
+            // NOTE: User requested to remove random order generation here in favor of specific test orders in Admin Order tab.
+
+            /*
             // 7. Generate Test Orders (20 Orders, 10 Lines Each)
             addLog("Đang tạo 20 Đơn hàng Test (4 nhóm x 5 đơn/nhóm)...")
 
@@ -192,6 +199,7 @@ export default function SeedPage() {
             await createTestOrders('TEST-MIXED', 'KH Hỗn Hợp', 'MIXED')
 
             addLog("Đã tạo xong 20 đơn hàng kiểm thử.")
+            */
 
             // 8. Transactions History
             addLog("Đang tạo Lịch sử giao dịch ảo...")

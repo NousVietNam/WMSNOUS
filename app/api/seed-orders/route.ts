@@ -3,84 +3,108 @@ import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY! // Use SC to bypass RLS for seeding
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST() {
     try {
-        // 1. Fetch ALL Products (id, sku)
-        // No limit, or high limit to ensure variety
-        const { data: products, error: prodError } = await supabase
-            .from('products')
-            .select('id, sku')
-            .limit(2000); // Fetch up to 2000 products for variety
+        // 1. Fetch ALL inventory items to determine stock status
+        // We need product_id and total quantity
+        const { data: invItems, error: invError } = await supabase
+            .from('inventory_items')
+            .select('product_id, quantity, allocated_quantity');
 
-        if (prodError || !products || products.length === 0) {
-            return NextResponse.json({ success: false, error: 'No products found' });
+        if (invError) throw invError;
+
+        // Group by product
+        const productStock: Record<string, number> = {};
+        invItems?.forEach((item: any) => {
+            const avail = (item.quantity || 0) - (item.allocated_quantity || 0);
+            productStock[item.product_id] = (productStock[item.product_id] || 0) + avail;
+        });
+
+        // 2. Fetch Products
+        const { data: products } = await supabase.from('products').select('id, sku').limit(2000);
+        if (!products || products.length === 0) return NextResponse.json({ success: false, error: 'No products' });
+
+        // 3. Classify Products
+        const availableProds: any[] = []; // Have stock > 50 (safe)
+        const emptyProds: any[] = [];     // Have stock <= 0
+        // We can also have a 'low stock' group but user asked for "Complete Stock" and "No Stock"
+
+        products.forEach((p: any) => {
+            const stock = productStock[p.id] || 0;
+            if (stock > 50) availableProds.push(p);
+            else if (stock <= 0) emptyProds.push(p);
+        });
+
+        // Fallback: If not enough available/empty, just use whatever we have or random
+        // Ideally we should warn, but let's do best effort
+        if (availableProds.length < 10) console.warn("Not enough available products for scenario");
+        if (emptyProds.length < 10) console.warn("Not enough empty products for scenario");
+
+        const createdOrders: string[] = [];
+
+        // helper
+        const createOrder = async (prefix: string, items: any[]) => {
+            const code = `${prefix}-${Date.now().toString().slice(-6)}`;
+            const { data: order } = await supabase.from('orders').insert({
+                code,
+                customer_name: `Test ${prefix}`,
+                status: 'PENDING',
+                is_approved: false // User can approve manually
+            }).select().single();
+
+            if (!order) return;
+
+            const lines = items.map((p) => ({
+                order_id: order.id,
+                product_id: p.id,
+                quantity: Math.floor(Math.random() * 5) + 1, // 1-5 qty
+                allocated_quantity: 0
+            }));
+
+            await supabase.from('order_items').insert(lines);
+            createdOrders.push(code);
+        };
+
+        const pickRandom = (arr: any[], count: number) => {
+            const res = [];
+            for (let i = 0; i < count; i++) {
+                if (arr.length === 0) break;
+                res.push(arr[Math.floor(Math.random() * arr.length)]);
+            }
+            return res;
+        };
+
+        // SCENARIO 1: 3 Orders - Full Stock
+        // Each order 30-40 items
+        for (let i = 0; i < 3; i++) {
+            const count = Math.floor(Math.random() * 11) + 30; // 30-40
+            const items = pickRandom(availableProds, count);
+            if (items.length > 0) await createOrder(`FULL-${i + 1}`, items);
         }
 
-        // 2. Fetch Locations for Inventory Checking (optional, to smart seed)
-        // Actually, let's just use random logic:
-        // 70% chance: Quantity <= Available (Sufficient)
-        // 30% chance: Quantity > Available (Shortage)
+        // SCENARIO 2: 3 Orders - No Stock
+        for (let i = 0; i < 3; i++) {
+            const count = Math.floor(Math.random() * 11) + 30;
+            const items = pickRandom(emptyProds, count);
+            if (items.length > 0) await createOrder(`EMPTY-${i + 1}`, items);
+        }
 
-        // But to do that accurately, we need current inventory. 
-        // Let's simplified approach:
-        // Just random quantities 1-10. 
-        // Real shortage depends on actual inventory. 
-        // If we want FORCED shortage, we pick items with 0 inventory or request huge amount (e.g. 100).
-
-        const createdOrders = [];
-        const NUM_ORDERS = 5;
-
-        for (let i = 0; i < NUM_ORDERS; i++) {
-            const isShortageOrder = Math.random() < 0.3; // 30% chance of shortage
-            const numItems = Math.floor(Math.random() * 5) + 1; // 1-5 items per order
-
-            // Create Order
-            const code = `TEST-${Date.now()}-${i}${isShortageOrder ? '-SHORT' : ''}`;
-            const { data: order, error: orderError } = await supabase
-                .from('orders')
-                .insert({
-                    code: code.toUpperCase(),
-                    customer_name: `Test User ${Math.floor(Math.random() * 100)}`,
-                    status: 'PENDING',
-                    is_approved: false
-                })
-                .select()
-                .single();
-
-            if (orderError) continue;
-
-            // Pick random products
-            const selectedProducts: { id: string, sku: string }[] = [];
-            for (let j = 0; j < numItems; j++) {
-                const randomProd = products[Math.floor(Math.random() * products.length)];
-                if (!selectedProducts.find(p => p.id === randomProd.id)) {
-                    selectedProducts.push(randomProd);
-                }
-            }
-
-            // Create Items
-            const items = selectedProducts.map(p => {
-                let qty = Math.floor(Math.random() * 5) + 1; // Normal qty 1-5
-                if (isShortageOrder && Math.random() < 0.5) {
-                    qty = 100; // Force shortage for this item
-                }
-                return {
-                    order_id: order.id,
-                    product_id: p.id,
-                    quantity: qty
-                };
-            });
-
-            const { error: itemError } = await supabase.from('order_items').insert(items);
-            if (!itemError) createdOrders.push(code);
+        // SCENARIO 3: 3 Orders - Mixed (Has stock + No stock)
+        for (let i = 0; i < 3; i++) {
+            const count = Math.floor(Math.random() * 11) + 30;
+            const half = Math.floor(count / 2);
+            const setA = pickRandom(availableProds, half);
+            const setB = pickRandom(emptyProds, count - half);
+            const items = [...setA, ...setB];
+            if (items.length > 0) await createOrder(`MIX-${i + 1}`, items);
         }
 
         return NextResponse.json({
             success: true,
-            message: `Created ${createdOrders.length} orders`,
+            message: `Created ${createdOrders.length} test orders`,
             orders: createdOrders
         });
 
