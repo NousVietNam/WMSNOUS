@@ -25,7 +25,7 @@ export async function POST(request: Request) {
         const demandMap: Record<string, number> = {} // productId -> remaining qty
         orderItems.forEach(item => {
             const needed = item.quantity - (item.allocated_quantity || 0)
-            if (needed > 0) demandMap[item.product_id] = needed
+            if (needed > 0) demandMap[item.product_id] = (demandMap[item.product_id] || 0) + needed
         })
         const productIds = Object.keys(demandMap)
         if (productIds.length === 0)
