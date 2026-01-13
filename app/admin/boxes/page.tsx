@@ -354,6 +354,8 @@ export default function BoxesPage() {
                                         <th className="p-3 border-b">Mã Thùng</th>
                                         <th className="p-3 border-b">Vị Trí</th>
                                         <th className="p-3 border-b">Số Lượng</th>
+                                        <th className="p-3 border-b">Ngày Tạo</th>
+                                        <th className="p-3 border-b">Cập Nhật</th>
                                         <th className="p-3 border-b">Trạng Thái</th>
                                         <th className="p-3 border-b text-right">Thao tác</th>
                                     </tr>
@@ -367,6 +369,8 @@ export default function BoxesPage() {
                                             <td className="p-3 font-bold text-primary group-hover:underline">{box.code}</td>
                                             <td className="p-3">{box.locations?.code || <span className="text-slate-300">-</span>}</td>
                                             <td className="p-3 font-bold">{box.item_count}</td>
+                                            <td className="p-3 text-xs text-slate-500">{new Date(box.created_at).toLocaleDateString('vi-VN')}</td>
+                                            <td className="p-3 text-xs text-slate-500">{(box as any).updated_at ? new Date((box as any).updated_at).toLocaleDateString('vi-VN') : '-'}</td>
                                             <td className="p-3">
                                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${box.status === 'OPEN' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
                                                     {box.status}

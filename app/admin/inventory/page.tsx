@@ -557,7 +557,7 @@ export default function InventoryPage() {
 
                 {/* IMAGE PREVIEW DIALOG */}
                 <Dialog open={!!viewImage} onOpenChange={(open) => !open && setViewImage(null)}>
-                    <DialogContent className="max-w-md p-0 overflow-hidden bg-transparent border-none shadow-none text-center flex justify-center items-center">
+                    <DialogContent className="max-w-md p-0 overflow-hidden bg-transparent border-none shadow-none text-center flex justify-center items-center [&>button]:hidden">
                         {viewImage && (
                             <div className="relative inline-block bg-white p-2 rounded-lg shadow-2xl">
                                 <img
