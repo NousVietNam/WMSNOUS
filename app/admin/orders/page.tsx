@@ -230,6 +230,22 @@ export default function OrdersPage() {
                         <Button variant="outline" disabled={importLoading} onClick={() => document.getElementById('import-csv')?.click()}>
                             <Upload className="mr-2 h-4 w-4" /> Import CSV
                         </Button>
+                        <Button
+                            variant="secondary"
+                            onClick={async () => {
+                                if (!confirm("Tạo 5 đơn hàng test ngẫu nhiên?")) return;
+                                const res = await fetch('/api/seed-orders', { method: 'POST' });
+                                const data = await res.json();
+                                if (data.success) {
+                                    alert(data.message);
+                                    fetchOrders();
+                                } else {
+                                    alert("Lỗi: " + data.error);
+                                }
+                            }}
+                        >
+                            ⚡ Tạo Data Test
+                        </Button>
                     </div>
                     <Dialog open={openDialog} onOpenChange={setOpenDialog}>
                         <DialogTrigger asChild>

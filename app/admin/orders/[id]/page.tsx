@@ -4,30 +4,37 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
-import { AlertCircle, ArrowLeft, Box, CheckCircle, ClipboardList, Play, Truck, User } from "lucide-react"
+import { AlertCircle, ArrowLeft, Box, CheckCircle, ClipboardList, Play, Truck, User, Lock, Edit, ShieldCheck } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useAuth } from "@/components/auth/AuthProvider"
+import { Input } from "@/components/ui/input"
 
 export default function OrderDetailPage() {
     const { id } = useParams()
     const router = useRouter()
+    const { session } = useAuth()
+
+    // Data State
     const [order, setOrder] = useState<any>(null)
     const [items, setItems] = useState<any[]>([])
     const [jobs, setJobs] = useState<any[]>([])
+    const [availableStock, setAvailableStock] = useState<Record<string, number>>({})
+    const [availableUsers, setAvailableUsers] = useState<any[]>([])
+
+    // UI State
     const [loading, setLoading] = useState(true)
     const [allocating, setAllocating] = useState(false)
-    const [availableUsers, setAvailableUsers] = useState<any[]>([])
 
     // Shortage Report State
     const [shortageDialog, setShortageDialog] = useState(false)
     const [shortageData, setShortageData] = useState<any[]>([])
 
-    const handleAssignJob = async (jobId: string, userId: string | null) => {
-        const { error } = await supabase.from('picking_jobs').update({ user_id: userId }).eq('id', jobId)
-        if (error) alert("Lỗi assign: " + error.message)
-        else fetchOrder() // Refresh
-    }
+    // Edit Order State
+    const [editMode, setEditMode] = useState(false)
+    const [editingItems, setEditingItems] = useState<any[]>([])
+    const [savingEdit, setSavingEdit] = useState(false)
 
     useEffect(() => {
         if (id) fetchOrder()
@@ -42,9 +49,11 @@ export default function OrderDetailPage() {
         // Fetch Items
         const { data: itemData } = await supabase
             .from('order_items')
-            .select('*, products(name, sku, barcode)')
+            .select('*, products(id, name, sku, barcode)')
             .eq('order_id', id)
+            .order('id') // Stable order
         setItems(itemData || [])
+        setEditingItems(JSON.parse(JSON.stringify(itemData || []))) // Init edit state
 
         // Fetch Jobs
         const { data: jobData } = await supabase
@@ -54,13 +63,47 @@ export default function OrderDetailPage() {
         setJobs(jobData || [])
 
         // Fetch Users for assignment
-        const { data: userData } = await supabase.from('users').select('id, name').eq('role', 'STAFF') // Or all?
+        const { data: userData } = await supabase.from('users').select('id, name').eq('role', 'STAFF')
         setAvailableUsers(userData || [])
+
+        // Fetch Available Stock for Items
+        if (itemData && itemData.length > 0) {
+            const productIds = itemData.map((i: any) => i.product_id).filter((pid: any) => pid);
+            // We need aggregate count from inventory_items
+            // Since we can't do complex GROUP BY easily with JS client on large data, 
+            // we will fetch all inventory items for these products. 
+            // Optimization: If many items, this is heavy. Ideally use RPC. 
+            // For MVP: Fetch inventory_items where product_id in list.
+            if (productIds.length > 0) {
+                const { data: invData } = await supabase
+                    .from('inventory_items')
+                    .select('product_id, quantity')
+                    .in('product_id', productIds)
+
+                // Aggregate
+                const stockMap: Record<string, number> = {}
+                invData?.forEach((inv: any) => {
+                    stockMap[inv.product_id] = (stockMap[inv.product_id] || 0) + inv.quantity
+                })
+                setAvailableStock(stockMap)
+            }
+        }
 
         setLoading(false)
     }
 
+    const handleAssignJob = async (jobId: string, userId: string | null) => {
+        const { error } = await supabase.from('picking_jobs').update({ user_id: userId }).eq('id', jobId)
+        if (error) alert("Lỗi assign: " + error.message)
+        else fetchOrder()
+    }
+
     const handleAllocate = async () => {
+        if (!order.is_approved) {
+            alert("Đơn hàng chưa được DUYỆT. Vui lòng duyệt trước khi điều phối.")
+            return
+        }
+
         setAllocating(true)
         try {
             const res = await fetch('/api/allocate', {
@@ -87,15 +130,56 @@ export default function OrderDetailPage() {
         setAllocating(false)
     }
 
+    const handleToggleApproval = async () => {
+        if (!session?.user) return
+        const newStatus = !order.is_approved
+
+        const res = await fetch('/api/orders/approve', {
+            method: 'POST',
+            body: JSON.stringify({
+                orderId: id,
+                isApproved: newStatus,
+                userId: session.user.id
+            })
+        })
+        const json = await res.json()
+        if (json.success) fetchOrder()
+        else alert("Lỗi: " + json.error)
+    }
+
+    const handleSaveEdit = async () => {
+        setSavingEdit(true)
+        const res = await fetch('/api/orders/update', {
+            method: 'POST',
+            body: JSON.stringify({
+                orderId: id,
+                items: editingItems
+            })
+        })
+        const json = await res.json()
+        if (json.success) {
+            alert("Cập nhật đơn hàng thành công!")
+            setEditMode(false)
+            fetchOrder()
+        } else {
+            alert("Lỗi: " + json.error)
+        }
+        setSavingEdit(false)
+    }
+
+    const updateEditItem = (index: number, field: string, value: any) => {
+        const newItems = [...editingItems]
+        newItems[index] = { ...newItems[index], [field]: value }
+        setEditingItems(newItems)
+    }
+
     const handleDelete = async () => {
         if (!confirm("Bạn có chắc chắn muốn xoá đơn hàng này? Hành động không thể hoàn tác.")) return
         setLoading(true)
         try {
-            // Delete Items
             const { error: itemError } = await supabase.from('order_items').delete().eq('order_id', id)
             if (itemError) throw itemError
 
-            // Delete Order
             const { error: orderError } = await supabase.from('orders').delete().eq('id', id)
             if (orderError) throw orderError
 
@@ -119,22 +203,67 @@ export default function OrderDetailPage() {
                         <Truck className="h-8 w-8 text-primary" />
                         Đơn Hàng: {order.code}
                     </h1>
+
+                    {/* Status Badges */}
+                    <div className="flex items-center gap-2">
+                        {order.is_approved ? (
+                            <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                                <ShieldCheck className="w-3 h-3" /> ĐÃ DUYỆT
+                            </div>
+                        ) : (
+                            <div className="bg-slate-200 text-slate-600 px-3 py-1 rounded-full text-xs font-bold">
+                                CHƯA DUYỆT
+                            </div>
+                        )}
+                        <div className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1
+                            ${order.status === 'PENDING' ? 'bg-yellow-100 text-yellow-800' :
+                                order.status === 'ALLOCATED' ? 'bg-blue-100 text-blue-800' :
+                                    order.status === 'PICKING' ? 'bg-purple-100 text-purple-800' :
+                                        order.status === 'PACKED' ? 'bg-orange-100 text-orange-800' :
+                                            order.status === 'SHIPPED' ? 'bg-slate-800 text-white' : 'bg-slate-100'}
+                        `}>
+                            {order.status}
+                        </div>
+                    </div>
+
                     <div className="ml-auto flex gap-2">
+                        {/* APPROVE BUTTON */}
                         {order.status === 'PENDING' && (
-                            <Button size="lg" onClick={handleAllocate} disabled={allocating} className="bg-blue-600 hover:bg-blue-700">
-                                <Play className="mr-2 h-4 w-4" />
-                                {allocating ? 'Đang Xử Lý...' : 'Điều Phối Tồn Kho'}
+                            <Button
+                                variant={order.is_approved ? "secondary" : "default"}
+                                onClick={handleToggleApproval}
+                                className={!order.is_approved ? "bg-green-600 hover:bg-green-700" : ""}
+                            >
+                                {order.is_approved ? "Bỏ Duyệt" : "Duyệt Đơn"}
                             </Button>
                         )}
+
+                        {/* EDIT BUTTON */}
+                        {order.status === 'PENDING' && !order.is_approved && !editMode && (
+                            <Button variant="outline" onClick={() => setEditMode(true)}>
+                                <Edit className="mr-2 h-4 w-4" /> Chỉnh Sửa
+                            </Button>
+                        )}
+
+                        {/* ALLOCATE */}
                         {order.status === 'PENDING' && (
+                            <Button
+                                size="lg"
+                                onClick={handleAllocate}
+                                disabled={allocating || !order.is_approved}
+                                className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                                title={!order.is_approved ? "Cần duyệt đơn trước" : ""}
+                            >
+                                <Play className="mr-2 h-4 w-4" />
+                                {allocating ? 'Đang Xử Lý...' : 'Điều Phối'}
+                            </Button>
+                        )}
+
+                        {/* DELETE */}
+                        {order.status === 'PENDING' && !order.is_approved && (
                             <Button variant="destructive" size="icon" onClick={handleDelete} title="Xoá Đơn Hàng">
                                 <ClipboardList className="h-5 w-5" />
                             </Button>
-                        )}
-                        {order.status !== 'PENDING' && (
-                            <div className="bg-green-100 text-green-800 px-4 py-2 rounded font-bold flex items-center">
-                                <CheckCircle className="mr-2 h-5 w-5" /> {order.status}
-                            </div>
                         )}
                     </div>
                 </div>
@@ -142,8 +271,19 @@ export default function OrderDetailPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {/* Items List */}
                     <Card className="md:col-span-2">
-                        <CardHeader>
+                        <CardHeader className="flex flex-row items-center justify-between">
                             <CardTitle>Danh Sách Hàng Hoá ({items.length})</CardTitle>
+                            {editMode && (
+                                <div className="flex gap-2">
+                                    <Button variant="ghost" size="sm" onClick={() => {
+                                        setEditMode(false)
+                                        setEditingItems(JSON.parse(JSON.stringify(items))) // Reset
+                                    }}>Hủy</Button>
+                                    <Button size="sm" onClick={handleSaveEdit} disabled={savingEdit}>
+                                        {savingEdit ? 'Đang lưu...' : 'Lưu Thay Đổi'}
+                                    </Button>
+                                </div>
+                            )}
                         </CardHeader>
                         <CardContent>
                             <table className="w-full text-sm text-left">
@@ -151,22 +291,56 @@ export default function OrderDetailPage() {
                                     <tr>
                                         <th className="p-3">Sản Phẩm</th>
                                         <th className="p-3 text-right">Yêu Cầu</th>
-                                        <th className="p-3 text-right">Đã Giữ</th>
-                                        <th className="p-3 text-right">Đã Nhặt</th>
+                                        <th className="p-3 text-right text-slate-500">Tồn Có Sẵn</th>
+                                        {!editMode && order.status !== 'PENDING' && (
+                                            <>
+                                                <th className="p-3 text-right">Đã Giữ</th>
+                                                <th className="p-3 text-right">Đã Nhặt</th>
+                                            </>
+                                        )}
+                                        {editMode && <th className="p-3 text-right">Xóa</th>}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y">
-                                    {items.map(item => (
-                                        <tr key={item.id} className="border-t">
-                                            <td className="p-3">
-                                                <div className="font-bold">{item.products?.sku}</div>
-                                                <div className="text-xs text-muted-foreground">{item.products?.name}</div>
-                                            </td>
-                                            <td className="p-3 text-right font-bold text-lg">{item.quantity}</td>
-                                            <td className="p-3 text-right text-blue-600 font-bold">{item.allocated_quantity}</td>
-                                            <td className="p-3 text-right text-green-600 font-bold">{item.picked_quantity}</td>
-                                        </tr>
-                                    ))}
+                                    {(editMode ? editingItems : items).map((item, idx) => {
+                                        const avail = availableStock[item.product_id] || 0;
+                                        const isShortage = item.quantity > avail;
+                                        return (
+                                            <tr key={idx} className="border-t">
+                                                <td className="p-3">
+                                                    <div className="font-bold">{item.products?.sku}</div>
+                                                    <div className="text-xs text-muted-foreground">{item.products?.name}</div>
+                                                </td>
+                                                <td className="p-3 text-right font-bold text-lg">
+                                                    {editMode ? (
+                                                        <Input
+                                                            type="number"
+                                                            className="w-20 text-right ml-auto h-8"
+                                                            value={item.quantity}
+                                                            onChange={e => updateEditItem(idx, 'quantity', parseInt(e.target.value) || 0)}
+                                                        />
+                                                    ) : item.quantity}
+                                                </td>
+                                                <td className={`p-3 text-right font-mono ${isShortage ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
+                                                    {avail}
+                                                </td>
+                                                {!editMode && order.status !== 'PENDING' && (
+                                                    <>
+                                                        <td className="p-3 text-right text-blue-600 font-bold">{item.allocated_quantity}</td>
+                                                        <td className="p-3 text-right text-green-600 font-bold">{item.picked_quantity}</td>
+                                                    </>
+                                                )}
+                                                {editMode && (
+                                                    <td className="p-3 text-right">
+                                                        <Button variant="ghost" size="sm" className="text-red-500 h-8 w-8 p-0" onClick={() => {
+                                                            const newItems = editingItems.filter((_, i) => i !== idx);
+                                                            setEditingItems(newItems);
+                                                        }}>x</Button>
+                                                    </td>
+                                                )}
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         </CardContent>
@@ -192,43 +366,33 @@ export default function OrderDetailPage() {
                                         <div className="flex items-center gap-2 text-sm">
                                             <User className="h-4 w-4 text-slate-500" />
                                             {job.users ? (
-                                                <span className="font-medium">{job.users.name}</span>
+                                                <span className="font-medium flex items-center gap-1">
+                                                    {job.users.name}
+                                                    {/* Locked Icon if assigned */}
+                                                    <Lock className="w-3 h-3 text-slate-400" />
+                                                </span>
                                             ) : (
-                                                <span className="text-muted-foreground italic">Chưa giao</span>
+                                                <div className="flex-1">
+                                                    <Select
+                                                        value={job.user_id || "unassigned"}
+                                                        onValueChange={(val) => handleAssignJob(job.id, val === "unassigned" ? null : val)}
+                                                    >
+                                                        <SelectTrigger className="h-7 w-full text-xs">
+                                                            <SelectValue placeholder="Chọn nhân viên..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="unassigned">-- Bỏ chọn --</SelectItem>
+                                                            {availableUsers.map(u => (
+                                                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
                                             )}
-
-                                            {/* Assignment Dropdown */}
-                                            <Select
-                                                value={job.user_id || "unassigned"}
-                                                onValueChange={(val) => handleAssignJob(job.id, val === "unassigned" ? null : val)}
-                                            >
-                                                <SelectTrigger className="h-7 w-[130px] text-xs ml-auto">
-                                                    <SelectValue placeholder="Chọn..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="unassigned">-- Bỏ chọn --</SelectItem>
-                                                    {availableUsers.map(u => (
-                                                        <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
                                         </div>
 
                                         <div className="text-xs text-muted-foreground">
                                             {job.picking_tasks?.length} nhiệm vụ
-                                        </div>
-                                        <div className="space-y-1">
-                                            {job.picking_tasks?.map((task: any) => (
-                                                <div key={task.id} className="flex gap-2 text-xs border-t pt-1">
-                                                    <Box className="h-3 w-3 mt-0.5" />
-                                                    <div className="flex-1">
-                                                        <div>Lấy <b>{task.quantity}</b> x {task.products?.sku}</div>
-                                                        <div className="text-muted-foreground">
-                                                            tại {task.boxes?.code || task.locations?.code}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
                                         </div>
                                     </div>
                                 ))
