@@ -9,6 +9,7 @@ import { Download, Package, Search, ChevronLeft, ChevronRight, Filter } from "lu
 import Barcode from 'react-barcode'
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 
 interface InventoryItem {
     id: string
@@ -16,9 +17,11 @@ interface InventoryItem {
     allocated_quantity: number
     created_at: string
     products: {
+        id: string
         sku: string
         name: string
         barcode: string | null
+        image_url: string | null
         brand?: string | null
         product_group?: string | null
         target_audience?: string | null
@@ -37,6 +40,10 @@ export default function InventoryPage() {
     const [searchTerm, setSearchTerm] = useState("")
     const [page, setPage] = useState(0)
     const [total, setTotal] = useState(0)
+
+    // New State
+    const [viewImage, setViewImage] = useState<string | null>(null)
+    const [approvedDemand, setApprovedDemand] = useState<Record<string, number>>({})
 
     // Filters
     const [filterLocation, setFilterLocation] = useState<string>("all")
@@ -204,7 +211,7 @@ export default function InventoryPage() {
             .from('inventory_items')
             .select(`
                 id, quantity, allocated_quantity, created_at,
-                products!inner (sku, name, barcode, brand, target_audience, product_group, season, launch_month),
+                products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
                 boxes (code, locations (code)),
                 locations (code)
             `, { count: 'exact' })
@@ -219,8 +226,34 @@ export default function InventoryPage() {
         if (error) {
             console.error(error)
         } else {
-            setItems(data as any || [])
+            const inventoryItems = data as any || []
+            setItems(inventoryItems)
             setTotal(count || 0)
+
+            // Calculate Approved Demand for these products
+            // 1. Get unique Product IDs
+            const productIds = Array.from(new Set(inventoryItems.map((i: any) => i.products?.id).filter(Boolean)))
+
+            if (productIds.length > 0) {
+                // 2. Fetch Aggregated Demand
+                const { data: demandRows } = await supabase
+                    .from('order_items')
+                    .select('product_id, quantity, orders!inner(status, is_approved)')
+                    .in('product_id', productIds)
+                    .eq('orders.is_approved', true)
+                    .neq('orders.status', 'SHIPPED')
+                    .neq('orders.status', 'COMPLETED')
+
+                // 3. Aggregate
+                const demandMap: Record<string, number> = {}
+                demandRows?.forEach((row: any) => {
+                    const pid = row.product_id
+                    demandMap[pid] = (demandMap[pid] || 0) + row.quantity
+                })
+                setApprovedDemand(demandMap)
+            } else {
+                setApprovedDemand({})
+            }
         }
         setLoading(false)
     }
@@ -497,6 +530,7 @@ export default function InventoryPage() {
                                     <th className="p-3 w-[80px] text-center">Mùa</th>
                                     <th className="p-3 w-[70px] text-center">Tháng</th>
                                     <th className="p-3 w-[70px] text-center">Tổng Tồn</th>
+                                    <th className="p-3 w-[80px] text-center text-purple-600">Đơn Duyệt</th>
                                     <th className="p-3 w-[70px] text-center text-orange-600">Hàng Giữ</th>
                                     <th className="p-3 w-[70px] text-center text-green-600">Khả Dụng</th>
                                     <th className="p-3 w-[110px]">Thùng</th>
@@ -505,13 +539,15 @@ export default function InventoryPage() {
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan={13} className="p-8 text-center">Đang tải...</td></tr>
+                                    <tr><td colSpan={14} className="p-8 text-center">Đang tải...</td></tr>
                                 ) : filteredItems.length === 0 ? (
-                                    <tr><td colSpan={13} className="p-8 text-center text-muted-foreground">Không tìm thấy.</td></tr>
+                                    <tr><td colSpan={14} className="p-8 text-center text-muted-foreground">Không tìm thấy.</td></tr>
                                 ) : (
                                     filteredItems.map(item => {
                                         const allocated = item.allocated_quantity || 0
                                         const available = Math.max(0, item.quantity - allocated)
+                                        const approvedQty = item.products?.id ? (approvedDemand[item.products.id] || 0) : 0
+
                                         return (
                                             <tr key={item.id} className="border-t hover:bg-slate-50 text-xs">
                                                 {/* Barcode column */}
@@ -525,7 +561,13 @@ export default function InventoryPage() {
                                                 </td>
                                                 {/* SKU column */}
                                                 <td className="p-2">
-                                                    <span className="font-bold text-xs text-slate-900">{item.products?.sku}</span>
+                                                    <button
+                                                        className="font-bold text-xs text-blue-600 hover:underline hover:text-blue-800 text-left"
+                                                        onClick={() => item.products?.image_url && setViewImage(item.products.image_url)}
+                                                        title="Xem ảnh sản phẩm"
+                                                    >
+                                                        {item.products?.sku}
+                                                    </button>
                                                 </td>
                                                 <td className="p-2">
                                                     <div className="font-medium text-sm line-clamp-2 leading-relaxed" title={item.products?.name}>
@@ -538,6 +580,7 @@ export default function InventoryPage() {
                                                 <td className="p-2 text-center text-xs">{item.products?.season || '-'}</td>
                                                 <td className="p-2 text-center text-xs">{item.products?.launch_month || '-'}</td>
                                                 <td className="p-2 text-center font-bold text-base text-slate-700">{item.quantity}</td>
+                                                <td className="p-2 text-center font-bold text-base text-purple-600">{approvedQty > 0 ? approvedQty : '-'}</td>
                                                 <td className="p-2 text-center font-bold text-base text-orange-600">{allocated > 0 ? allocated : '-'}</td>
                                                 <td className="p-2 text-center font-bold text-base text-green-600">{available}</td>
                                                 <td className="p-2">
@@ -575,6 +618,27 @@ export default function InventoryPage() {
                         </div>
                     </div>
                 </div>
+
+                {/* IMAGE PREVIEW DIALOG */}
+                <Dialog open={!!viewImage} onOpenChange={(open) => !open && setViewImage(null)}>
+                    <DialogContent className="max-w-md p-0 overflow-hidden bg-transparent border-none shadow-none text-center">
+                        {viewImage && (
+                            <div className="relative inline-block">
+                                <img
+                                    src={viewImage}
+                                    alt="Product Preview"
+                                    className="max-w-[80vw] max-h-[80vh] rounded-lg shadow-2xl border-4 border-white"
+                                />
+                                <button
+                                    onClick={() => setViewImage(null)}
+                                    className="absolute -top-4 -right-4 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+                        )}
+                    </DialogContent>
+                </Dialog>
             </main>
         </div >
     )
