@@ -154,6 +154,8 @@ export async function POST(request: Request) {
         if (jobError) throw jobError
         const jobId = jobData.id
 
+        const inventoryReservation: Record<string, number> = {}
+
         for (const unit of sortedUnits) {
             // For each item in this best unit
             for (const item of unit.items) {
@@ -172,6 +174,9 @@ export async function POST(request: Request) {
                         status: 'PENDING'
                     })
 
+                    // Track reservation for DB update
+                    inventoryReservation[item.id] = (inventoryReservation[item.id] || 0) + take
+
                     // Update Demand
                     demandMap[item.product_id] -= take
                 }
@@ -187,16 +192,34 @@ export async function POST(request: Request) {
         // But we SHOULD update 'allocated_quantity' on order_items to reserve.
 
         if (tasks.length > 0) {
-            await supabase.from('picking_tasks').insert(tasks)
+            // 5. Save Tasks
+            const tasksInsert = await supabase.from('picking_tasks').insert(tasks)
+            if (tasksInsert.error) throw tasksInsert.error
 
-            // Re-calculate totals from tasks just created (simplest way approx)
-            // Or better: Use the delta we tracked.
+            // 6. Update Inventory Reservation (inventory_items)
+            // CRITICAL: We must reserve the stock so subsequent orders see it as taken.
+            const inventoryPromises: any[] = []
+            for (const [invId, qty] of Object.entries(inventoryReservation)) {
+                inventoryPromises.push(
+                    (async () => {
+                        const { data: curr } = await supabase.from('inventory_items').select('allocated_quantity').eq('id', invId).single()
+                        if (curr) {
+                            const { error } = await supabase.from('inventory_items')
+                                .update({ allocated_quantity: (curr.allocated_quantity || 0) + qty })
+                                .eq('id', invId)
+                            if (error) console.error(`Failed to reserve inventory ${invId}:`, error)
+                        }
+                    })()
+                )
+            }
+            if (inventoryPromises.length > 0) await Promise.all(inventoryPromises)
 
-            // To be safe, let's just update based on what we tasked.
+            // 7. Update Order Items Status
             const allocatedTotals: Record<string, number> = {}
             tasks.forEach(t => {
                 allocatedTotals[t.product_id] = (allocatedTotals[t.product_id] || 0) + t.quantity
             })
+            // ... (rest of the order_items update)
 
             const updatePromises: any[] = []
 
