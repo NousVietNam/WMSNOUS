@@ -33,7 +33,7 @@ function PutAwayContent() {
     const [sku, setSku] = useState("")
     const [qty, setQty] = useState("1")
     const [loading, setLoading] = useState(false)
-    const [scannedProduct, setScannedProduct] = useState<{ name: string, sku: string, barcode?: string } | null>(null)
+    const [scannedProduct, setScannedProduct] = useState<{ id: string, name: string, sku: string, barcode?: string } | null>(null)
     const [recapData, setRecapData] = useState<{ boxCode: string, totalQty: number, itemsCount: number } | null>(null)
     const [dailyHistory, setDailyHistory] = useState<any[]>([])
 
@@ -207,7 +207,7 @@ function PutAwayContent() {
             .single()
 
         if (product) {
-            setScannedProduct({ name: product.name, sku: product.sku, barcode: product.barcode })
+            setScannedProduct({ id: product.id, name: product.name, sku: product.sku, barcode: product.barcode })
             return product
         }
         return null
@@ -217,8 +217,9 @@ function PutAwayContent() {
     const handleAddItem = async () => {
         if (!sku) return
 
-        // Use preview if available, otherwise fetch
+        // Use preview if available (scannedProduct has id now), otherwise fetch
         let product = scannedProduct as any
+        // Re-fetch if no preview OR if the SKU/barcode doesn't match
         if (!product || (product.sku !== sku && product.barcode !== sku)) {
             const { data: fetched } = await supabase
                 .from('products')
@@ -227,6 +228,8 @@ function PutAwayContent() {
                 .single()
             product = fetched
         }
+
+        console.log('🔍 Product being added:', product)
 
         if (!product) {
             alert("Mã (SKU/Barcode) không tồn tại!")
@@ -243,7 +246,7 @@ function PutAwayContent() {
         console.log('✅ Adding product to list:', { id: product.id, sku: product.sku, name: product.name })
 
         // Update preview just in case
-        setScannedProduct({ name: product.name, sku: product.sku, barcode: product.barcode })
+        setScannedProduct({ id: product.id, name: product.name, sku: product.sku, barcode: product.barcode })
 
         const quantity = parseInt(qty)
         if (quantity < 1) return
