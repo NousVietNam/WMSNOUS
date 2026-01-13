@@ -77,22 +77,41 @@ export async function POST(request: Request) {
         }
 
         if (missingItems.length > 0) {
-            // Fetch product names for better error reporting
-            const missingIds = missingItems.map(m => m.product_id)
-            const { data: prodInfo } = await supabase.from('products').select('id, name, sku').in('id', missingIds)
+            // Fetch ALL product info (not just missing)
+            const { data: prodInfo } = await supabase
+                .from('products')
+                .select('id, name, sku')
+                .in('id', productIds)
             const prodMap = new Map(prodInfo?.map(p => [p.id, p]) || [])
 
-            const detailedMissing = missingItems.map(m => ({
-                ...m,
-                sku: prodMap.get(m.product_id)?.sku || 'Unknown',
-                name: prodMap.get(m.product_id)?.name || 'Unknown Product'
-            }))
+            // Build comparison for ALL items in order
+            const allItems = productIds.map(pid => {
+                const needed = demandMap[pid]
+                const available = aggregateStock[pid] || 0
+                const missing = Math.max(0, needed - available)
+
+                return {
+                    product_id: pid,
+                    sku: prodMap.get(pid)?.sku || 'Unknown',
+                    name: prodMap.get(pid)?.name || 'Unknown',
+                    needed,
+                    available,
+                    missing,
+                    status: missing === 0 ? 'SUFFICIENT' : (available > 0 ? 'PARTIAL' : 'OUT_OF_STOCK')
+                }
+            })
+
+            // Sort: OUT_OF_STOCK first, then PARTIAL, then SUFFICIENT
+            const sortedItems = allItems.sort((a, b) => {
+                const order: Record<string, number> = { OUT_OF_STOCK: 0, PARTIAL: 1, SUFFICIENT: 2 }
+                return order[a.status] - order[b.status]
+            })
 
             return NextResponse.json({
                 success: false,
                 reason: 'SHORTAGE',
-                message: 'Không đủ tồn kho để điều phối đơn hàng này.',
-                missingItems: detailedMissing
+                message: 'Một số mã hàng không đủ tồn kho.',
+                comparisonItems: sortedItems
             })
         }
         // ... (use availableInventory instead of inventory)

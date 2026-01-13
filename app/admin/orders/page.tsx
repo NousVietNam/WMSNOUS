@@ -112,7 +112,7 @@ export default function OrdersPage() {
         if (!json.success) {
             if (json.reason === 'SHORTAGE') {
                 setShortageOrderCode(order.code)
-                setShortageData(json.missingItems)
+                setShortageData(json.comparisonItems || [])
                 setShortageDialog(true)
             } else {
                 alert(json.error || "Lỗi giao thức điều phối")
@@ -374,48 +374,99 @@ export default function OrdersPage() {
             </div>
         </main>
 
-            {/* SHORTAGE DIALOG */}
+            {/* ENHANCED COMPARISON DIALOG */}
             <Dialog open={shortageDialog} onOpenChange={setShortageDialog}>
-                <DialogContent className="max-w-3xl">
+                <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-red-600">
+                        <DialogTitle className="flex items-center gap-2 text-orange-600">
                             <AlertCircle className="h-6 w-6" />
-                            Cảnh Báo Thiếu Hàng - {shortageOrderCode}
+                            So Sánh Tồn Kho - {shortageOrderCode}
                         </DialogTitle>
                     </DialogHeader>
                     <div className="py-4 space-y-4">
-                        <div className="bg-red-50 text-red-800 p-4 rounded-md text-sm">
-                            Đơn hàng không thể điều phối do thiếu tồn kho cho các mã hàng dưới đây.
-                            Vui lòng nhập thêm hàng hoặc kiểm tra lại tồn kho.
+                        {/* Summary Stats */}
+                        <div className="grid grid-cols-3 gap-3 text-sm">
+                            <div className="bg-green-50 border border-green-200 rounded p-3">
+                                <div className="text-green-600 font-semibold text-xs mb-1">
+                                    ✅ Đủ Hàng
+                                </div>
+                                <div className="text-2xl font-bold text-green-700">
+                                    {shortageData.filter(i => i.status === 'SUFFICIENT').length}
+                                </div>
+                            </div>
+                            <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
+                                <div className="text-yellow-600 font-semibold text-xs mb-1">
+                                    ⚠️ Thiếu Một Phần
+                                </div>
+                                <div className="text-2xl font-bold text-yellow-700">
+                                    {shortageData.filter(i => i.status === 'PARTIAL').length}
+                                </div>
+                            </div>
+                            <div className="bg-red-50 border border-red-200 rounded p-3">
+                                <div className="text-red-600 font-semibold text-xs mb-1">
+                                    ❌ Hết Hàng
+                                </div>
+                                <div className="text-2xl font-bold text-red-700">
+                                    {shortageData.filter(i => i.status === 'OUT_OF_STOCK').length}
+                                </div>
+                            </div>
                         </div>
 
+                        {/* Detailed Table */}
                         <div className="border rounded-md overflow-hidden">
-                            <table className="w-full text-sm">
-                                <thead className="bg-slate-100 font-semibold text-slate-700">
-                                    <tr>
-                                        <th className="p-3 text-left">Mã SKU</th>
-                                        <th className="p-3 text-left">Tên Sản Phẩm</th>
-                                        <th className="p-3 text-right">Yêu Cầu</th>
-                                        <th className="p-3 text-right">Có Sẵn</th>
-                                        <th className="p-3 text-right text-red-600">Thiếu</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
-                                    {shortageData.map((item, idx) => (
-                                        <tr key={idx} className="hover:bg-slate-50">
-                                            <td className="p-3 font-mono font-medium">{item.sku}</td>
-                                            <td className="p-3">{item.name}</td>
-                                            <td className="p-3 text-right font-medium">{item.needed}</td>
-                                            <td className="p-3 text-right text-slate-500">{item.available}</td>
-                                            <td className="p-3 text-right font-bold text-red-600">-{item.missing}</td>
+                            <div className="max-h-96 overflow-y-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-slate-100 font-semibold text-slate-700 sticky top-0">
+                                        <tr>
+                                            <th className="p-3 text-left">Trạng Thái</th>
+                                            <th className="p-3 text-left">SKU</th>
+                                            <th className="p-3 text-left">Tên Sản Phẩm</th>
+                                            <th className="p-3 text-right">Yêu Cầu</th>
+                                            <th className="p-3 text-right">Có Sẵn</th>
+                                            <th className="p-3 text-right">Thiếu</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {shortageData.map((item, idx) => (
+                                            <tr key={idx} className={`hover:bg-slate-50 ${item.status === 'SUFFICIENT' ? 'bg-green-50/30' :
+                                                    item.status === 'PARTIAL' ? 'bg-yellow-50/30' :
+                                                        'bg-red-50/50'
+                                                }`}>
+                                                <td className="p-3">
+                                                    {item.status === 'SUFFICIENT' ? (
+                                                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-bold whitespace-nowrap">
+                                                            ✅ Đủ
+                                                        </span>
+                                                    ) : item.status === 'PARTIAL' ? (
+                                                        <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-bold whitespace-nowrap">
+                                                            ⚠️ Thiếu
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold whitespace-nowrap">
+                                                            ❌ Hết
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 font-mono font-medium">{item.sku}</td>
+                                                <td className="p-3">{item.name}</td>
+                                                <td className="p-3 text-right font-medium">{item.needed}</td>
+                                                <td className={`p-3 text-right font-semibold ${item.available >= item.needed ? 'text-green-600' :
+                                                        item.available > 0 ? 'text-yellow-600' : 'text-red-600'
+                                                    }`}>{item.available}</td>
+                                                <td className="p-3 text-right font-bold text-red-600">
+                                                    {item.missing > 0 ? `-${item.missing}` : '—'}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
                         <div className="flex justify-end pt-4">
-                            <Button variant="secondary" onClick={() => setShortageDialog(false)}>Đóng</Button>
+                            <Button variant="secondary" onClick={() => setShortageDialog(false)}>
+                                Đóng
+                            </Button>
                         </div>
                     </div>
                 </DialogContent>
