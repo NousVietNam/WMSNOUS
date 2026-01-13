@@ -71,6 +71,60 @@ export default function InventoryPage() {
     const [productGroups, setProductGroups] = useState<string[]>([])
     const [seasons, setSeasons] = useState<string[]>([])
 
+    // New State for Details
+    const [detailOpen, setDetailOpen] = useState(false)
+    const [detailType, setDetailType] = useState<'APPROVED' | 'ALLOCATED'>('APPROVED')
+    const [detailData, setDetailData] = useState<any[]>([])
+    const [detailLoading, setDetailLoading] = useState(false)
+    const [detailTitle, setDetailTitle] = useState("")
+
+    const showApprovedDetails = async (item: InventoryItem) => {
+        if (!item.products?.id) return
+        setDetailType('APPROVED')
+        setDetailTitle(`Nhu Cầu Đã Duyệt - ${item.products.sku}`)
+        setDetailOpen(true)
+        setDetailLoading(true)
+
+        const { data } = await supabase
+            .from('order_items')
+            .select('quantity, orders!inner(id, code, status, created_at, users(name))')
+            .eq('product_id', item.products.id)
+            .eq('orders.is_approved', true)
+            .neq('orders.status', 'SHIPPED')
+            .neq('orders.status', 'COMPLETED')
+        //.order('orders(created_at)', { ascending: true }) // Syntax might be tricky, let's sort client side or trust default
+
+        setDetailData(data || [])
+        setDetailLoading(false)
+    }
+
+    const showAllocatedDetails = async (item: InventoryItem) => {
+        // We need box_id. We'll ensure it's fetched.
+        const boxId = (item as any).box_id
+        if (!boxId || !item.products?.id) {
+            // If no box (e.g. location item?), we can't trace easily by box.
+            // But valid inventory usually has box or location.
+            // For now assume Box based allocation.
+            toast.error("Mục này không liên kết với thùng cụ thể để tra cứu")
+            return
+        }
+
+        setDetailType('ALLOCATED')
+        setDetailTitle(`Chi Tiết Giữ Hàng - ${item.boxes?.code} - ${item.products.sku}`)
+        setDetailOpen(true)
+        setDetailLoading(true)
+
+        const { data } = await supabase
+            .from('picking_tasks')
+            .select('quantity, status, created_at, picking_jobs!inner(orders(code), users(name))')
+            .eq('box_id', boxId)
+            .eq('product_id', item.products.id)
+            .neq('status', 'COMPLETED')
+
+        setDetailData(data || [])
+        setDetailLoading(false)
+    }
+
     useEffect(() => {
         fetchFilterOptions()
     }, [])
@@ -134,19 +188,48 @@ export default function InventoryPage() {
                 locations (code)
             `, { count: 'exact' })
 
-        const from = page * ITEMS_PER_PAGE
-        const to = from + ITEMS_PER_PAGE - 1
+        // GLOBAL SEARCH LOGIC:
+        // If searching, we skip server-side pagination to search across the entire dataset in-memory.
+        // This is necessary because Supabase PostgREST cross-table OR search is limited.
+        const isGlobalSearch = searchTerm.length > 0;
 
-        const { data, count, error } = await query
-            .order('created_at', { ascending: false })
-            .range(from, to)
+        if (!isGlobalSearch) {
+            const from = page * ITEMS_PER_PAGE
+            const to = from + ITEMS_PER_PAGE - 1
+            query = query.range(from, to)
+        }
+
+        // If global search, we might want to limit to prevent crash if DB is massive, 
+        // but for <10k items, fetching all is faster than complex queries.
+        // Let's rely on standard order.
+
+        const { data, count, error } = await query.order('created_at', { ascending: false })
 
         if (error) {
             console.error(error)
         } else {
-            const inventoryItems = data as any || []
+            let inventoryItems = data as any || []
+
+            if (isGlobalSearch) {
+                // Client-side Filter for Search Term
+                // We do this here (and not just relies on filteredItems) because 
+                // we want 'items' state to ONLY contain matches, effectively "replacing" the page content.
+                const s = searchTerm.toLowerCase()
+                inventoryItems = inventoryItems.filter((item: any) => (
+                    item.products?.name?.toLowerCase().includes(s) ||
+                    item.products?.sku?.toLowerCase().includes(s) ||
+                    item.boxes?.code?.toLowerCase().includes(s) ||
+                    item.locations?.code?.toLowerCase().includes(s) ||
+                    item.products?.barcode?.toLowerCase().includes(s)
+                ))
+
+                // Update total to match the SEARCH RESULT count, not DB total
+                setTotal(inventoryItems.length)
+            } else {
+                setTotal(count || 0)
+            }
+
             setItems(inventoryItems)
-            setTotal(count || 0)
 
             // Approved Demand for Current Page Items
             const productIds = Array.from(new Set(inventoryItems.map((i: any) => i.products?.id).filter(Boolean)))
@@ -531,8 +614,20 @@ export default function InventoryPage() {
                                                 <td className="p-2 text-center text-xs">{item.products?.season || '-'}</td>
                                                 <td className="p-2 text-center text-xs">{item.products?.launch_month || '-'}</td>
                                                 <td className="p-2 text-center font-bold text-base text-slate-700">{item.quantity}</td>
-                                                <td className="p-2 text-center font-bold text-base text-purple-600">{approvedQty > 0 ? approvedQty : '-'}</td>
-                                                <td className="p-2 text-center font-bold text-base text-orange-600">{allocated > 0 ? allocated : '-'}</td>
+                                                <td className="p-2 text-center font-bold text-base text-purple-600">
+                                                    {approvedQty > 0 ? (
+                                                        <button className="hover:underline hover:bg-purple-50 px-2 rounded" onClick={() => showApprovedDetails(item)}>
+                                                            {approvedQty}
+                                                        </button>
+                                                    ) : '-'}
+                                                </td>
+                                                <td className="p-2 text-center font-bold text-base text-orange-600">
+                                                    {allocated > 0 ? (
+                                                        <button className="hover:underline hover:bg-orange-50 px-2 rounded" onClick={() => showAllocatedDetails(item)}>
+                                                            {allocated}
+                                                        </button>
+                                                    ) : '-'}
+                                                </td>
                                                 <td className="p-2 text-center font-bold text-base text-green-600">{available}</td>
                                                 <td className="p-2">
                                                     {item.boxes ? (
@@ -573,6 +668,56 @@ export default function InventoryPage() {
                                 </button>
                             </div>
                         )}
+                    </DialogContent>
+                </Dialog>
+                {/* DETAILS DIALOG */}
+                <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+                    <DialogContent className="max-w-xl">
+                        <div className="flex flex-col gap-4">
+                            <h3 className="text-lg font-bold">{detailTitle}</h3>
+                            <div className="border rounded-md overflow-hidden max-h-[400px] overflow-y-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-slate-100 font-bold">
+                                        <tr>
+                                            <th className="p-2 text-left">Đơn Hàng</th>
+                                            <th className="p-2 text-left">Người Xử Lý</th>
+                                            <th className="p-2 text-right">Số Lượng</th>
+                                            <th className="p-2 text-right text-slate-500">Ngày Tạo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {detailLoading ? (
+                                            <tr><td colSpan={4} className="p-4 text-center">Đang tải...</td></tr>
+                                        ) : detailData.length === 0 ? (
+                                            <tr><td colSpan={4} className="p-4 text-center text-muted-foreground">Không có dữ liệu chi tiết</td></tr>
+                                        ) : detailData.map((row, idx) => {
+                                            if (detailType === 'APPROVED') {
+                                                const order = row.orders
+                                                return (
+                                                    <tr key={idx}>
+                                                        <td className="p-2 font-medium">{order?.code} <span className="text-xs font-normal text-slate-500">({order?.status})</span></td>
+                                                        <td className="p-2">{order?.users?.name || '-'}</td>
+                                                        <td className="p-2 text-right font-bold">{row.quantity}</td>
+                                                        <td className="p-2 text-right text-xs text-slate-400">{order?.created_at ? new Date(order.created_at).toLocaleDateString() : '-'}</td>
+                                                    </tr>
+                                                )
+                                            } else {
+                                                const order = row.picking_jobs?.orders
+                                                const user = row.picking_jobs?.users
+                                                return (
+                                                    <tr key={idx}>
+                                                        <td className="p-2 font-medium">{order?.code || 'Job #' + row.picking_jobs?.id}</td>
+                                                        <td className="p-2">{user?.name || '-'}</td>
+                                                        <td className="p-2 text-right font-bold text-orange-600">{row.quantity}</td>
+                                                        <td className="p-2 text-right text-xs text-slate-400">{new Date(row.created_at).toLocaleDateString()}</td>
+                                                    </tr>
+                                                )
+                                            }
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </DialogContent>
                 </Dialog>
             </main>
