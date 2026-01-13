@@ -130,6 +130,25 @@ function PutAwayContent() {
             return
         }
 
+        // Check for draft in LocalStorage
+        const draftKey = `putaway_draft_${boxCode}`
+        const savedDraft = localStorage.getItem(draftKey)
+        if (savedDraft) {
+            try {
+                const draft = JSON.parse(savedDraft)
+                if (draft && draft.length > 0) {
+                    if (confirm(`Phát hiện ${draft.length} mã hàng chưa lưu từ lần trước.\nTiếp tục đóng hàng?`)) {
+                        setItems(draft)
+                    } else {
+                        localStorage.removeItem(draftKey)
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to parse draft:', e)
+                localStorage.removeItem(draftKey)
+            }
+        }
+
         // Fetch Existing Items
         const { data: currentInv } = await supabase
             .from('inventory_items')
@@ -183,13 +202,17 @@ function PutAwayContent() {
         const quantity = parseInt(qty)
         if (quantity < 1) return
 
-        setItems(prev => {
-            const existing = prev.find(i => i.sku === product.sku) // Use resolved product SKU
+        const newItems = (() => {
+            const existing = items.find(i => i.sku === product.sku)
             if (existing) {
-                return prev.map(i => i.sku === product.sku ? { ...i, qty: i.qty + quantity } : i)
+                return items.map(i => i.sku === product.sku ? { ...i, qty: i.qty + quantity } : i)
             }
-            return [...prev, { sku: product.sku, qty: quantity, productId: product.id, name: product.name, barcode: product.barcode }]
-        })
+            return [...items, { sku: product.sku, qty: quantity, productId: product.id, name: product.name, barcode: product.barcode }]
+        })()
+
+        setItems(newItems)
+        // Auto-save to localStorage
+        localStorage.setItem(`putaway_draft_${boxCode}`, JSON.stringify(newItems))
 
         // Reset inputs
         setSku("")
@@ -198,7 +221,14 @@ function PutAwayContent() {
     }
 
     const handleRemoveItem = (idx: number) => {
-        setItems(prev => prev.filter((_, i) => i !== idx))
+        const newItems = items.filter((_, i) => i !== idx)
+        setItems(newItems)
+        // Update localStorage
+        if (newItems.length > 0) {
+            localStorage.setItem(`putaway_draft_${boxCode}`, JSON.stringify(newItems))
+        } else {
+            localStorage.removeItem(`putaway_draft_${boxCode}`)
+        }
     }
 
     // Step 3: Save All
@@ -252,6 +282,9 @@ function PutAwayContent() {
 
             // Refresh History
             fetchHistory()
+
+            // Clear draft from localStorage
+            localStorage.removeItem(`putaway_draft_${boxCode}`)
 
             // Reset Internal State
             setStep(1)
@@ -356,7 +389,8 @@ function PutAwayContent() {
                                     {existingItems.map((ex, i) => (
                                         <div key={i} className="flex justify-between border-b border-blue-100 last:border-0 py-1">
                                             <div className="flex flex-col">
-                                                <span className="font-bold text-xs">{ex.products?.sku}</span>
+                                                <span className="font-bold text-xs">{ex.products?.name || ex.products?.sku}</span>
+                                                <span className="text-[10px] text-slate-500">{ex.products?.sku}</span>
                                                 {ex.products?.barcode && <span className="text-[10px] text-muted-foreground">{ex.products.barcode}</span>}
                                             </div>
                                             <span className="font-medium">x{ex.quantity}</span>
@@ -374,11 +408,16 @@ function PutAwayContent() {
                                         value={sku}
                                         onChange={(val) => {
                                             setSku(val)
-                                            // Optional: debounced check could go here
+                                            // Auto-check product when scanned (length > 3)
+                                            if (val.length > 3) {
+                                                checkProduct(val)
+                                            } else {
+                                                setScannedProduct(null)
+                                            }
                                         }}
                                         onEnter={() => {
-                                            // Handle enter logic: checks or adds
-                                            checkProduct(sku)
+                                            // Enter = Add item directly
+                                            handleAddItem()
                                         }}
                                     />
                                 </div>
