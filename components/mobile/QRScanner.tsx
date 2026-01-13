@@ -42,7 +42,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
             try {
                 // @ts-ignore
                 const scanner = new window.Html5Qrcode(scannerId, {
-                    verbose: true, // Enable verbose logging temporarily for debugging
+                    verbose: false, // Disabled verbose logging - scanner is working now
                     experimentalFeatures: {
                         useBarCodeDetectorIfSupported: true // Re-enable for better detection
                     }
