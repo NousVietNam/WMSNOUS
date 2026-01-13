@@ -175,12 +175,23 @@ function PutAwayContent() {
         // Fetch Existing Items
         const { data: currentInv, error: invError } = await supabase
             .from('inventory_items')
-            .select('quantity, product_id, products!product_id(sku, name, barcode)')
+            .select(`
+                quantity, 
+                product_id,
+                products (
+                    sku, 
+                    name, 
+                    barcode
+                )
+            `)
             .eq('box_id', data.id)
             .gt('quantity', 0)
 
-        console.log('📦 Existing items in box:', currentInv)
-        if (invError) console.error('❌ Error fetching existing items:', invError)
+        console.log('📦 Existing items raw data:', JSON.stringify(currentInv, null, 2))
+        if (invError) {
+            console.error('❌ Error fetching existing items:', invError)
+            alert(`Lỗi khi tải hàng có sẵn: ${invError.message}`)
+        }
 
         setExistingItems(currentInv || [])
         setStep(2)
