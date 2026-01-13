@@ -388,10 +388,12 @@ function PutAwayContent() {
                                     <div className="font-bold mb-1">Đã có trong thùng:</div>
                                     {existingItems.map((ex, i) => (
                                         <div key={i} className="flex justify-between border-b border-blue-100 last:border-0 py-1">
-                                            <div className="flex flex-col">
-                                                <span className="font-bold text-xs">{ex.products?.name || ex.products?.sku}</span>
-                                                <span className="text-[10px] text-slate-500">{ex.products?.sku}</span>
-                                                {ex.products?.barcode && <span className="text-[10px] text-muted-foreground">{ex.products.barcode}</span>}
+                                            <div className="flex-1 mr-2">
+                                                <div className="font-bold text-xs">{ex.products?.name || ex.products?.sku}</div>
+                                                <div className="flex items-center justify-between text-[10px] text-slate-500 mt-0.5">
+                                                    <span>{ex.products?.sku}</span>
+                                                    {ex.products?.barcode && <span className="text-muted-foreground">{ex.products.barcode}</span>}
+                                                </div>
                                             </div>
                                             <span className="font-medium">x{ex.quantity}</span>
                                         </div>
