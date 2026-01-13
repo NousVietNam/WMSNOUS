@@ -115,6 +115,9 @@ export default function InventoryPage() {
             query = query.eq('box_id', boxId)
             setDetailTitle(`Items Giữ Ở Thùng ${item.boxes?.code || 'Unknown'} - ${item.products.sku}`)
         } else if (locationId) {
+            query = query.eq('location_id', locationId)
+            setDetailTitle(`Items Giữ Ở Vị Trí ${item.locations?.code || 'Unknown'} - ${item.products.sku}`)
+        } else {
             toast.error("Không xác định được nơi lưu trữ (Thùng/Vị trí) để tra cứu")
             return
         }
