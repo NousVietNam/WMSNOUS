@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase"
 import { MobileHeader } from "@/components/mobile/MobileHeader"
 import { useAuth } from "@/components/auth/AuthProvider"
 import MobileScannerInput from "@/components/mobile/MobileScannerInput"
+import { playSuccessSound, playErrorSound } from "@/utils/sound"
 
 function PutAwayContent() {
     const { session } = useAuth()
@@ -140,6 +141,7 @@ function PutAwayContent() {
         if (!boxCode) return
 
         if (!boxCode.toUpperCase().startsWith('BOX')) {
+            playErrorSound()
             alert("Chỉ được đóng hàng vào thùng Storage (Bắt đầu bằng 'BOX')")
             return
         }
@@ -153,6 +155,7 @@ function PutAwayContent() {
             .single()
 
         if (error || !data) {
+            playErrorSound()
             alert("Không tìm thấy thùng này!")
             setLoading(false)
             return
@@ -161,6 +164,7 @@ function PutAwayContent() {
         // Check if box is at RECEIVING location
         const location = (data as any).locations
         if (location?.code !== 'RECEIVING') {
+            playErrorSound()
             alert(`Thùng này đang ở vị trí ${location?.code || 'Unknown'}.\nChỉ được đóng hàng vào thùng ở vị trí RECEIVING!`)
             setLoading(false)
             return
@@ -207,6 +211,7 @@ function PutAwayContent() {
         }
 
         setExistingItems(currentInv || [])
+        playSuccessSound()
         setStep(2)
         setLoading(false)
     }
@@ -245,6 +250,7 @@ function PutAwayContent() {
         console.log('🔍 Product being added:', product)
 
         if (!product) {
+            playErrorSound()
             alert("Mã (SKU/Barcode) không tồn tại!")
             return
         }
@@ -263,6 +269,7 @@ function PutAwayContent() {
                 `Tồn kho hiện tại: ${restricted.current_stock.toLocaleString()}\n` +
                 `Lý do: ${restricted.reason || 'Không có ghi chú'}`
             )
+            playErrorSound()
             setSku('')
             setScannedProduct(null)
             return
@@ -293,6 +300,7 @@ function PutAwayContent() {
         })()
 
         setItems(newItems)
+        playSuccessSound()
         // Auto-save to localStorage
         localStorage.setItem(`putaway_draft_${boxCode}`, JSON.stringify(newItems))
 
@@ -378,6 +386,7 @@ function PutAwayContent() {
 
 
             // Show Recap
+            playSuccessSound()
             const totalQty = items.reduce((a, b) => a + b.qty, 0)
             setRecapData({
                 boxCode,
