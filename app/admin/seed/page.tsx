@@ -198,21 +198,48 @@ export default function SeedPage() {
     const handleClear = async () => {
         if (!confirm("Chỉ xoá dữ liệu Order/Inv/Task, giữ lại Users/Products. Tiếp tục?")) return
         setLoading(true)
-        try {
-            await supabase.from('picking_tasks').delete().neq('status', 'X')
-            await supabase.from('picking_jobs').delete().neq('status', 'X')
-            await supabase.from('order_items').delete().neq('quantity', -1)
-            await supabase.from('orders').delete().neq('code', 'X')
-            await supabase.from('transactions').delete().neq('type', 'XXX')
-            await supabase.from('inventory_items').delete().neq('quantity', -1)
-            await supabase.from('boxes').delete().neq('status', 'X')
-            // Don't delete locations if not needed, but seed recreates them so maybe wipe? 
-            // Keep it simple: Wipe logic is already in handleSeed. handleClear is just quick cleanup.
-            await supabase.from('boxes').delete().neq('status', 'X')
+        const logs: string[] = []
 
-            alert("Đã xoá sạch dữ liệu (Ngoại trừ Users & Products).")
+        try {
+            // Delete in correct order (respecting foreign keys)
+            logs.push("Đang xóa picking tasks...")
+            const { error: e1 } = await supabase.from('picking_tasks').delete().gte('id', 0)
+            if (e1) logs.push(`⚠️ Picking tasks: ${e1.message}`)
+
+            logs.push("Đang xóa picking jobs...")
+            const { error: e2 } = await supabase.from('picking_jobs').delete().gte('id', 0)
+            if (e2) logs.push(`⚠️ Picking jobs: ${e2.message}`)
+
+            logs.push("Đang xóa order items...")
+            const { error: e3 } = await supabase.from('order_items').delete().gte('id', 0)
+            if (e3) logs.push(`⚠️ Order items: ${e3.message}`)
+
+            logs.push("Đang xóa orders...")
+            const { error: e4 } = await supabase.from('orders').delete().gte('id', 0)
+            if (e4) logs.push(`⚠️ Orders: ${e4.message}`)
+
+            logs.push("Đang xóa transactions...")
+            const { error: e5 } = await supabase.from('transactions').delete().gte('id', 0)
+            if (e5) logs.push(`⚠️ Transactions: ${e5.message}`)
+
+            logs.push("Đang xóa inventory items...")
+            const { error: e6 } = await supabase.from('inventory_items').delete().gte('id', 0)
+            if (e6) logs.push(`⚠️ Inventory items: ${e6.message}`)
+
+            logs.push("Đang xóa boxes...")
+            const { error: e7 } = await supabase.from('boxes').delete().gte('id', 0)
+            if (e7) logs.push(`⚠️ Boxes: ${e7.message}`)
+
+            logs.push("Đang xóa locations...")
+            const { error: e8 } = await supabase.from('locations').delete().gte('id', 0)
+            if (e8) logs.push(`⚠️ Locations: ${e8.message}`)
+
+            logs.push("✅ Hoàn tất!")
+            console.log("Delete logs:", logs)
+            alert("Đã xoá sạch dữ liệu (Ngoại trừ Users & Products).\n\n" + logs.join("\n"))
         } catch (e: any) {
-            alert(e.message)
+            console.error("Delete error:", e)
+            alert("Lỗi: " + e.message + "\n\nLogs:\n" + logs.join("\n"))
         } finally {
             setLoading(false)
         }
