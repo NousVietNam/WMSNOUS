@@ -78,13 +78,26 @@ function PutAwayContent() {
         const { data } = await query
 
         if (data) {
+            // Extract unique SKUs to fetch product info
+            const skus = [...new Set(data.map((t: any) => t.sku).filter(Boolean))]
+
+            // Fetch product info for all SKUs
+            const { data: products } = await supabase
+                .from('products')
+                .select('sku, name, barcode')
+                .in('sku', skus)
+
+            const productMap = new Map(products?.map(p => [p.sku, p]) || [])
+
             // Group by Box and Time (roughly same batch defined by time)
             const history = data.reduce((acc: any[], curr: any) => {
                 const time = new Date(curr.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
                 const boxCode = curr.to_box?.code || 'Unknown'
                 const qty = curr.quantity || 0
                 const sku = curr.sku || 'Unknown'
-                const name = 'Sản phẩm'
+                const product = productMap.get(sku)
+                const name = product?.name || 'Sản phẩm'
+                const barcode = product?.barcode || sku
                 const userName = (curr.users as any)?.name || 'Unknown User' // For admin view
 
                 const existing = acc.find(h => h.boxCode === boxCode && h.time === time)
@@ -96,7 +109,7 @@ function PutAwayContent() {
                     if (existingItem) {
                         existingItem.qty += qty
                     } else {
-                        existing.items.push({ sku, name, qty })
+                        existing.items.push({ sku, name, barcode, qty })
                     }
 
                     existing.skuCount = existing.items.length
@@ -106,7 +119,7 @@ function PutAwayContent() {
                         boxCode,
                         totalQty: qty,
                         skuCount: 1,
-                        items: [{ sku, name, qty }],
+                        items: [{ sku, name, barcode, qty }],
                         userName // Store user name for admin view
                     })
                 }
