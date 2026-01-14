@@ -62,6 +62,7 @@ export default function WarehouseMapPage() {
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
     const [mode, setMode] = useState<'EDIT' | 'HEATMAP'>('HEATMAP')
+    const [is3D, setIs3D] = useState(false)
     const [scale, setScale] = useState(1)
 
     // Search State
@@ -97,6 +98,25 @@ export default function WarehouseMapPage() {
 
     // Canvas State
     const [offset, setOffset] = useState({ x: 0, y: 0 })
+    const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
+
+    useEffect(() => {
+        // Initialize viewport size on client mount
+        setViewportSize({
+            width: window.innerWidth,
+            height: window.innerHeight
+        })
+
+        const handleResize = () => {
+            setViewportSize({
+                width: window.innerWidth,
+                height: window.innerHeight
+            })
+        }
+        window.addEventListener('resize', handleResize)
+        return () => window.removeEventListener('resize', handleResize)
+    }, [])
+    const [origin, setOrigin] = useState({ x: 0, y: 0 }) // Transform Origin for centering
 
     // Interaction State
     const [draggingStackId, setDraggingStackId] = useState<string | null>(null)
@@ -191,6 +211,13 @@ export default function WarehouseMapPage() {
             return () => clearTimeout(timer)
         }
     }, [stacks.length]) // Only run when stacks length changes from 0 to >0
+
+    // Auto-fit when switching 2D/3D
+    useEffect(() => {
+        if (stacks.length > 0) {
+            fitView()
+        }
+    }, [is3D])
 
     const fetchData = async () => {
         setLoading(true)
@@ -479,10 +506,11 @@ export default function WarehouseMapPage() {
     }
 
     const fitView = () => {
-        if (stacks.length === 0) return
+        if (stacks.length === 0 && mapElements.length === 0) return
 
         // 1. Calculate Bounding Box of Layout
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+
         stacks.forEach(s => {
             minX = Math.min(minX, s.pos_x)
             minY = Math.min(minY, s.pos_y)
@@ -490,26 +518,61 @@ export default function WarehouseMapPage() {
             maxY = Math.max(maxY, s.pos_y + s.height)
         })
 
+        // Include Map Elements (Walls/Doors)
+        mapElements.forEach(el => {
+            // Start point
+            minX = Math.min(minX, el.x)
+            minY = Math.min(minY, el.y)
+            maxX = Math.max(maxX, el.x + (el.width || 0)) // Some elements might have width
+            maxY = Math.max(maxY, el.y + (el.height || 0))
+
+            // End point (for lines/walls)
+            if (el.metadata?.endX !== undefined) {
+                minX = Math.min(minX, el.metadata.endX)
+                maxX = Math.max(maxX, el.metadata.endX)
+            }
+            if (el.metadata?.endY !== undefined) {
+                minY = Math.min(minY, el.metadata.endY)
+                maxY = Math.max(maxY, el.metadata.endY)
+            }
+        })
+
+        if (minX === Infinity) return // No content
+
         // Convert to Pixels
         const padding = 40 // px
-        const contentW = (maxX - minX) * GRID_SIZE
-        const contentH = (maxY - minY) * GRID_SIZE
+        // Add small buffer explicitly to width/height to prevent cutting off edges
+        const contentW = (maxX - minX + 2) * GRID_SIZE
+        const contentH = (maxY - minY + 2) * GRID_SIZE
 
-        // Viewport Dimensions (Approximate, subtracting sidebar/header)
-        const viewW = window.innerWidth - 300
-        const viewH = window.innerHeight - 150
+        // Viewport Dimensions (Current Window)
+        const sidebarWidth = 260 // Sidebar approx
+        const headerHeight = 80 // Header approx
+        const viewW = window.innerWidth - sidebarWidth
+        const viewH = window.innerHeight - headerHeight
 
         // 2. Calculate Scale to Fit
         const scaleX = viewW / contentW
         const scaleY = viewH / contentH
-        const newScale = Math.min(Math.min(scaleX, scaleY), 1.5) // Max zoom 1.5
-        const safeScale = Math.max(newScale, 0.1) // Min zoom 0.1
+        const newScale = Math.min(Math.min(scaleX, scaleY), 1.2) // Cap max zoom at 1.2 for better aesthetics
+        const safeScale = Math.max(newScale, 0.35)
 
-        // 3. Center
-        // We want (minX * GRID) to be at offset X + padding
-        // OffsetX = Padding - (minX * GRID * Scale)
-        const newOffsetX = padding + 250 - (minX * GRID_SIZE * safeScale) // +250 for sidebar offset approx
-        const newOffsetY = padding - (minY * GRID_SIZE * safeScale)
+        // 3. Center Logic
+        // We want the CENTER of the content to be at the CENTER of the viewport
+        const contentCenterX = ((minX + maxX) / 2) * GRID_SIZE
+        const contentCenterY = ((minY + maxY) / 2) * GRID_SIZE
+
+        // Viewport Center
+        const viewportCenterX = viewW / 2
+        const viewportCenterY = viewH / 2
+
+        // Set Transform Origin to Content Center so rotation/scaling happens around it
+        setOrigin({ x: contentCenterX, y: contentCenterY })
+
+        // Calculate Offset to place Content Center at Viewport Center
+        // Offset = ViewportCenter - ContentCenter
+        const newOffsetX = viewportCenterX - contentCenterX
+        const newOffsetY = viewportCenterY - contentCenterY
 
         setScale(safeScale)
         setOffset({ x: newOffsetX, y: newOffsetY })
@@ -766,7 +829,8 @@ export default function WarehouseMapPage() {
         const utilizationPercent = totalCapacity > 0 ? (boxCount / totalCapacity) * 100 : 0
 
         // Color based on utilization % (green=low, amber=medium, rose=high/full)
-        if (utilizationPercent === 0) return 'bg-slate-50/80 border-slate-300 text-slate-500' // Empty
+        // Color based on utilization % (green=low, amber=medium, rose=high/full)
+        if (utilizationPercent === 0) return 'bg-slate-200 border-slate-300 text-slate-500 shadow-sm' // Empty - Gray (Default)
         if (utilizationPercent < 50) return 'bg-emerald-50/90 border-emerald-400 text-emerald-700' // <50% green
         if (utilizationPercent < 80) return 'bg-amber-50/90 border-amber-400 text-amber-700' // 50-80% amber  
         return 'bg-rose-50/90 border-rose-400 text-rose-700' // >=80% rose (nearly full)
@@ -843,6 +907,24 @@ export default function WarehouseMapPage() {
                             `}
                         >
                             <MousePointer2 size={16} /> Chỉnh Sửa
+                        </button>
+                    </div>
+
+                    {/* 3D View Toggle */}
+                    <div className="flex glass-strong p-1 rounded-lg ml-4">
+                        <button
+                            onClick={() => setIs3D(!is3D)}
+                            className={`
+                                px-3 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2
+                                ${is3D
+                                    ? 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-lg ring-2 ring-white/20'
+                                    : 'text-white/80 hover:text-white hover:bg-white/10'
+                                }
+                            `}
+                            title="Chế độ xem 3D (Isometric)"
+                        >
+                            <Box size={18} className={is3D ? "animate-pulse" : ""} />
+                            <span className="hidden xl:inline">3D View</span>
                         </button>
                     </div>
 
@@ -958,10 +1040,14 @@ export default function WarehouseMapPage() {
                 }
 
                 <div
-                    className="absolute transition-transform duration-75 ease-out origin-top-left"
+                    className="absolute transition-all duration-700 ease-in-out"
                     style={{
-                        transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-                        width: '200000px', height: '200000px'
+                        transformOrigin: `${origin.x}px ${origin.y}px`,
+                        transform: is3D
+                            ? `translate(${offset.x}px, ${offset.y}px) scale(${scale}) rotateX(55deg) rotateZ(45deg)`
+                            : `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+                        width: '200000px', height: '200000px',
+                        transformStyle: 'preserve-3d'
                     }}
                 >
                     {/* Grid Background */}
@@ -1093,128 +1179,173 @@ export default function WarehouseMapPage() {
                     {/* Old Door Elements - REMOVED */}
 
                     {/* Stacks Loop */}
-                    {stacks.map(stack => (
-                        <div
-                            key={stack.id}
-                            onMouseDown={(e) => handleStackMouseDown(e, stack)}
-                            className={`
-                                absolute border-2 rounded-md shadow-md flex flex-col items-center justify-between p-1 transition-all overflow-hidden
-                                ${mode === 'EDIT' ? 'bg-slate-100 border-blue-600 hover:ring-2 ring-blue-300 cursor-grab active:cursor-grabbing' : getStackColor(stack)}
-                                ${draggingStackId === stack.id ? 'z-50 shadow-2xl scale-105' : 'z-auto hover:shadow-md'}
-                                ${
-                                // Highlight Check: Check if THIS match ID or ANY level in it matches
-                                // OR if currently selected in Multi-select logic (selectedIds)
-                                highlightedIds.has(stack.id) || stack.levels.some(l => highlightedIds.has(l.id))
-                                    ? 'ring-4 ring-yellow-400 ring-offset-2 z-40 animate-pulse bg-yellow-100/50'
-                                    : selectedIds.has(stack.id) // Multi-select Highlight
-                                        ? 'ring-4 ring-purple-600 ring-offset-2 z-40 bg-purple-50'
-                                        : ''
-                                }
-                            `}
-                            style={{
-                                left: stack.pos_x * GRID_SIZE + 2, // +2 margin
-                                top: stack.pos_y * GRID_SIZE + 2,
-                                width: stack.width * GRID_SIZE - 4, // -4 margin
-                                height: stack.height * GRID_SIZE - 4,
-                                transition: draggingStackId === stack.id ? 'none' : 'left 0.2s, top 0.2s'
-                            }}
-                            onClick={(e) => {
-                                e.stopPropagation()
-                                if (mode === 'HEATMAP') {
-                                    setSelectedStack(stack)
-                                }
-                            }}
-                            onMouseEnter={(e) => {
-                                setHoveredStack(stack)
-                                setTooltipPos({ x: e.clientX, y: e.clientY })
-                            }}
-                            onMouseLeave={() => {
-                                setHoveredStack(null)
-                            }}
-                            onMouseMove={(e) => {
-                                // Update position to follow mouse
-                                setTooltipPos({ x: e.clientX + 15, y: e.clientY + 15 })
-                            }}
-                        >
-                            {/* User - Requested Heatmap Design */}
-                            {/* Heatmap Mode Display - Reformatted */}
-                            {mode === 'HEATMAP' && (
-                                <div className="absolute inset-0 flex flex-col p-2.5 pointer-events-none rounded-md">
-                                    {/* Top Row: Location Name + Badge - SINGLE LINE ONLY */}
-                                    <div className="flex items-center justify-between w-full mb-2">
-                                        <span className="font-bold text-sm text-slate-800 leading-none tracking-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
-                                            {stack.levels.length > 1
-                                                ? stack.baseCode.substring(0, 5)
-                                                : stack.baseCode}
-                                        </span>
-                                        {stack.levels.length > 1 && (
-                                            <span className="flex items-center justify-center bg-slate-700 text-white text-[9px] font-semibold h-4 px-1.5 rounded ml-1" title={`${stack.levels.length} Tầng`}>
-                                                {stack.levels.length}F
-                                            </span>
-                                        )}
-                                    </div>
+                    {stacks.map(stack => {
+                        const stackHeight = is3D ? Math.max((stack.levels?.length || 0) * 80, 10) : 0 // 80px per level for DISTINCT separation
 
-                                    {/* Middle: Box Count */}
-                                    <div className="flex-1 flex flex-col items-center justify-center gap-1">
-                                        {stack.total_boxes > 0 ? (
-                                            <>
-                                                <span className={`text-4xl font-black leading-none ${stack.total_items > 500 ? 'text-red-700' :
-                                                    stack.total_items > 100 ? 'text-yellow-700' :
-                                                        'text-slate-700'
-                                                    }`}>
-                                                    {stack.total_boxes}
+                        return (
+                            <div
+                                key={stack.id}
+                                onMouseDown={(e) => handleStackMouseDown(e, stack)}
+                                className={`
+                                    absolute border-2 rounded-md shadow-md flex flex-col items-center justify-between p-1 transition-all overflow-visible
+                                    ${mode === 'EDIT' ? 'bg-slate-100 border-blue-600 hover:ring-2 ring-blue-300 cursor-grab active:cursor-grabbing' : getStackColor(stack)}
+                                    ${draggingStackId === stack.id ? 'z-50 shadow-2xl scale-105' : 'z-auto hover:shadow-md'}
+                                    ${highlightedIds.has(stack.id) || stack.levels?.some(l => highlightedIds.has(l.id))
+                                        ? 'ring-4 ring-yellow-400 ring-offset-2 z-40 animate-pulse bg-yellow-100/50'
+                                        : selectedIds.has(stack.id)
+                                            ? 'ring-4 ring-purple-600 ring-offset-2 z-40 bg-purple-50'
+                                            : ''
+                                    }
+                                `}
+                                style={{
+                                    left: stack.pos_x * GRID_SIZE + 2,
+                                    top: stack.pos_y * GRID_SIZE + 2,
+                                    width: stack.width * GRID_SIZE - 4,
+                                    height: stack.height * GRID_SIZE - 4,
+                                    // 3D Transform
+                                    transform: is3D ? `translateZ(${stackHeight}px)` : 'none',
+                                    transformStyle: 'preserve-3d',
+                                    transition: draggingStackId === stack.id ? 'none' : 'left 0.2s, top 0.2s'
+                                }}
+                                onClick={(e) => {
+                                    e.stopPropagation()
+                                    if (mode === 'HEATMAP') {
+                                        setSelectedStack(stack)
+                                    }
+                                }}
+                                onMouseEnter={(e) => {
+                                    setHoveredStack(stack)
+                                    setTooltipPos({ x: e.clientX, y: e.clientY })
+                                }}
+                                onMouseLeave={() => {
+                                    setHoveredStack(null)
+                                }}
+                            >
+                                {/* 3D Faces (Only show in 3D mode) */}
+                                {is3D && (
+                                    <>
+                                        {/* Front Face (South) - Darker */}
+                                        <div
+                                            className="absolute top-full left-[-2px] w-[calc(100%+4px)] bg-slate-400 border border-slate-500/30"
+                                            style={{
+                                                height: stackHeight,
+                                                transformOrigin: 'top',
+                                                transform: 'rotateX(-90deg)'
+                                            }}
+                                        />
+                                        {/* Right Face (East) - Lighter */}
+                                        <div
+                                            className="absolute top-[-2px] left-full h-[calc(100%+4px)] bg-slate-300 border border-slate-400/30"
+                                            style={{
+                                                width: stackHeight,
+                                                transformOrigin: 'left',
+                                                transform: 'rotateY(90deg)'
+                                            }}
+                                        />
+                                        {/* Shadow on Floor */}
+                                        <div
+                                            className="absolute top-0 left-0 w-full h-full bg-black/20 pointer-events-none rounded-full"
+                                            style={{
+                                                transform: `translateZ(${-stackHeight}px) scale(0.9)`
+                                            }}
+                                        />
+                                    </>
+                                )}
+                                {/* User - Requested Heatmap Design */}
+                                {/* Heatmap Mode Display - Reformatted */}
+                                {mode === 'HEATMAP' && (
+                                    <div className="absolute inset-0 flex flex-col p-2.5 pointer-events-none rounded-md">
+                                        {scale <= 0.5 ? (
+                                            /* SIMPLIFIED LAYOUT (Zoom <= 50%) */
+                                            <div className={`flex-1 flex items-center justify-center transition-transform ${is3D ? '-rotate-45' : ''}`}>
+                                                <span className="font-black text-3xl text-slate-700 leading-none tracking-tight">
+                                                    {stack.baseCode}
                                                 </span>
-                                                <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Thùng</span>
-                                            </>
+                                            </div>
                                         ) : (
-                                            <span className="text-sm text-slate-300 italic font-light">Empty</span>
+                                            /* DETAILED LAYOUT (Zoom > 50%) */
+                                            <>
+                                                {/* Right Side: Capacity Bar (Vertical) */}
+                                                <div className="absolute top-1 right-1 bottom-1 w-1.5 bg-slate-200 rounded-full overflow-hidden flex flex-col justify-end">
+                                                    {(() => {
+                                                        const maxCapacity = stack.levels?.reduce((sum, level) => sum + (level.capacity || 15), 0) || 15
+                                                        const percentage = Math.min(100, Math.max(5, (stack.total_boxes / maxCapacity) * 100))
+                                                        const barColor = percentage > 90 ? 'bg-red-500' :
+                                                            percentage > 70 ? 'bg-yellow-500' :
+                                                                'bg-indigo-500'
+
+                                                        return (
+                                                            <div
+                                                                className={`w-full transition-all duration-500 ${barColor}`}
+                                                                style={{ height: `${percentage}%` }}
+                                                                title={`Sức chứa: ${stack.total_boxes}/${maxCapacity} thùng (${stack.levels?.length || 0} tầng)`}
+                                                            />
+                                                        )
+                                                    })()}
+                                                </div>
+
+                                                {/* Content with Right Padding to avoid bar */}
+                                                <div className="w-full h-full flex flex-col pr-3">
+                                                    {/* Top Row: Location Name + Badge */}
+                                                    <div className="flex items-center justify-between w-full mb-1">
+                                                        <span className="font-extrabold text-lg text-slate-800 leading-none tracking-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
+                                                            {(stack.levels?.length || 0) > 1
+                                                                ? stack.baseCode.substring(0, 5)
+                                                                : stack.baseCode}
+                                                        </span>
+                                                        {(stack.levels?.length || 0) > 1 && (
+                                                            <span className="flex items-center justify-center bg-slate-700 text-white text-[10px] font-bold h-4 px-1.5 rounded ml-1" title={`${stack.levels?.length} Tầng`}>
+                                                                {stack.levels?.length}F
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Middle: Box Count */}
+                                                    <div className="flex-1 flex flex-col items-center justify-center gap-0.5">
+                                                        {stack.total_boxes > 0 ? (
+                                                            <>
+                                                                <span className={`text-4xl font-black leading-none ${stack.total_items > 500 ? 'text-red-700' :
+                                                                    stack.total_items > 100 ? 'text-yellow-700' :
+                                                                        'text-slate-700'
+                                                                    }`}>
+                                                                    {stack.total_boxes}
+                                                                </span>
+                                                                <span className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">Thùng</span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-sm text-slate-300 italic font-light">Empty</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </>
                                         )}
                                     </div>
+                                )}
 
-                                    {/* Bottom: Capacity Bar */}
-                                    <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden mt-auto">
-                                        {(() => {
-                                            const maxCapacity = stack.levels.reduce((sum, level) => sum + (level.capacity || 15), 0) || 15
-                                            const percentage = Math.min(100, Math.max(5, (stack.total_boxes / maxCapacity) * 100))
-                                            const barColor = percentage > 90 ? 'bg-red-500' :
-                                                percentage > 70 ? 'bg-yellow-500' :
-                                                    'bg-indigo-500'
-
-                                            return (
-                                                <div
-                                                    className={`h-full transition-all duration-500 ${barColor}`}
-                                                    style={{ width: `${percentage}%` }}
-                                                    title={`Sức chứa: ${stack.total_boxes}/${maxCapacity} thùng (${stack.levels.length} tầng)`}
-                                                />
-                                            )
-                                        })()}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Edit Mode Visual */}
-                            {mode === 'EDIT' && (
-                                <>
-                                    <div className="flex-1 flex items-center justify-center text-slate-300 pointer-events-none">
-                                        <div className="flex flex-col items-center gap-1">
-                                            <span className="font-bold text-slate-400">{stack.baseCode}</span>
-                                            <Move size={16} />
+                                {/* Edit Mode Visual */}
+                                {mode === 'EDIT' && (
+                                    <>
+                                        <div className="flex-1 flex items-center justify-center text-slate-300 pointer-events-none">
+                                            <div className="flex flex-col items-center gap-1">
+                                                <span className="font-bold text-slate-400">{stack.baseCode}</span>
+                                                <Move size={16} />
+                                            </div>
                                         </div>
-                                    </div>
-                                    {/* Resize Handle - Bottom Right */}
-                                    <div
-                                        onMouseDown={(e) => handleResizeStart(e, stack.id)}
-                                        className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize pointer-events-auto bg-indigo-500 hover:bg-indigo-600 rounded-tl flex items-center justify-center text-white shadow-md transition-all z-10"
-                                        title="Kéo để resize"
-                                    >
-                                        <svg width="10" height="10" viewBox="0 0 10 10" className="opacity-80">
-                                            <path d="M10 10 L10 7 L7 10 Z M10 10 L10 3 L3 10 Z" fill="currentColor" />
-                                        </svg>
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    ))}
+                                        {/* Resize Handle - Bottom Right */}
+                                        <div
+                                            onMouseDown={(e) => handleResizeStart(e, stack.id)}
+                                            className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize pointer-events-auto bg-indigo-500 hover:bg-indigo-600 rounded-tl flex items-center justify-center text-white shadow-md transition-all z-10"
+                                            title="Kéo để resize"
+                                        >
+                                            <svg width="10" height="10" viewBox="0 0 10 10" className="opacity-80">
+                                                <path d="M10 10 L10 7 L7 10 Z M10 10 L10 3 L3 10 Z" fill="currentColor" />
+                                            </svg>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )
+                    })}
                 </div>
             </div >
 
@@ -1416,18 +1547,29 @@ export default function WarehouseMapPage() {
                         const scaleY = 192 / contentH
                         const mmScale = Math.min(scaleX, scaleY)
 
-                        // Click pos in grid coords (relative to minX/minY)
+                        // 2. Calculate Click Position in Map Units (Grid Coordinates)
                         const gridClickX = (clickX / mmScale) + minX
                         const gridClickY = (clickY / mmScale) + minY
 
-                        // Center view on this grid point
-                        // viewport center = offset + view/2
-                        // we want viewport center to be gridClick
-                        // offset = center - (grid * GRID * scale)
-                        // offset = (window/2) - (grid * GRID * scale)
+                        // 3. Convert Grid Units to Pixel Coordinates for the main map
+                        const targetCenterX = gridClickX * GRID_SIZE
+                        const targetCenterY = gridClickY * GRID_SIZE
 
-                        const newOffsetX = (window.innerWidth / 2) - (gridClickX * GRID_SIZE * scale)
-                        const newOffsetY = (window.innerHeight / 2) - (gridClickY * GRID_SIZE * scale)
+                        // 2. We want to center the viewport on this point
+                        // New Origin wil be this point? NO, origin is always content center (fixed for layout)
+                        // We just change Offset.
+                        // Formula: Offset = ViewportCenter - TargetCenter * Scale ? NO.
+
+                        // Current Formula: P_screen = (P_map - Origin) * Scale + Origin + Offset
+                        // We want P_screen_center = ViewportCenter
+                        // ViewportCenter = (TargetCenter - Origin) * Scale + Origin + Offset
+                        // Offset = ViewportCenter - Origin - (TargetCenter - Origin) * Scale
+
+                        const viewportCenterX = viewportSize.width / 2
+                        const viewportCenterY = viewportSize.height / 2
+
+                        const newOffsetX = viewportCenterX - origin.x - (targetCenterX - origin.x) * scale
+                        const newOffsetY = viewportCenterY - origin.y - (targetCenterY - origin.y) * scale
 
                         setOffset({ x: newOffsetX, y: newOffsetY })
                     }}
@@ -1479,16 +1621,36 @@ export default function WarehouseMapPage() {
                                     ))}
 
                                     {/* Viewport Box */}
+                                    {/* Viewport Box (Current View) */}
                                     {(() => {
-                                        const vpX = -offset.x / (GRID_SIZE * scale)
-                                        const vpY = -offset.y / (GRID_SIZE * scale)
-                                        const vpW = window.innerWidth / (GRID_SIZE * scale)
-                                        const vpH = window.innerHeight / (GRID_SIZE * scale)
+                                        // Calculate Viewport Rect in Map Coordinates
+                                        if (viewportSize.width === 0) return null // Wait for client render
+
+                                        const viewW = (viewportSize.width - 260) // Sidebar
+                                        const viewH = (viewportSize.height - 80) // Header
+
+                                        // Calculate boundaries in Pixels first (Inverse Transform from Screen to Map Pixel)
+                                        const tlX_px = ((0 - origin.x - offset.x) / scale) + origin.x
+                                        const tlY_px = ((0 - origin.y - offset.y) / scale) + origin.y
+
+                                        const brX_px = ((viewW - origin.x - offset.x) / scale) + origin.x
+                                        const brY_px = ((viewH - origin.y - offset.y) / scale) + origin.y
+
+                                        // Convert to Grid Units for the Mini Map SVG
+                                        const tlX = tlX_px / GRID_SIZE
+                                        const tlY = tlY_px / GRID_SIZE
+                                        const width = (brX_px - tlX_px) / GRID_SIZE
+                                        const height = (brY_px - tlY_px) / GRID_SIZE
 
                                         return (
                                             <rect
-                                                x={vpX} y={vpY} width={vpW} height={vpH}
-                                                fill="transparent" stroke="#f43f5e" strokeWidth={Math.max(2, 4 / mmScale)}
+                                                x={tlX}
+                                                y={tlY}
+                                                width={width}
+                                                height={height}
+                                                fill="transparent"
+                                                stroke="#f43f5e"
+                                                strokeWidth={2 / mmScale}
                                                 vectorEffect="non-scaling-stroke"
                                             />
                                         )
@@ -1500,7 +1662,25 @@ export default function WarehouseMapPage() {
                 </div>
             </div>
 
-            {/* Hover Tooltip - Fixed to Screen */}
+            {/* Scale Indicator - Bottom Left */}
+            <div className="absolute bottom-6 left-6 bg-white/90 glass-strong border border-slate-200 p-2 rounded-lg shadow-lg z-50 flex flex-col items-center gap-1 pointer-events-none transition-opacity hover:opacity-100 opacity-80">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Scale</span>
+                <div className="flex items-center gap-2">
+                    {/* Visual Bar representing 1 meter (1 Grid Unit) */}
+                    <div className="flex flex-col items-center gap-0.5">
+                        <div
+                            className="h-2 bg-slate-800 border border-slate-400 relative transition-all duration-300 ease-out"
+                            style={{ width: Math.max(20, GRID_SIZE * scale) }}
+                        >
+                            <div className="absolute top-0 left-0 w-px h-full bg-white/50"></div>
+                            <div className="absolute top-0 right-0 w-px h-full bg-white/50"></div>
+                        </div>
+                        <span className="text-xs font-bold text-slate-800">1m</span>
+                    </div>
+                </div>
+                <span className="text-[10px] text-slate-400">(1 ô = 1 mét)</span>
+            </div>
+
             {/* Hover Tooltip - Fixed to Screen */}
             {hoveredStack && (
                 <div
