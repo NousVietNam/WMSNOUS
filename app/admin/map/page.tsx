@@ -62,7 +62,7 @@ interface StackNode {
     total_items: number
 }
 
-const GRID_SIZE = 80 // px
+const GRID_SIZE = 120 // px - Increased for better readability
 
 export default function WarehouseMapPage() {
     const [locations, setLocations] = useState<LocationNode[]>([])
