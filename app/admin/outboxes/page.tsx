@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase"
 import { Plus, Printer, RefreshCw, Trash2, Box, Download } from "lucide-react"
 import QRCode from "react-qr-code"
 import * as XLSX from 'xlsx'
+import { useReactToPrint } from "react-to-print"
 
 // Helper - returns DDMM format for outbox naming (day-month)
 const getDefaultDateStr = () => {
@@ -31,22 +32,6 @@ export default function OutboxPage() {
 
     // Selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-
-    // Print State
-    const [printBox, setPrintBox] = useState<any | null>(null) // For Modal Preview
-    const [printQueue, setPrintQueue] = useState<any[]>([]) // For Actual Print Job
-
-    // Trigger Print when Queue updates
-    useEffect(() => {
-        if (printQueue.length > 0) {
-            // Wait for DOM to render the queue items
-            const timer = setTimeout(() => {
-                window.print()
-                setPrintQueue([]) // Clear queue after print dialog opens
-            }, 500)
-            return () => clearTimeout(timer)
-        }
-    }, [printQueue])
 
     // Create Form
     const [formData, setFormData] = useState({
@@ -151,15 +136,31 @@ export default function OutboxPage() {
         XLSX.writeFile(wb, `OutboxList_${timestamp}.xlsx`)
     }
 
+    // Print State
+    const [printBox, setPrintBox] = useState<any | null>(null) // For Modal Preview
+    const [printQueue, setPrintQueue] = useState<any[]>([]) // For Actual Print Job
+
+    const printRef = useRef(null)
+    const handleReactToPrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Outbox-Labels-${new Date().toISOString()}`,
+        onAfterPrint: () => setPrintQueue([])
+    })
+
+    const triggerPrint = (items: any[]) => {
+        setPrintQueue(items)
+        setTimeout(() => handleReactToPrint(), 100)
+    }
+
     // --- TRIGGER PRINT ---
     const triggerBatchPrint = () => {
         if (selectedIds.size === 0) return alert("Chọn thùng để in")
         const queue = outboxes.filter(b => selectedIds.has(b.id))
-        setPrintQueue(queue)
+        triggerPrint(queue)
     }
 
     const triggerSinglePrint = (box: any) => {
-        setPrintQueue([box])
+        triggerPrint([box])
     }
 
     return (
@@ -250,47 +251,24 @@ export default function OutboxPage() {
                 </DialogContent>
             </Dialog>
 
-            {/* PRINT AREA - ONLY VISIBLE WHEN PRINTING */}
-            <div id="print-area" className="hidden print:block">
-                {printQueue.map(box => (
-                    <div key={box.id} className="w-[100mm] h-[150mm] flex flex-col items-center justify-center break-after-page page-break text-center">
-                        <h1 className="text-4xl font-bold mb-4">OUTBOX</h1>
-                        <div className="border-4 border-black p-2 rounded-xl">
-                            <QRCode value={box.code} size={320} />
+            {/* PRINT AREA - HIDDEN NORMALLY */}
+            <div style={{ display: "none" }}>
+                <div ref={printRef}>
+                    <style type="text/css" media="print">
+                        {`@page { size: 100mm 150mm; margin: 0; }`}
+                    </style>
+                    {printQueue.map(box => (
+                        <div key={box.id} className="w-[100mm] h-[150mm] flex flex-col items-center justify-center break-after-page text-center p-4">
+                            <h1 className="text-5xl font-black mb-6">OUTBOX</h1>
+                            <div className="border-4 border-black p-4 rounded-xl">
+                                <QRCode value={box.code} size={280} />
+                            </div>
+                            <p className="mt-6 text-3xl text-slate-900 font-mono font-black tracking-widest">{box.code}</p>
+                            {/* Time/App info removed as requested */}
                         </div>
-                        <p className="mt-4 text-2xl text-slate-900 font-mono font-black tracking-wider">{box.code}</p>
-                        <p className="mt-2 text-base text-slate-600">{new Date().toLocaleDateString('vi-VN')}</p>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
-
-            <style jsx global>{`
-                @media print {
-                    @page { 
-                        margin: 0; 
-                        size: 100mm 150mm; 
-                    }
-                    body { visibility: hidden; background: white; margin: 0; padding: 0; }
-                    #print-area { 
-                        visibility: visible; 
-                        position: absolute; 
-                        left: 0; 
-                        top: 0; 
-                        width: 100%; 
-                        height: 100%;
-                        margin: 0; 
-                        padding: 0; 
-                    }
-                    #print-area * { visibility: visible; }
-                    .page-break { page-break-after: always; break-after: page; }
-                    .page-break:last-child { page-break-after: avoid; break-after: avoid; }
-                    /* Flex fixes for print */
-                    #print-area .flex { display: flex !important; }
-                    #print-area .flex-col { flex-direction: column !important; }
-                    #print-area .items-center { align-items: center !important; }
-                    #print-area .justify-center { justify-content: center !important; }
-                }
-            `}</style>
         </div>
     )
 }

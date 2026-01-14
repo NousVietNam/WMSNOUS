@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
+import { useReactToPrint } from "react-to-print"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -26,27 +27,39 @@ export default function BoxesPage() {
     const [loading, setLoading] = useState(true)
     const [openDialog, setOpenDialog] = useState(false)
 
-    // Print State - Unified Native Print
+    // Print State
     const [printBox, setPrintBox] = useState<Box | null>(null) // For Modal Preview
-    const [printQueue, setPrintQueue] = useState<Box[]>([]) // For Actual Print
+    const [printQueue, setPrintQueue] = useState<Box[]>([]) // For Actual Print - Hidden
     const [bulkQty, setBulkQty] = useState<string>('')
     const [searchTerm, setSearchTerm] = useState<string>('')
+
+    const printRef = useRef(null)
+    const handleReactToPrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Box-Labels-${new Date().toISOString()}`,
+        onAfterPrint: () => setPrintQueue([])
+    })
+
+    const triggerPrint = (boxesToPrint: Box[]) => {
+        setPrintQueue(boxesToPrint)
+        // Need timeout to allow render
+        setTimeout(() => {
+            handleReactToPrint()
+        }, 100)
+    }
+
+    const handlePrintBatch = () => {
+        if (selectedIds.size === 0) return
+        const selectedBoxes = boxes.filter(b => selectedIds.has(b.id))
+        triggerPrint(selectedBoxes)
+    }
 
     const filteredBoxes = boxes.filter(b =>
         b.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (b.locations?.code || '').toLowerCase().includes(searchTerm.toLowerCase())
     )
 
-    // UseEffect Trigger
-    useEffect(() => {
-        if (printQueue.length > 0) {
-            const timer = setTimeout(() => {
-                window.print()
-                setPrintQueue([])
-            }, 500)
-            return () => clearTimeout(timer)
-        }
-    }, [printQueue])
+    // UseEffect Trigger REMOVED
 
     // Selection
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -241,7 +254,7 @@ export default function BoxesPage() {
 
     // UNIFIED PRINT
     const triggerSinglePrint = (box: Box) => {
-        setPrintQueue([box])
+        triggerPrint([box])
     }
 
     return (
@@ -310,9 +323,14 @@ export default function BoxesPage() {
                                     </div>
                                 </DialogContent>
                             </Dialog>
-                            <Button variant="outline" onClick={handleExport} disabled={selectedIds.size === 0} className="w-full">
-                                <Download className="mr-2 h-4 w-4" /> Xuất Excel ({selectedIds.size})
-                            </Button>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Button variant="outline" onClick={handleExport} disabled={selectedIds.size === 0} className="w-full">
+                                    <Download className="mr-2 h-4 w-4" /> Xuất ({selectedIds.size})
+                                </Button>
+                                <Button variant="outline" onClick={handlePrintBatch} disabled={selectedIds.size === 0} className="w-full">
+                                    <Printer className="mr-2 h-4 w-4" /> In ({selectedIds.size})
+                                </Button>
+                            </div>
                         </div>
 
                         {/* Stats Dashboard */}
@@ -443,48 +461,24 @@ export default function BoxesPage() {
                 </Dialog>
             </main>
 
-            {/* PRINT AREA - VISIBLE ONLY WHEN PRINTING */}
-            <div id="print-area" className="hidden print:block">
-                {printQueue.map(box => (
-                    <div key={box.id} className="w-[100mm] h-[150mm] flex flex-col items-center justify-center break-after-page page-break text-center">
-                        <h1 className="text-4xl font-bold mb-4">STORAGE</h1>
-                        <div className="border-4 border-black p-2 rounded-xl">
-                            <QRCode value={box.code} size={320} />
+            {/* PRINT AREA - HIDDEN NORMALLY */}
+            <div style={{ display: "none" }}>
+                <div ref={printRef}>
+                    <style type="text/css" media="print">
+                        {`@page { size: 100mm 150mm; margin: 0; }`}
+                    </style>
+                    {printQueue.map(box => (
+                        <div key={box.id} className="w-[100mm] h-[150mm] flex flex-col items-center justify-center break-after-page text-center p-4">
+                            <h1 className="text-5xl font-black mb-6">STORAGE</h1>
+                            <div className="border-4 border-black p-4 rounded-xl">
+                                <QRCode value={box.code} size={280} />
+                            </div>
+                            <p className="mt-6 text-3xl text-slate-900 font-mono font-black tracking-widest">{box.code}</p>
+                            {/* User requested to remove time/app info */}
                         </div>
-                        <p className="mt-4 text-2xl text-slate-900 font-mono font-black tracking-wider">{box.code}</p>
-                        <p className="mt-2 text-base text-slate-600">{new Date().toLocaleDateString('vi-VN')}</p>
-                    </div>
-                ))}
+                    ))}
+                </div>
             </div>
-
-            <style jsx global>{`
-                @media print {
-                    @page { 
-                        margin: 0; 
-                        size: 100mm 150mm; 
-                    }
-                    body { visibility: hidden; background: white; margin: 0; padding: 0; }
-                    #print-area { 
-                        visibility: visible; 
-                        position: absolute; 
-                        left: 0; 
-                        top: 0; 
-                        width: 100%; 
-                        height: 100%;
-                        margin: 0; 
-                        padding: 0; 
-                    }
-                    #print-area * { visibility: visible; }
-                    
-                    /* Restoration of layout for print area */
-                    .flex { display: flex !important; }
-                    .flex-col { flex-direction: column !important; }
-                    .items-center { align-items: center !important; }
-                    .justify-center { justify-content: center !important; }
-                    
-                    .page-break { page-break-after: always; break-after: page; }
-                }
-            `}</style>
         </div >
     )
 }
