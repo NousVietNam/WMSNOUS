@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
+import { useReactToPrint } from "react-to-print"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -185,9 +186,11 @@ export default function LocationsPage() {
         }
     }
 
-    const handlePrint = () => {
-        window.print()
-    }
+    const printRef = useRef(null)
+    const handlePrint = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Location-${printLocation?.code || 'Code'}`,
+    })
 
     const filteredLocations = locations.filter(l =>
         l.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -302,16 +305,22 @@ export default function LocationsPage() {
             <Dialog open={!!printLocation} onOpenChange={(open) => !open && setPrintLocation(null)}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>In Mã Vị Trí</DialogTitle></DialogHeader>
-                    <div className="flex flex-col items-center p-6 border-2 border-dashed rounded-lg" id="print-area">
-                        {printLocation && (
-                            <>
-                                <h2 className="text-3xl font-bold mb-2">{printLocation.code}</h2>
-                                <QRCode value={printLocation.code} size={200} />
-                                <p className="mt-2 text-sm">{printLocation.type}</p>
-                            </>
-                        )}
+                    <div className="flex justify-center p-4">
+                        <div
+                            ref={printRef}
+                            className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg w-full max-w-[300px] aspect-[3/4] print:border-none print:w-screen print:h-screen print:max-w-none"
+                        >
+                            {printLocation && (
+                                <>
+                                    <h2 className="text-4xl font-black mb-4">{printLocation.code}</h2>
+                                    <QRCode value={printLocation.code} size={250} />
+                                    <p className="mt-4 text-xl font-bold">{printLocation.type}</p>
+                                    <p className="text-sm text-slate-500 mt-1">{printLocation.description}</p>
+                                </>
+                            )}
+                        </div>
                     </div>
-                    <Button onClick={handlePrint}>In Ngay</Button>
+                    <Button onClick={() => handlePrint()}>In Ngay</Button>
                 </DialogContent>
             </Dialog>
 
