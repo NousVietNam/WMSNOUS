@@ -266,10 +266,22 @@ export default function OutboxPage() {
 
             <style jsx global>{`
                 @media print {
-                    @page { margin: 0; size: 100mm 150mm; }
-                    body { visibility: hidden; background: white; }
-                    #print-area, #print-area * { visibility: visible; }
-                    #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+                    @page { 
+                        margin: 0; 
+                        size: 100mm 150mm; 
+                    }
+                    body { visibility: hidden; background: white; margin: 0; padding: 0; }
+                    #print-area { 
+                        visibility: visible; 
+                        position: absolute; 
+                        left: 0; 
+                        top: 0; 
+                        width: 100%; 
+                        height: 100%;
+                        margin: 0; 
+                        padding: 0; 
+                    }
+                    #print-area * { visibility: visible; }
                     .page-break { page-break-after: always; break-after: page; }
                     .page-break:last-child { page-break-after: avoid; break-after: avoid; }
                     /* Flex fixes for print */
