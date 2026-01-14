@@ -231,33 +231,46 @@ body {
     margin: 0;
   }
 
+  /* Hide default browser headers/footers if possible (browser dependent) */
   body {
-    visibility: hidden;
-    background: white;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  #print-area {
-    visibility: visible;
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100mm;
-    height: 150mm;
-    margin: 0;
-    padding: 10mm;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    border: none !important;
+  /* Utility for forcing page breaks between labels */
+  .break-after-page {
+    page-break-after: always;
+    break-after: page;
   }
 
-  #print-area * {
-    visibility: visible;
-  }
-
+  /* Hide all other UI */
   [role="dialog"] button,
-  [role="dialog"]>div:first-child {
+  [role="dialog"]>div:first-child,
+  header,
+  nav,
+  aside,
+  .no-print {
     display: none !important;
+  }
+}
+
+/* Specific Print Area styling - Available globally for Previews */
+.print-label-container {
+  width: 100mm;
+  height: 150mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  overflow: hidden;
+  border: 1px dashed #ccc;
+  /* Helper border for screen, can override in print */
+}
+
+@media print {
+  .print-label-container {
+    border: none;
+    /* No border on actual print */
   }
 }

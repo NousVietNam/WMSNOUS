@@ -312,14 +312,22 @@ export default function LocationsPage() {
                 <DialogContent>
                     <DialogHeader><DialogTitle>In Mã Vị Trí</DialogTitle></DialogHeader>
                     <div className="flex justify-center p-4">
-                        <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg w-full max-w-[300px] aspect-[3/4]">
+                        {/* Preview Area */}
+                        <div className="flex justify-center p-4 bg-slate-100 rounded-lg overflow-auto">
                             {printLocation && (
-                                <>
-                                    <h2 className="text-4xl font-black mb-4">{printLocation.code}</h2>
-                                    <QRCode value={printLocation.code} size={250} />
-                                    <p className="mt-4 text-xl font-bold">{printLocation.type}</p>
-                                    <p className="text-sm text-slate-500 mt-1">{printLocation.description}</p>
-                                </>
+                                <div className="print-label-container scale-75 origin-top shadow-lg">
+                                    <div className="text-4xl font-bold uppercase tracking-wider mb-4">VỊ TRÍ</div>
+                                    <div className="w-full max-w-[80%] aspect-square">
+                                        <QRCode
+                                            size={256}
+                                            style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                                            value={printLocation.code}
+                                            viewBox={`0 0 256 256`}
+                                        />
+                                    </div>
+                                    <div className="text-5xl font-mono font-bold mt-6 break-all">{printLocation.code}</div>
+                                    <div className="text-xl text-slate-600 mt-2 font-medium">{printLocation.type}</div>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -401,13 +409,18 @@ export default function LocationsPage() {
                         {`@page { size: 100mm 150mm; margin: 0; }`}
                     </style>
                     {printLocation && (
-                        <div className="w-[100mm] h-[150mm] flex flex-col items-center justify-center text-center p-4 break-after-page">
-                            <h2 className="text-5xl font-black mb-6">{printLocation.code}</h2>
-                            <div className="border-4 border-black p-4 rounded-xl">
-                                <QRCode value={printLocation.code} size={280} />
+                        <div className="print-label-container break-after-page p-4">
+                            <div className="text-4xl font-bold uppercase tracking-wider mb-4">VỊ TRÍ</div>
+                            <div className="w-full max-w-[80%] aspect-square">
+                                <QRCode
+                                    size={256}
+                                    style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                                    value={printLocation.code}
+                                    viewBox={`0 0 256 256`}
+                                />
                             </div>
-                            <p className="mt-6 text-3xl font-mono font-black tracking-widest">{printLocation.type}</p>
-                            <p className="text-xl text-slate-600 mt-2">{printLocation.description}</p>
+                            <div className="text-5xl font-mono font-bold mt-6 break-all">{printLocation.code}</div>
+                            <div className="text-xl text-slate-600 mt-2 font-medium">{printLocation.type}</div>
                         </div>
                     )}
                 </div>

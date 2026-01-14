@@ -223,7 +223,10 @@ export default function BoxesPage() {
     // Drill down
     const handleViewItems = async (box: Box) => {
         setSelectedBox(box)
-        const { data } = await supabase.from('inventory_items').select('*, products(name, sku, barcode)').eq('box_id', box.id)
+        const { data } = await supabase.from('inventory_items')
+            .select('*, products(name, sku, barcode)')
+            .eq('box_id', box.id)
+            .gt('quantity', 0)
         if (data) setBoxItems(data)
     }
 
@@ -242,7 +245,10 @@ export default function BoxesPage() {
 
     const handleExport = async () => {
         if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
-        const { data } = await supabase.from('inventory_items').select('quantity, boxes(code), products(sku,name,barcode)').in('box_id', Array.from(selectedIds))
+        const { data } = await supabase.from('inventory_items')
+            .select('quantity, boxes(code), products(sku,name,barcode)')
+            .in('box_id', Array.from(selectedIds))
+            .gt('quantity', 0)
         if (!data) return
         const exportData = data.map((row: any) => ({
             'Mã Thùng': row.boxes?.code,
@@ -419,10 +425,23 @@ export default function BoxesPage() {
                         <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed rounded-lg bg-slate-50">
                             {printBox && (
                                 <>
-                                    <h2 className="text-4xl font-black mb-4">{printBox.code}</h2>
-                                    <QRCode value={printBox.code} size={200} />
-                                    <p className="mt-4 text-sm text-muted-foreground">Khổ in: 100x150mm</p>
-                                </>
+                                    {/* Preview Area - Matches Print Output */}
+                                    <div className="flex justify-center p-4 bg-slate-100 rounded-lg overflow-auto">
+                                        {printBox && (
+                                            <div className="print-label-container scale-75 origin-top shadow-lg">
+                                                <div className="text-4xl font-bold uppercase tracking-wider mb-4">THÙNG</div>
+                                                <div className="w-full max-w-[80%] aspect-square">
+                                                    <QRCode
+                                                        size={256}
+                                                        style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                                                        value={printBox.code}
+                                                        viewBox={`0 0 256 256`}
+                                                    />
+                                                </div>
+                                                <div className="text-4xl font-mono font-bold mt-6 break-all line-clamp-2">{printBox.code}</div>
+                                            </div>
+                                        )}
+                                    </div>                </>
                             )}
                         </div>
                         <DialogFooter><Button onClick={() => printBox && triggerSinglePrint(printBox)}>In Ngay</Button></DialogFooter>
@@ -474,13 +493,17 @@ export default function BoxesPage() {
                         {`@page { size: 100mm 150mm; margin: 0; }`}
                     </style>
                     {printQueue.map(box => (
-                        <div key={box.id} className="w-[100mm] h-[150mm] flex flex-col items-center justify-center break-after-page text-center p-4">
-                            <h1 className="text-5xl font-black mb-6">STORAGE</h1>
-                            <div className="border-4 border-black p-4 rounded-xl">
-                                <QRCode value={box.code} size={280} />
+                        <div key={box.id} className="print-label-container break-after-page p-4">
+                            <div className="text-4xl font-bold uppercase tracking-wider mb-4">THÙNG</div>
+                            <div className="w-full max-w-[80%] aspect-square">
+                                <QRCode
+                                    size={256}
+                                    style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                                    value={box.code}
+                                    viewBox={`0 0 256 256`}
+                                />
                             </div>
-                            <p className="mt-6 text-3xl text-slate-900 font-mono font-black tracking-widest">{box.code}</p>
-                            {/* User requested to remove time/app info */}
+                            <div className="text-4xl font-mono font-bold mt-6 break-all line-clamp-2">{box.code}</div>
                         </div>
                     ))}
                 </div>

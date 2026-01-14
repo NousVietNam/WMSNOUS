@@ -1,14 +1,29 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import React, { useState, useEffect, useRef } from 'react'
 import Link from "next/link"
+import { Save, ZoomIn, ZoomOut, Move, Grid, Layers, Loader2, MousePointer2, Info, Box, ArrowUp, ArrowDown, Search, X as SearchX, Home, Plus, Square, DoorOpen, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Save, ZoomIn, ZoomOut, Move, Grid, Layers, Loader2, MousePointer2, Info, Box, ArrowUp, ArrowDown, Search, X as SearchX, Home, Plus } from "lucide-react"
+import { Input } from "@/components/ui/input"
 
+// -- Types --
 
-// Add to interfaces
+interface DrawElement {
+    id: string
+    type: 'WALL' | 'DOOR'
+    x: number
+    y: number
+    width: number
+    height: number
+    rotation: number
+    metadata?: {
+        endX?: number
+        endY?: number
+        [key: string]: any
+    }
+}
+
 interface LocationNode {
     id: string
     code: string
@@ -18,8 +33,8 @@ interface LocationNode {
     width: number
     height: number
     rotation?: number
-    level_order?: number // New field
-    capacity?: number // Capacity of this location
+    level_order?: number
+    capacity?: number
     stats?: {
         box_count: number
         total_items: number
@@ -27,31 +42,8 @@ interface LocationNode {
     }
 }
 
-// ...
-
-// Helper Component for Box Gauge
-const BoxGauge = ({ items }: { items: number }) => {
-    // 0-100 items scale
-    const percent = Math.min(100, Math.max(0, items))
-    let color = 'bg-green-500'
-    if (percent < 30) color = 'bg-red-500'
-    else if (percent < 70) color = 'bg-yellow-500'
-
-    return (
-        <div className="w-3 h-4 bg-slate-200 border border-slate-300 rounded-[1px] relative flex items-end overflow-hidden" title={`${items} items`}>
-            <div
-                className={`w-full ${color} transition-all duration-300`}
-                style={{ height: `${percent}%` }}
-            ></div>
-        </div>
-    )
-}
-
-
-// Helper Component for Box Gauge
-
 interface StackNode {
-    id: string // Use first location ID as key
+    id: string
     baseCode: string
     pos_x: number
     pos_y: number
@@ -62,7 +54,7 @@ interface StackNode {
     total_items: number
 }
 
-const GRID_SIZE = 120 // px - Increased for better readability
+const GRID_SIZE = 120
 
 export default function WarehouseMapPage() {
     const [locations, setLocations] = useState<LocationNode[]>([])
@@ -118,12 +110,40 @@ export default function WarehouseMapPage() {
     const resizeStartSize = useRef({ width: 0, height: 0 })
     const resizeStartMouse = useRef({ x: 0, y: 0 })
     const unstackZoneRef = useRef<HTMLDivElement>(null)
+    const dragStartPositions = useRef<Map<string, { x: number, y: number }>>(new Map())
 
     const [hasChanges, setHasChanges] = useState(false)
+
+    // Map Elements State
+    const [mapElements, setMapElements] = useState<DrawElement[]>([])
+    const [drawMode, setDrawMode] = useState<'NONE' | 'WALL' | 'DOOR'>('NONE')
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+    const isDrawing = useRef(false)
+    const drawStart = useRef({ x: 0, y: 0 })
+    const [tempDraw, setTempDraw] = useState<DrawElement | null>(null)
+    const [elementToDelete, setElementToDelete] = useState<string | null>(null)
+
+    // Hover Tooltip State
+    const [hoveredStack, setHoveredStack] = useState<StackNode | null>(null)
+    const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
 
     useEffect(() => {
         fetchData()
     }, [])
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Prevent deletion if user is typing in an input
+            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+
+            if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.size > 0) {
+                // Trigger delete for all selected
+                setElementToDelete('BATCH') // Use special flag for batch
+            }
+        }
+        window.addEventListener('keydown', handleKeyDown)
+        return () => window.removeEventListener('keydown', handleKeyDown)
+    }, [selectedIds])
 
     useEffect(() => {
         // Group locations into Stacks
@@ -175,12 +195,18 @@ export default function WarehouseMapPage() {
     const fetchData = async () => {
         setLoading(true)
         try {
-            const [layoutRes, statsRes] = await Promise.all([
+            const [layoutRes, statsRes, elementsRes] = await Promise.all([
                 fetch('/api/map/layout'),
-                fetch('/api/map/stats')
+                fetch('/api/map/stats'),
+                fetch('/api/map/elements')
             ])
             const layoutJson = await layoutRes.json()
             const statsJson = await statsRes.json()
+            const elementsJson = await elementsRes.json()
+
+            if (elementsJson.success) {
+                setMapElements(elementsJson.data)
+            }
 
             if (layoutJson.success) {
                 const statsMap = new Map(statsJson.data?.map((s: any) => [s.id, s]) || [])
@@ -245,16 +271,89 @@ export default function WarehouseMapPage() {
         }
     }
 
+    const saveElement = async (el: DrawElement) => {
+        await fetch('/api/map/elements', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'UPSERT', element: el })
+        })
+        fetchData()
+    }
+
+    const deleteElement = (id: string) => {
+        setSelectedIds(new Set([id]))
+        setElementToDelete(id)
+    }
+
+    const executeDelete = async () => {
+        if (!elementToDelete && selectedIds.size === 0) return
+
+        const idsToDelete = elementToDelete === 'BATCH' ? Array.from(selectedIds) : (elementToDelete ? [elementToDelete] : [])
+
+        // Parallel delete requests (or bulk API if supported, sticking to loop for safety now)
+        await Promise.all(idsToDelete.map(id =>
+            fetch('/api/map/elements', {
+                method: 'POST',
+                body: JSON.stringify({ action: 'DELETE', id })
+            })
+        ))
+
+        setSelectedIds(new Set())
+        setElementToDelete(null)
+        fetchData()
+    }
+
     // --- Mouse Handlers ---
 
     const handleMouseDown = (e: React.MouseEvent) => {
-        // e.target check to see if we clicked a node or canvas
-        // Actually, we put onMouseDown on Node specific divs to capture node drag
-        // And on container for Pan.
-        // But if we bubble up, we can handle everything here if we identify target.
-        // Easier: Separate handlers.
+        // Drawing Logic
+        if (drawMode === 'WALL') {
+            isDrawing.current = true
+            const rect = e.currentTarget.getBoundingClientRect()
+            const x = (e.clientX - rect.left - offset.x) / (GRID_SIZE * scale)
+            const y = (e.clientY - rect.top - offset.y) / (GRID_SIZE * scale)
 
-        // This is Canvas Pan Handler
+            // Snap to nearest grid intersection for cleaner lines
+            const gridX = Math.max(0, Math.round(x))
+            const gridY = Math.max(0, Math.round(y))
+
+            drawStart.current = { x: gridX, y: gridY }
+            setTempDraw({
+                id: 'temp',
+                type: 'WALL',
+                x: gridX,
+                y: gridY,
+                width: 0,
+                height: 0,
+                rotation: 0,
+                metadata: { endX: gridX, endY: gridY }
+            })
+            return
+        }
+
+        if (drawMode === 'DOOR') {
+            isDrawing.current = true
+            const rect = e.currentTarget.getBoundingClientRect()
+            const x = (e.clientX - rect.left - offset.x) / (GRID_SIZE * scale)
+            const y = (e.clientY - rect.top - offset.y) / (GRID_SIZE * scale)
+
+            const gridX = Math.max(0, Math.round(x))
+            const gridY = Math.max(0, Math.round(y))
+
+            drawStart.current = { x: gridX, y: gridY }
+            setTempDraw({
+                id: 'temp',
+                type: 'DOOR',
+                x: gridX,
+                y: gridY,
+                width: 0,
+                height: 0,
+                rotation: 0,
+                metadata: { endX: gridX, endY: gridY }
+            })
+            return
+        }
+
+        // Canvas Pan Handler
         if (e.button === 0) { // Left Click
             isPanning.current = true
             lastMousePos.current = { x: e.clientX, y: e.clientY }
@@ -274,12 +373,57 @@ export default function WarehouseMapPage() {
     const handleStackMouseDown = (e: React.MouseEvent, stack: StackNode) => {
         if (mode !== 'EDIT') return
         e.stopPropagation() // Prevent Panning
+
+        let newSelectedIds = new Set(selectedIds)
+
+        // Multi-select Logic
+        if (e.shiftKey || e.ctrlKey) {
+            // If already selected, DO NOT DESELECT here - wait to see if it's a drag or click
+            // For now, prioritize dragging group, so we keep it selected.
+            // If user wants to deselect, they can click distinctively (toggle) but overlapping drag/toggle behavior favors Drag.
+            if (!newSelectedIds.has(stack.id)) {
+                newSelectedIds.add(stack.id)
+            }
+            // If it HAS it, do nothing (keep selected to enable drag)
+        } else {
+            // If clicking an item that is NOT in the current selection, clear and select it.
+            // If clicking an item that IS in the selection, keep selection to drag the group.
+            if (!newSelectedIds.has(stack.id)) {
+                newSelectedIds = new Set([stack.id])
+            }
+        }
+
+        setSelectedIds(newSelectedIds)
         setDraggingStackId(stack.id)
         dragStartPos.current = { x: e.clientX, y: e.clientY }
-        nodeStartPos.current = { x: stack.pos_x, y: stack.pos_y }
+
+        // Snapshot initial positions for ALL selected stacks
+        const positions = new Map<string, { x: number, y: number }>()
+        stacks.forEach(s => {
+            if (newSelectedIds.has(s.id)) {
+                positions.set(s.id, { x: s.pos_x, y: s.pos_y })
+            }
+        })
+        dragStartPositions.current = positions
     }
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        // Drawing Resize
+        if (isDrawing.current && (drawMode === 'WALL' || drawMode === 'DOOR') && tempDraw) {
+            const rect = e.currentTarget.getBoundingClientRect()
+            const x = (e.clientX - rect.left - offset.x) / (GRID_SIZE * scale)
+            const y = (e.clientY - rect.top - offset.y) / (GRID_SIZE * scale)
+
+            const gridX = Math.max(0, Math.round(x))
+            const gridY = Math.max(0, Math.round(y))
+
+            setTempDraw(prev => prev ? ({
+                ...prev,
+                metadata: { ...prev.metadata, endX: gridX, endY: gridY }
+            }) : null)
+            return
+        }
+
         // Handle resize
         if (resizingStackId && mode === 'EDIT') {
             const deltaX = e.clientX - resizeStartMouse.current.x
@@ -311,38 +455,26 @@ export default function WarehouseMapPage() {
             return
         }
 
-        // 2. Node Dragging
+        // 2. Node Dragging (Multi-Stack Support)
         if (draggingStackId && mode === 'EDIT') {
-            // Calculate delta in screen pixels
-            const dxPx = (e.clientX - dragStartPos.current.x) / scale
-            const dyPx = (e.clientY - dragStartPos.current.y) / scale
+            const deltaX = e.clientX - dragStartPos.current.x
+            const deltaY = e.clientY - dragStartPos.current.y
+            const gridDeltaX = Math.round(deltaX / (GRID_SIZE * scale))
+            const gridDeltaY = Math.round(deltaY / (GRID_SIZE * scale))
 
-            // Convert to Grid Units
-            const dxGrid = Math.round(dxPx / GRID_SIZE)
-            const dyGrid = Math.round(dyPx / GRID_SIZE)
-
-            // Update local state (Snap to Grid)
-            const newX = Math.max(0, nodeStartPos.current.x + dxGrid)
-            const newY = Math.max(0, nodeStartPos.current.y + dyGrid)
-
-            // Update ALL locations in this stack
-            // We need to find the locations that belong to this stack ID (which is the id of the first element)
-            // But wait, we need to update 'locations' state, which will trigger re-stacking.
-            // To do this efficiently, we find the subset of locations in the dragged stack.
-
-            const targetStack = stacks.find(s => s.id === draggingStackId)
-            if (targetStack) {
-                const levelIds = new Set(targetStack.levels.map(l => l.id))
-
-                // Only update if actually moved
-                if (newX !== targetStack.pos_x || newY !== targetStack.pos_y) {
-                    setHasChanges(true)
+            setStacks(prev => prev.map(s => {
+                const initialPos = dragStartPositions.current.get(s.id)
+                if (initialPos) {
+                    return {
+                        ...s,
+                        pos_x: Math.max(0, initialPos.x + gridDeltaX),
+                        pos_y: Math.max(0, initialPos.y + gridDeltaY)
+                    }
                 }
+                return s
+            }))
 
-                setLocations(prev => prev.map(l =>
-                    levelIds.has(l.id) ? { ...l, pos_x: newX, pos_y: newY } : l
-                ))
-            }
+            setHasChanges(true)
         }
     }
 
@@ -384,11 +516,52 @@ export default function WarehouseMapPage() {
     }
 
     const handleMouseUp = (e: React.MouseEvent) => {
-        if (resizingStackId) {
-            setResizingStackId(null)
+        if (isDrawing.current && (drawMode === 'WALL' || drawMode === 'DOOR') && tempDraw) {
+            isDrawing.current = false
+
+            // Prevent zero-length elements (dots)
+            const endX = tempDraw.metadata?.endX ?? tempDraw.x
+            const endY = tempDraw.metadata?.endY ?? tempDraw.y
+            if (tempDraw.x === endX && tempDraw.y === endY) {
+                setTempDraw(null)
+                return
+            }
+
+            const newElement = { ...tempDraw, id: crypto.randomUUID() }
+
+            // Optimistic Update
+            setMapElements(prev => [...prev, newElement])
+            saveElement(newElement)
+
+            setTempDraw(null)
+            // drawMode remains active for continuous drawing? Or reset?
+            // User usually wants to draw multiple lines. Let's keep it active.
+            // setDrawMode('NONE') 
             return
         }
 
+        if (resizingStackId) {
+            // Commit Resize Changes
+            const stack = stacks.find(s => s.id === resizingStackId)
+            if (stack) {
+                setLocations(prev => prev.map(l => {
+                    // Update all levels in this stack (or just the stack definition if it's 1-to-1)
+                    if (l.id === stack.id || stack.levels.some(level => level.id === l.id)) {
+                        return {
+                            ...l,
+                            pos_x: stack.pos_x,
+                            pos_y: stack.pos_y,
+                            width: stack.width,
+                            height: stack.height
+                        }
+                    }
+                    return l
+                }))
+                setHasChanges(true)
+            }
+            setResizingStackId(null)
+            return
+        }
         let actionTaken = false
 
         if (draggingStackId && mode === 'EDIT' && unstackZoneRef.current) {
@@ -484,44 +657,84 @@ export default function WarehouseMapPage() {
             }
         }
 
-        // Auto-fix Level Orders if not unstacked
         if (!actionTaken && draggingStackId && mode === 'EDIT') {
-            // Group current locations by X,Y
-            const grouped = new Map<string, LocationNode[]>()
-            locations.forEach(l => {
-                const key = `${l.pos_x},${l.pos_y}`
-                if (!grouped.has(key)) grouped.set(key, [])
-                grouped.get(key)?.push(l)
-            })
+            const droppedStack = stacks.find(s => s.id === draggingStackId)
 
-            let changed = false
-            const newLocs = [...locations]
+            if (droppedStack) {
+                // Check overlap with other stacks
+                const targetStack = stacks.find(s =>
+                    s.id !== draggingStackId &&
+                    Math.abs(s.pos_x - droppedStack.pos_x) < 1 &&
+                    Math.abs(s.pos_y - droppedStack.pos_y) < 1
+                )
 
-            grouped.forEach((locs) => {
-                if (locs.length > 1) {
-                    // Check for duplicates in level_order
-                    const uniqueOrders = new Set(locs.map(l => l.level_order || 0))
-                    if (uniqueOrders.size < locs.length) {
-                        // Fix needed
-                        // Sort stable: existing order -> ID
-                        locs.sort((a, b) => (a.level_order || 0) - (b.level_order || 0) || a.id.localeCompare(b.id))
+                if (targetStack) {
+                    // REQUIRE ALT KEY TO MERGE
+                    if (e.altKey) {
+                        if (confirm(`Gộp ${droppedStack.baseCode} vào ${targetStack.baseCode}?`)) {
+                            // Merge dropped -> target
+                            const newLocs = locations.map(l => {
+                                // Find if this location belongs to dropped stack
+                                const inDropped = droppedStack.id === l.id || droppedStack.levels.some(dl => dl.id === l.id)
+                                if (inDropped) {
+                                    return {
+                                        ...l,
+                                        pos_x: targetStack.pos_x,
+                                        pos_y: targetStack.pos_y,
+                                        width: targetStack.width,
+                                        height: targetStack.height
+                                    }
+                                }
+                                return l
+                            })
+                            setLocations(newLocs)
+                            setHasChanges(true)
 
-                        locs.forEach((l, idx) => {
-                            const foundIndex = newLocs.findIndex(x => x.id === l.id)
-                            if (foundIndex !== -1 && newLocs[foundIndex].level_order !== idx) {
-                                newLocs[foundIndex] = { ...newLocs[foundIndex], level_order: idx }
-                                changed = true
+                            // Remove selection after merge to avoid confusion
+                            setSelectedIds(new Set())
+                        } else {
+                            // Cancel merge - Revert visual state by fetching
+                            fetchData()
+                            return
+                        }
+                    } else {
+                        // Prevent accidental merge - Just move to new spot (allowing overlap visually but NOT merging data)
+                        // Commit moves for all selected stacks
+                        setLocations(prev => prev.map(l => {
+                            // Check if this location belongs to a selected stack
+                            const belongingStack = stacks.find(s => s.levels.some(lev => lev.id === l.id || s.id === l.id))
+
+                            if (belongingStack && selectedIds.has(belongingStack.id)) {
+                                // Update with the position from Stacks state (visually updated in MouseMove)
+                                return {
+                                    ...l,
+                                    pos_x: belongingStack.pos_x,
+                                    pos_y: belongingStack.pos_y
+                                }
                             }
-                        })
+                            return l
+                        }))
+                        setHasChanges(true)
                     }
+                } else {
+                    // No overlap - Commit move for all selected
+                    setLocations(prev => prev.map(l => {
+                        const belongingStack = stacks.find(s => s.levels.some(lev => lev.id === l.id || s.id === l.id))
+                        if (belongingStack && selectedIds.has(belongingStack.id)) {
+                            return {
+                                ...l,
+                                pos_x: belongingStack.pos_x,
+                                pos_y: belongingStack.pos_y
+                            }
+                        }
+                        return l
+                    }))
+                    setHasChanges(true)
                 }
-            })
-
-            if (changed) {
-                setLocations(newLocs)
-                setHasChanges(true)
-                console.log("Auto-corrected stack levels")
             }
+            setDraggingStackId(null)
+            setResizingStackId(null)
+            return
         }
 
         isPanning.current = false
@@ -634,95 +847,29 @@ export default function WarehouseMapPage() {
                     </div>
 
                     {/* Add Zone Dropdown (Edit Mode Only) */}
+                    {/* Drawing Tools (Edit Mode Only) */}
                     {mode === 'EDIT' && (
-                        <div className="relative group">
-                            <button className="glass-strong px-4 py-2 rounded-lg text-white font-medium hover:bg-white/20 transition-all flex items-center gap-2">
-                                <Plus size={16} />
-                                Thêm Khu Vực
+                        <div className="flex bg-white/10 p-1 rounded-lg ml-4 gap-1">
+                            <button
+                                onMouseDown={(e) => {
+                                    e.preventDefault(); e.stopPropagation();
+                                    setDrawMode(drawMode === 'WALL' ? 'NONE' : 'WALL')
+                                }}
+                                className={`p-2 rounded transition-colors ${drawMode === 'WALL' ? 'bg-white text-indigo-600 shadow-sm' : 'text-white hover:bg-white/20'}`}
+                                title="Vẽ Tường (Kéo thả)"
+                            >
+                                <Square size={18} />
                             </button>
-                            <div className="absolute top-full left-0 mt-1 bg-white rounded-lg shadow-xl border border-slate-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 min-w-[200px]">
-                                <button
-                                    onClick={async () => {
-                                        setLoading(true)
-                                        try {
-                                            const res = await fetch('/api/map/zones', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ zoneType: 'OFFICE', width: 4, height: 3 })
-                                            })
-                                            const json = await res.json()
-                                            if (json.success) {
-                                                alert('Đã thêm Văn phòng kho!')
-                                                fetchData()
-                                            } else {
-                                                alert('Lỗi: ' + json.error)
-                                            }
-                                        } catch (e) {
-                                            alert('Lỗi kết nối')
-                                        } finally {
-                                            setLoading(false)
-                                        }
-                                    }}
-                                    className="w-full px-4 py-2 text-left hover:bg-slate-100 transition-colors flex items-center gap-2 first:rounded-t-lg"
-                                >
-                                    <span className="w-3 h-3 bg-blue-500 rounded"></span>
-                                    Văn Phòng Kho
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        setLoading(true)
-                                        try {
-                                            const res = await fetch('/api/map/zones', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ zoneType: 'SHIPPING', width: 5, height: 4 })
-                                            })
-                                            const json = await res.json()
-                                            if (json.success) {
-                                                alert('Đã thêm Khu xuất hàng!')
-                                                fetchData()
-                                            } else {
-                                                alert('Lỗi: ' + json.error)
-                                            }
-                                        } catch (e) {
-                                            alert('Lỗi kết nối')
-                                        } finally {
-                                            setLoading(false)
-                                        }
-                                    }}
-                                    className="w-full px-4 py-2 text-left hover:bg-slate-100 transition-colors flex items-center gap-2"
-                                >
-                                    <span className="w-3 h-3 bg-green-500 rounded"></span>
-                                    Khu Xuất Hàng
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        setLoading(true)
-                                        try {
-                                            const res = await fetch('/api/map/zones', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ zoneType: 'RECEIVING', width: 5, height: 4 })
-                                            })
-                                            const json = await res.json()
-                                            if (json.success) {
-                                                alert('Đã thêm Khu nhập hàng!')
-                                                fetchData()
-                                            } else {
-                                                alert('Lỗi: ' + json.error)
-                                            }
-                                        } catch (e) {
-                                            alert('Lỗi kết nối')
-                                        } finally {
-                                            setLoading(false)
-                                        }
-                                    }}
-                                    className="w-full px-4 py-2 text-left hover:bg-slate-100 transition-colors flex items-center gap-2 last:rounded-b-lg"
-                                >
-                                    <span className="w-3 h-3 bg-orange-500 rounded"></span>
-                                    Khu Nhập Hàng
-                                </button>
-                            </div>
+                            <button
+                                onMouseDown={(e) => {
+                                    e.preventDefault(); e.stopPropagation();
+                                    setDrawMode(drawMode === 'DOOR' ? 'NONE' : 'DOOR')
+                                }}
+                                className={`p-2 rounded transition-colors ${drawMode === 'DOOR' ? 'bg-white text-indigo-600 shadow-sm' : 'text-white hover:bg-white/20'}`}
+                                title="Thêm Cửa (Click)"
+                            >
+                                <DoorOpen size={18} />
+                            </button>
                         </div>
                     )}
                 </div>
@@ -756,21 +903,21 @@ export default function WarehouseMapPage() {
                     {(mode === 'EDIT' || hasChanges) && (
                         <div className="flex items-center gap-2">
                             {hasChanges && (
-                                <span className="text-xs text-amber-200 font-bold px-2 py-1 bg-amber-500/30 rounded animate-pulse">
+                                <span className="text-xs text-amber-200 font-bold px-2 py-1 bg-amber-500/30 rounded animate-pulse whitespace-nowrap">
                                     Chưa lưu!
                                 </span>
                             )}
                             <button
                                 onClick={handleDiscard}
                                 disabled={!hasChanges}
-                                className="glass-strong px-4 py-2 rounded-lg text-white font-medium hover:bg-rose-500/30 disabled:opacity-30 transition-all"
+                                className="glass-strong px-4 py-2 rounded-lg text-white font-medium hover:bg-rose-500/30 disabled:opacity-30 transition-all whitespace-nowrap"
                             >
                                 Hủy Bỏ
                             </button>
                             <button
                                 onClick={handleSave}
                                 disabled={saving || !hasChanges}
-                                className="bg-white text-indigo-600 px-4 py-2 rounded-lg font-semibold hover:scale-105 hover:elevation-md disabled:opacity-50 transition-all flex items-center gap-2"
+                                className="bg-white text-indigo-600 px-4 py-2 rounded-lg font-semibold hover:scale-105 hover:elevation-md disabled:opacity-50 transition-all flex items-center gap-2 whitespace-nowrap"
                             >
                                 {saving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save size={16} />}
                                 Lưu
@@ -778,15 +925,23 @@ export default function WarehouseMapPage() {
                         </div>
                     )}
                 </div>
-            </div>
+            </div >
+
 
             {/* Viewport */}
-            <div
-                className={`flex-1 relative overflow-hidden ${mode === 'EDIT' ? 'cursor-default' : 'cursor-grab'} ${isPanning.current ? 'cursor-grabbing' : ''}`}
+            < div
+                className={`flex-1 relative overflow-hidden ${mode === 'EDIT' ? 'cursor-default' : 'cursor-grab'} ${isPanning.current ? 'cursor-grabbing' : ''}`
+                }
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
+                onClick={(e) => {
+                    // Clear selection if clicking background (and not handled by child)
+                    if (!isPanning.current) {
+                        setSelectedIds(new Set())
+                    }
+                }}
             >
                 {/* Unstack Zone Overlay */}
                 {
@@ -811,12 +966,131 @@ export default function WarehouseMapPage() {
                 >
                     {/* Grid Background */}
                     <div
-                        className="absolute inset-0 pointer-events-none opacity-10"
+                        className="absolute inset-0 pointer-events-none opacity-30"
                         style={{
-                            backgroundImage: `linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)`,
+                            backgroundImage: `linear-gradient(#334155 2px, transparent 2px), linear-gradient(90deg, #334155 2px, transparent 2px)`,
                             backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`
                         }}
                     ></div>
+
+                    {/* SVG Layer for Walls */}
+                    <svg className="absolute inset-0 pointer-events-none z-10 overflow-visible"
+                        style={{ width: '200000px', height: '200000px' }}
+                    >
+                        {/* Filter out zero-length elements (dots) */}
+                        {mapElements.filter(el => el.type === 'WALL' && (el.x !== (el.metadata?.endX ?? el.x) || el.y !== (el.metadata?.endY ?? el.y))).map(el => (
+                            <g key={el.id} onClick={(e) => {
+                                if (mode === 'EDIT') {
+                                    e.stopPropagation()
+                                    if (e.shiftKey || e.ctrlKey) {
+                                        setSelectedIds(prev => {
+                                            const next = new Set(prev)
+                                            if (next.has(el.id)) next.delete(el.id)
+                                            else next.add(el.id)
+                                            return next
+                                        })
+                                    } else {
+                                        setSelectedIds(new Set([el.id]))
+                                    }
+                                }
+                            }} className="pointer-events-auto cursor-pointer">
+                                {/* Invisible thicker line for easier clicking */}
+                                <line
+                                    x1={el.x * GRID_SIZE}
+                                    y1={el.y * GRID_SIZE}
+                                    x2={(el.metadata?.endX ?? el.x) * GRID_SIZE}
+                                    y2={(el.metadata?.endY ?? el.y) * GRID_SIZE}
+                                    stroke="transparent"
+                                    strokeWidth={20}
+                                />
+                                {/* Visible Wall Line */}
+                                <line
+                                    x1={el.x * GRID_SIZE}
+                                    y1={el.y * GRID_SIZE}
+                                    x2={(el.metadata?.endX ?? el.x) * GRID_SIZE}
+                                    y2={(el.metadata?.endY ?? el.y) * GRID_SIZE}
+                                    stroke={selectedIds.has(el.id) ? "#3b82f6" : "#334155"}
+                                    strokeWidth={8}
+                                    strokeLinecap="round"
+                                />
+                                {mode === 'EDIT' && selectedIds.has(el.id) && (
+                                    <circle
+                                        cx={(el.x + ((el.metadata?.endX ?? el.x) - el.x) / 2) * GRID_SIZE}
+                                        cy={(el.y + ((el.metadata?.endY ?? el.y) - el.y) / 2) * GRID_SIZE}
+                                        r={10}
+                                        fill="#ef4444"
+                                        className="cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); deleteElement(el.id) }}
+                                    />
+                                )}
+                            </g>
+                        ))}
+                        {/* Doors - Blue Dashed Lines */}
+                        {mapElements.filter(el => el.type === 'DOOR').map(el => (
+                            <g key={el.id} onClick={(e) => {
+                                if (mode === 'EDIT') {
+                                    e.stopPropagation()
+                                    if (e.shiftKey || e.ctrlKey) {
+                                        setSelectedIds(prev => {
+                                            const next = new Set(prev)
+                                            if (next.has(el.id)) next.delete(el.id)
+                                            else next.add(el.id)
+                                            return next
+                                        })
+                                    } else {
+                                        setSelectedIds(new Set([el.id]))
+                                    }
+                                }
+                            }} className="pointer-events-auto cursor-pointer">
+                                {/* Invisible thicker line for easier clicking */}
+                                <line
+                                    x1={el.x * GRID_SIZE}
+                                    y1={el.y * GRID_SIZE}
+                                    x2={(el.metadata?.endX ?? el.x) * GRID_SIZE}
+                                    y2={(el.metadata?.endY ?? el.y) * GRID_SIZE}
+                                    stroke="transparent"
+                                    strokeWidth={20}
+                                />
+                                {/* Visible Door Line */}
+                                <line
+                                    x1={el.x * GRID_SIZE}
+                                    y1={el.y * GRID_SIZE}
+                                    x2={(el.metadata?.endX ?? el.x) * GRID_SIZE}
+                                    y2={(el.metadata?.endY ?? el.y) * GRID_SIZE}
+                                    stroke={selectedIds.has(el.id) ? "#ef4444" : "#3b82f6"}
+                                    strokeWidth={8}
+                                    strokeDasharray="15,10"
+                                    strokeLinecap="round"
+                                />
+                                {mode === 'EDIT' && selectedIds.has(el.id) && (
+                                    <circle
+                                        cx={(el.x + ((el.metadata?.endX ?? el.x) - el.x) / 2) * GRID_SIZE}
+                                        cy={(el.y + ((el.metadata?.endY ?? el.y) - el.y) / 2) * GRID_SIZE}
+                                        r={10}
+                                        fill="#ef4444"
+                                        className="cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); deleteElement(el.id) }}
+                                    />
+                                )}
+                            </g>
+                        ))}
+                        {/* Temp Draw */}
+                        {tempDraw && (
+                            <line
+                                x1={tempDraw.x * GRID_SIZE}
+                                y1={tempDraw.y * GRID_SIZE}
+                                x2={(tempDraw.metadata?.endX ?? tempDraw.x) * GRID_SIZE}
+                                y2={(tempDraw.metadata?.endY ?? tempDraw.y) * GRID_SIZE}
+                                stroke={tempDraw.type === 'WALL' ? "#334155" : "#3b82f6"}
+                                strokeWidth={8}
+                                strokeDasharray="10,10"
+                                strokeLinecap="round"
+                                className="opacity-70"
+                            />
+                        )}
+                    </svg>
+
+                    {/* Old Door Elements - REMOVED */}
 
                     {/* Stacks Loop */}
                     {stacks.map(stack => (
@@ -825,13 +1099,16 @@ export default function WarehouseMapPage() {
                             onMouseDown={(e) => handleStackMouseDown(e, stack)}
                             className={`
                                 absolute border-2 rounded-md shadow-md flex flex-col items-center justify-between p-1 transition-all overflow-hidden
-                                ${mode === 'EDIT' ? 'bg-white border-blue-600 hover:ring-2 ring-blue-300 cursor-grab active:cursor-grabbing' : getStackColor(stack)}
+                                ${mode === 'EDIT' ? 'bg-slate-100 border-blue-600 hover:ring-2 ring-blue-300 cursor-grab active:cursor-grabbing' : getStackColor(stack)}
                                 ${draggingStackId === stack.id ? 'z-50 shadow-2xl scale-105' : 'z-auto hover:shadow-md'}
                                 ${
                                 // Highlight Check: Check if THIS match ID or ANY level in it matches
+                                // OR if currently selected in Multi-select logic (selectedIds)
                                 highlightedIds.has(stack.id) || stack.levels.some(l => highlightedIds.has(l.id))
                                     ? 'ring-4 ring-yellow-400 ring-offset-2 z-40 animate-pulse bg-yellow-100/50'
-                                    : ''
+                                    : selectedIds.has(stack.id) // Multi-select Highlight
+                                        ? 'ring-4 ring-purple-600 ring-offset-2 z-40 bg-purple-50'
+                                        : ''
                                 }
                             `}
                             style={{
@@ -846,6 +1123,17 @@ export default function WarehouseMapPage() {
                                 if (mode === 'HEATMAP') {
                                     setSelectedStack(stack)
                                 }
+                            }}
+                            onMouseEnter={(e) => {
+                                setHoveredStack(stack)
+                                setTooltipPos({ x: e.clientX, y: e.clientY })
+                            }}
+                            onMouseLeave={() => {
+                                setHoveredStack(null)
+                            }}
+                            onMouseMove={(e) => {
+                                // Update position to follow mouse
+                                setTooltipPos({ x: e.clientX + 15, y: e.clientY + 15 })
                             }}
                         >
                             {/* User - Requested Heatmap Design */}
@@ -931,15 +1219,15 @@ export default function WarehouseMapPage() {
             </div >
 
             {/* Footer */}
-            <div className="bg-white border-t px-4 py-2 text-xs text-muted-foreground flex justify-between shadow-sm z-10 shrink-0">
+            < div className="bg-white border-t px-4 py-2 text-xs text-muted-foreground flex justify-between shadow-sm z-10 shrink-0" >
                 <div className="flex gap-4">
                     <span className="flex items-center gap-1"><Info size={12} /> {mode === 'EDIT' ? 'Kéo thả để di chuyển. Kéo vào góc dưới phải để tách kệ.' : 'Click vào Kệ để xem chi tiết.'}</span>
                 </div>
                 <div>Racks: {stacks.length} | Locations: {locations.length}</div>
-            </div>
+            </div >
 
             {/* Detail Dialog */}
-            <Dialog open={!!selectedStack} onOpenChange={(open) => !open && setSelectedStack(null)}>
+            < Dialog open={!!selectedStack} onOpenChange={(open) => !open && setSelectedStack(null)}>
                 <DialogContent className="max-w-3xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center justify-between gap-2">
@@ -1084,7 +1372,160 @@ export default function WarehouseMapPage() {
                     })()}
 
                 </DialogContent>
+            </Dialog >
+
+            {/* Delete Confirmation Dialog */}
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={!!elementToDelete} onOpenChange={(open) => !open && setElementToDelete(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Xác nhận xóa</DialogTitle>
+                        <DialogDescription>
+                            {elementToDelete === 'BATCH'
+                                ? `Bạn có chắc chắn muốn xóa ${selectedIds.size} đối tượng đã chọn?`
+                                : "Bạn có chắc chắn muốn xóa đối tượng này không?"}
+                            Hành động này không thể hoàn tác.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex justify-end gap-2 mt-4">
+                        <Button variant="outline" onClick={() => setElementToDelete(null)}>Hủy</Button>
+                        <Button variant="destructive" onClick={executeDelete}>Xóa</Button>
+                    </div>
+                </DialogContent>
             </Dialog>
-        </div>
+
+            {/* Mini Map */}
+            <div className="absolute bottom-6 right-6 w-48 h-48 bg-slate-900/90 border border-slate-700 rounded-lg shadow-2xl overflow-hidden z-50 transition-opacity hover:opacity-100 opacity-80">
+                <div className="relative w-full h-full cursor-crosshair"
+                    onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        const clickX = e.clientX - rect.left
+                        const clickY = e.clientY - rect.top
+
+                        // Recalculate bounds logic matches the render logic below
+                        let minX = 0, minY = 0, maxX = 100, maxY = 100
+                        if (stacks.length > 0) {
+                            minX = Math.min(...stacks.map(s => s.pos_x), ...mapElements.map(e => e.x)) - 10
+                            minY = Math.min(...stacks.map(s => s.pos_y), ...mapElements.map(e => e.y)) - 10
+                            maxX = Math.max(...stacks.map(s => s.pos_x + s.width), ...mapElements.map(e => Math.max(e.x, e.metadata?.endX || e.x))) + 10
+                            maxY = Math.max(...stacks.map(s => s.pos_y + s.height), ...mapElements.map(e => Math.max(e.y, e.metadata?.endY || e.y))) + 10
+                        }
+                        const contentW = maxX - minX
+                        const contentH = maxY - minY
+                        const scaleX = 192 / contentW // 48 tailwind w-48 = 192px? No w-48 is 12rem = 192px. 
+                        const scaleY = 192 / contentH
+                        const mmScale = Math.min(scaleX, scaleY)
+
+                        // Click pos in grid coords (relative to minX/minY)
+                        const gridClickX = (clickX / mmScale) + minX
+                        const gridClickY = (clickY / mmScale) + minY
+
+                        // Center view on this grid point
+                        // viewport center = offset + view/2
+                        // we want viewport center to be gridClick
+                        // offset = center - (grid * GRID * scale)
+                        // offset = (window/2) - (grid * GRID * scale)
+
+                        const newOffsetX = (window.innerWidth / 2) - (gridClickX * GRID_SIZE * scale)
+                        const newOffsetY = (window.innerHeight / 2) - (gridClickY * GRID_SIZE * scale)
+
+                        setOffset({ x: newOffsetX, y: newOffsetY })
+                    }}
+                >
+                    <svg className="w-full h-full" viewBox="0 0 192 192" preserveAspectRatio="xMinYMin meet">
+                        {/* Background */}
+                        <rect x="0" y="0" width="192" height="192" fill="#0f172a" />
+
+                        {/* Map Elements Scaed Down */}
+                        {(() => {
+                            let minX = 0, minY = 0, maxX = 100, maxY = 100
+                            if (stacks.length > 0 || mapElements.length > 0) {
+                                const allX = [...stacks.map(s => s.pos_x), ...mapElements.map(e => e.x)]
+                                const allY = [...stacks.map(s => s.pos_y), ...mapElements.map(e => e.y)]
+                                if (allX.length > 0) {
+                                    minX = Math.min(...allX) - 10
+                                    minY = Math.min(...allY) - 10
+                                    maxX = Math.max(...stacks.map(s => s.pos_x + s.width), ...mapElements.map(e => Math.max(e.x, e.metadata?.endX || e.x))) + 10
+                                    maxY = Math.max(...stacks.map(s => s.pos_y + s.height), ...mapElements.map(e => Math.max(e.y, e.metadata?.endY || e.y))) + 10
+                                }
+                            }
+                            const contentW = maxX - minX
+                            const contentH = maxY - minY
+                            const scaleX = 192 / contentW
+                            const scaleY = 192 / contentH
+                            const mmScale = Math.min(scaleX, scaleY) || 1
+
+                            return (
+                                <g transform={`scale(${mmScale}) translate(${-minX}, ${-minY})`}>
+                                    {/* Stacks */}
+                                    {stacks.map(s => (
+                                        <rect key={s.id} x={s.pos_x} y={s.pos_y} width={s.width} height={s.height} fill={s.levels.length > 1 ? "#3b82f6" : "#64748b"} opacity={0.6} />
+                                    ))}
+                                    {/* Walls */}
+                                    {mapElements.filter(e => e.type === 'WALL').map(e => (
+                                        <line key={e.id}
+                                            x1={e.x} y1={e.y}
+                                            x2={e.metadata?.endX ?? e.x} y2={e.metadata?.endY ?? e.y}
+                                            stroke="#94a3b8" strokeWidth={Math.max(1, 2 / mmScale)}
+                                        />
+                                    ))}
+                                    {/* Doors */}
+                                    {mapElements.filter(e => e.type === 'DOOR').map(e => (
+                                        <line key={e.id}
+                                            x1={e.x} y1={e.y}
+                                            x2={e.metadata?.endX ?? e.x} y2={e.metadata?.endY ?? e.y}
+                                            stroke="#3b82f6" strokeWidth={Math.max(1, 2 / mmScale)} strokeDasharray={`${5 / mmScale},${3 / mmScale}`}
+                                        />
+                                    ))}
+
+                                    {/* Viewport Box */}
+                                    {(() => {
+                                        const vpX = -offset.x / (GRID_SIZE * scale)
+                                        const vpY = -offset.y / (GRID_SIZE * scale)
+                                        const vpW = window.innerWidth / (GRID_SIZE * scale)
+                                        const vpH = window.innerHeight / (GRID_SIZE * scale)
+
+                                        return (
+                                            <rect
+                                                x={vpX} y={vpY} width={vpW} height={vpH}
+                                                fill="transparent" stroke="#f43f5e" strokeWidth={Math.max(2, 4 / mmScale)}
+                                                vectorEffect="non-scaling-stroke"
+                                            />
+                                        )
+                                    })()}
+                                </g>
+                            )
+                        })()}
+                    </svg>
+                </div>
+            </div>
+
+            {/* Hover Tooltip - Fixed to Screen */}
+            {/* Hover Tooltip - Fixed to Screen */}
+            {hoveredStack && (
+                <div
+                    className="fixed z-[100] bg-white border border-slate-200 p-4 rounded-xl shadow-2xl text-base pointer-events-none min-w-[300px]"
+                    style={{ left: tooltipPos.x, top: tooltipPos.y }}
+                >
+                    <div className="font-bold text-slate-800 text-lg mb-3 border-b pb-2">{hoveredStack.baseCode}</div>
+
+                    <div className="space-y-2">
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Số lượng kệ (Tầng):</span>
+                            <span className="font-semibold">{hoveredStack.levels.length}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Tổng thùng:</span>
+                            <span className="font-semibold text-indigo-600 text-lg">{hoveredStack.total_boxes}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Tổng sản phẩm:</span>
+                            <span className="font-semibold text-indigo-600 text-lg">{hoveredStack.total_items}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+        </div >
     )
 }

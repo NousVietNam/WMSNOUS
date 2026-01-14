@@ -215,6 +215,7 @@ export default function InventoryPage() {
                 boxes (code, locations (code)),
                 locations (code)
             `, { count: 'exact' })
+            .gt('quantity', 0) // Filter out 0 quantity items
 
         // GLOBAL SEARCH LOGIC:
         // If searching, we skip server-side pagination to search across the entire dataset in-memory.
@@ -295,6 +296,7 @@ export default function InventoryPage() {
                 boxes (code, locations (code)),
                 locations (code)
             `)
+            .gt('quantity', 0) // Filter out 0 quantity items
 
         if (allItems) {
             // Client-side filtering for totals

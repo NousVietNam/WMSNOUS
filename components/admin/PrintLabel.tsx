@@ -33,9 +33,12 @@ export function PrintLabel() {
 
                 {/* Preview Area */}
                 <div className="border rounded-lg p-8 flex flex-col items-center justify-center bg-white">
-                    <div ref={contentRef} className="p-4 bg-white flex flex-col items-center text-center">
-                        <div className="mb-2 text-sm font-bold uppercase tracking-wider">WMS LABEL</div>
-                        <div style={{ height: "auto", margin: "0 auto", maxWidth: 128, width: "100%" }}>
+                    <div ref={contentRef} className="bg-white flex flex-col items-center text-center justify-center w-[100mm] h-[150mm]">
+                        <style type="text/css" media="print">
+                            {`@page { size: 100mm 150mm; margin: 0; }`}
+                        </style>
+                        <div className="text-4xl font-bold uppercase tracking-wider mb-4">TEM TỰ DO</div>
+                        <div className="w-full max-w-[80%] aspect-square">
                             <QRCode
                                 size={256}
                                 style={{ height: "auto", maxWidth: "100%", width: "100%" }}
@@ -43,7 +46,7 @@ export function PrintLabel() {
                                 viewBox={`0 0 256 256`}
                             />
                         </div>
-                        <div className="mt-2 text-xl font-mono font-bold">{value}</div>
+                        <div className="text-3xl font-mono font-bold mt-6 break-all max-w-full px-4">{value}</div>
                     </div>
                 </div>
 

@@ -246,11 +246,23 @@ export default function OutboxPage() {
             <Dialog open={!!printBox} onOpenChange={open => !open && setPrintBox(null)}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>Xem Trước Tem In</DialogTitle></DialogHeader>
-                    <div className="flex flex-col items-center p-4 border rounded bg-slate-50">
-                        {printBox && <QRCode value={printBox.code} size={200} />}
-                        <div className="mt-4 font-bold text-xl">{printBox?.code}</div>
-                        <div className="text-sm text-muted-foreground mt-2">Khổ in: 100x150mm</div>
-                    </div>
+                    {/* Preview Area */}
+                    <div className="flex justify-center p-4 bg-slate-100 rounded-lg overflow-auto">
+                        {printBox && (
+                            <div className="print-label-container scale-75 origin-top shadow-lg">
+                                <div className="text-4xl font-bold uppercase tracking-wider mb-4">OUTBOX</div>
+                                <div className="w-full max-w-[80%] aspect-square">
+                                    <QRCode
+                                        size={256}
+                                        style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                                        value={printBox.code}
+                                        viewBox={`0 0 256 256`}
+                                    />
+                                </div>
+                                <div className="text-3xl font-mono font-bold mt-6 break-all line-clamp-2">{printBox.code}</div>
+                            </div>
+                        )}
+                    </div>        <div className="text-sm text-muted-foreground mt-2">Khổ in: 100x150mm</div>
                     <DialogFooter>
                         <Button onClick={() => triggerSinglePrint(printBox)}>In Ngay</Button>
                     </DialogFooter>
@@ -264,13 +276,17 @@ export default function OutboxPage() {
                         {`@page { size: 100mm 150mm; margin: 0; }`}
                     </style>
                     {printQueue.map(box => (
-                        <div key={box.id} className="w-[100mm] h-[150mm] flex flex-col items-center justify-center break-after-page text-center p-4">
-                            <h1 className="text-5xl font-black mb-6">OUTBOX</h1>
-                            <div className="border-4 border-black p-4 rounded-xl">
-                                <QRCode value={box.code} size={280} />
+                        <div key={box.id} className="print-label-container break-after-page p-4">
+                            <div className="text-4xl font-bold uppercase tracking-wider mb-4">OUTBOX</div>
+                            <div className="w-full max-w-[80%] aspect-square">
+                                <QRCode
+                                    size={256}
+                                    style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                                    value={box.code}
+                                    viewBox={`0 0 256 256`}
+                                />
                             </div>
-                            <p className="mt-6 text-3xl text-slate-900 font-mono font-black tracking-widest">{box.code}</p>
-                            {/* Time/App info removed as requested */}
+                            <div className="text-3xl font-mono font-bold mt-6 break-all line-clamp-2">{box.code}</div>
                         </div>
                     ))}
                 </div>
