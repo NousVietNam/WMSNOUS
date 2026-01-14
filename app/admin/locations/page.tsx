@@ -306,10 +306,7 @@ export default function LocationsPage() {
                 <DialogContent>
                     <DialogHeader><DialogTitle>In Mã Vị Trí</DialogTitle></DialogHeader>
                     <div className="flex justify-center p-4">
-                        <div
-                            ref={printRef}
-                            className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg w-full max-w-[300px] aspect-[3/4] print:border-none print:w-screen print:h-screen print:max-w-none"
-                        >
+                        <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed rounded-lg w-full max-w-[300px] aspect-[3/4]">
                             {printLocation && (
                                 <>
                                     <h2 className="text-4xl font-black mb-4">{printLocation.code}</h2>
@@ -391,6 +388,24 @@ export default function LocationsPage() {
             </Dialog>
 
         </main>
+            {/* PRINT AREA - HIDDEN FROM SCREEN, RENDERED FOR PRINT */}
+            <div style={{ overflow: "hidden", height: 0, width: 0, position: "absolute" }}>
+                <div ref={printRef} className="print:w-full print:h-full">
+                    <style type="text/css" media="print">
+                        {`@page { size: 100mm 150mm; margin: 0; }`}
+                    </style>
+                    {printLocation && (
+                        <div className="w-[100mm] h-[150mm] flex flex-col items-center justify-center text-center p-4 break-after-page">
+                            <h2 className="text-5xl font-black mb-6">{printLocation.code}</h2>
+                            <div className="border-4 border-black p-4 rounded-xl">
+                                <QRCode value={printLocation.code} size={280} />
+                            </div>
+                            <p className="mt-6 text-3xl font-mono font-black tracking-widest">{printLocation.type}</p>
+                            <p className="text-xl text-slate-600 mt-2">{printLocation.description}</p>
+                        </div>
+                    )}
+                </div>
+            </div>
         </div >
     )
 }

@@ -462,7 +462,7 @@ export default function BoxesPage() {
             </main>
 
             {/* PRINT AREA - HIDDEN NORMALLY */}
-            <div style={{ display: "none" }}>
+            <div style={{ overflow: "hidden", height: 0, width: 0, position: "absolute" }}>
                 <div ref={printRef}>
                     <style type="text/css" media="print">
                         {`@page { size: 100mm 150mm; margin: 0; }`}
