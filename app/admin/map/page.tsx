@@ -811,16 +811,16 @@ export default function WarehouseMapPage() {
                             {/* User - Requested Heatmap Design */}
                             {/* Heatmap Mode Display - Reformatted */}
                             {mode === 'HEATMAP' && (
-                                <div className="absolute inset-0 flex flex-col p-3 pointer-events-none rounded-md">
-                                    {/* Top Row: Location Name + Badge - SINGLE LINE */}
-                                    <div className="flex items-center justify-between w-full mb-3 gap-2">
-                                        <span className="font-extrabold text-lg text-slate-800 leading-none tracking-normal whitespace-nowrap overflow-hidden text-ellipsis flex-1">
+                                <div className="absolute inset-0 flex flex-col p-2.5 pointer-events-none rounded-md">
+                                    {/* Top Row: Location Name + Badge - SINGLE LINE ONLY */}
+                                    <div className="flex items-center justify-between w-full mb-2">
+                                        <span className="font-bold text-sm text-slate-800 leading-none tracking-tight whitespace-nowrap overflow-hidden text-ellipsis flex-1">
                                             {stack.levels.length > 1
-                                                ? stack.baseCode.substring(0, 8)
+                                                ? stack.baseCode.substring(0, 5)
                                                 : stack.baseCode}
                                         </span>
                                         {stack.levels.length > 1 && (
-                                            <span className="flex items-center justify-center bg-slate-800 text-white text-xs font-bold h-6 px-2.5 rounded shadow-sm flex-shrink-0" title={`${stack.levels.length} Tầng`}>
+                                            <span className="flex items-center justify-center bg-slate-700 text-white text-[9px] font-semibold h-4 px-1.5 rounded ml-1" title={`${stack.levels.length} Tầng`}>
                                                 {stack.levels.length}F
                                             </span>
                                         )}
