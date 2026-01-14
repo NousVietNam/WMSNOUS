@@ -5,7 +5,7 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Save, ZoomIn, ZoomOut, Move, Grid, Layers, Loader2, MousePointer2, Info, Box, ArrowUp, ArrowDown, Search, X as SearchX, Home } from "lucide-react"
+import { Save, ZoomIn, ZoomOut, Move, Grid, Layers, Loader2, MousePointer2, Info, Box, ArrowUp, ArrowDown, Search, X as SearchX, Home, Plus } from "lucide-react"
 
 
 // Add to interfaces
