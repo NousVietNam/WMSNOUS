@@ -10,6 +10,7 @@ import Barcode from 'react-barcode'
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
+import { saveAs } from 'file-saver'
 
 interface InventoryItem {
     id: string
@@ -425,7 +426,10 @@ export default function InventoryPage() {
             const ws = XLSX.utils.json_to_sheet(exportData)
             const wb = XLSX.utils.book_new()
             XLSX.utils.book_append_sheet(wb, ws, "Ton_Kho_Full")
+
+            // Direct XLSX export (most compatible)
             XLSX.writeFile(wb, `Inventory_Full_${new Date().toISOString().slice(0, 10)}.xlsx`)
+
             toast.success("Xuất dữ liệu thành công!")
         } catch (error: any) {
             console.error(error)

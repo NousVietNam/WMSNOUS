@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/lib/supabase"
 import { History, ArrowRight, Filter, RefreshCw, Download } from "lucide-react"
 import * as XLSX from "xlsx"
+import { saveAs } from 'file-saver'
 
 interface Transaction {
     id: string
@@ -175,6 +176,8 @@ export default function HistoryPage() {
         const ws = XLSX.utils.json_to_sheet(data)
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, "History")
+
+        // Direct XLSX export (most compatible)
         XLSX.writeFile(wb, `LichSu_${new Date().toISOString().split('T')[0]}.xlsx`)
     }
 

@@ -10,6 +10,7 @@ import { Plus, Printer, RefreshCw, Trash2, Box, Download } from "lucide-react"
 import QRCode from "react-qr-code"
 import * as XLSX from 'xlsx'
 import { useReactToPrint } from "react-to-print"
+import { saveAs } from 'file-saver'
 
 // Helper - returns DDMM format for outbox naming (day-month)
 const getDefaultDateStr = () => {
@@ -133,6 +134,8 @@ export default function OutboxPage() {
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, "List")
         const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '')
+
+        // Direct XLSX export (most compatible)
         XLSX.writeFile(wb, `OutboxList_${timestamp}.xlsx`)
     }
 

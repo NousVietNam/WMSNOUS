@@ -10,6 +10,7 @@ import { Box as BoxIcon, Plus, Printer, Trash2, Download, Package, Search } from
 import { Input } from "@/components/ui/input"
 import QRCode from "react-qr-code"
 import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
 
 interface Box {
     id: string
@@ -245,23 +246,35 @@ export default function BoxesPage() {
 
     const handleExport = async () => {
         if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
-        const { data } = await supabase.from('inventory_items')
-            .select('quantity, boxes(code), products(sku,name,barcode)')
-            .in('box_id', Array.from(selectedIds))
-            .gt('quantity', 0)
-        if (!data) return
-        const exportData = data.map((row: any) => ({
-            'Mã Thùng': row.boxes?.code,
-            'SKU': row.products?.sku,
-            'Barcode': row.products?.barcode,
-            'Tên SP': row.products?.name,
-            'Số Lượng': row.quantity
-        }))
-        const ws = XLSX.utils.json_to_sheet(exportData)
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, "Packing_List")
-        const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '')
-        XLSX.writeFile(wb, `PackingList_Storage_${timestamp}.xlsx`)
+
+        try {
+            // Use server-side API for Chrome compatibility
+            const response = await fetch('/api/export/boxes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ boxIds: Array.from(selectedIds) })
+            })
+
+            if (!response.ok) {
+                const errData = await response.json()
+                return alert(errData.error || "Lỗi xuất file")
+            }
+
+            // Download the file
+            const blob = await response.blob()
+            const url = window.URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '')
+            a.download = `PackingList_Storage_${timestamp}.xlsx`
+            document.body.appendChild(a)
+            a.click()
+            window.URL.revokeObjectURL(url)
+            document.body.removeChild(a)
+        } catch (error: any) {
+            console.error('Export error:', error)
+            alert("Lỗi xuất file: " + error.message)
+        }
     }
 
     // UNIFIED PRINT
