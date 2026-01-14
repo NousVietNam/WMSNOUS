@@ -798,14 +798,14 @@ export default function WarehouseMapPage() {
                             {mode === 'HEATMAP' && (
                                 <div className="absolute inset-0 flex flex-col p-2 pointer-events-none rounded-md">
                                     {/* Top Row: Location Name + Badge */}
-                                    <div className="flex items-center justify-between w-full mb-2">
-                                        <span className="font-extrabold text-base text-slate-800 leading-none tracking-wide truncate">
+                                    <div className="flex items-center justify-between w-full mb-2 gap-2">
+                                        <span className="font-extrabold text-base text-slate-800 leading-tight tracking-wide flex-1 break-words">
                                             {stack.levels.length > 1
                                                 ? stack.baseCode.substring(0, 5)
                                                 : stack.baseCode}
                                         </span>
                                         {stack.levels.length > 1 && (
-                                            <span className="flex items-center justify-center bg-slate-800 text-white text-[10px] font-bold h-5 px-2 rounded shadow-sm ml-1" title={`${stack.levels.length} Tầng`}>
+                                            <span className="flex items-center justify-center bg-slate-800 text-white text-[10px] font-bold h-5 px-2 rounded shadow-sm flex-shrink-0" title={`${stack.levels.length} Tầng`}>
                                                 {stack.levels.length}F
                                             </span>
                                         )}
