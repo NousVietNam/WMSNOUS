@@ -108,12 +108,15 @@ export default function WarehouseMapPage() {
 
     // Interaction State
     const [draggingStackId, setDraggingStackId] = useState<string | null>(null)
+    const [resizingStackId, setResizingStackId] = useState<string | null>(null)
     const [selectedStack, setSelectedStack] = useState<StackNode | null>(null)
 
     const isPanning = useRef(false)
     const lastMousePos = useRef({ x: 0, y: 0 })
     const dragStartPos = useRef({ x: 0, y: 0 }) // For node drag
     const nodeStartPos = useRef({ x: 0, y: 0 }) // Initial node grid pos
+    const resizeStartSize = useRef({ width: 0, height: 0 })
+    const resizeStartMouse = useRef({ x: 0, y: 0 })
     const unstackZoneRef = useRef<HTMLDivElement>(null)
 
     const [hasChanges, setHasChanges] = useState(false)
@@ -258,6 +261,16 @@ export default function WarehouseMapPage() {
         }
     }
 
+    const handleResizeStart = (e: React.MouseEvent, stackId: string) => {
+        e.stopPropagation()
+        const stack = stacks.find(s => s.id === stackId)
+        if (!stack || !stack.levels[0]) return
+
+        setResizingStackId(stackId)
+        resizeStartSize.current = { width: stack.levels[0].width, height: stack.levels[0].height }
+        resizeStartMouse.current = { x: e.clientX, y: e.clientY }
+    }
+
     const handleStackMouseDown = (e: React.MouseEvent, stack: StackNode) => {
         if (mode !== 'EDIT') return
         e.stopPropagation() // Prevent Panning
@@ -267,6 +280,28 @@ export default function WarehouseMapPage() {
     }
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        // Handle resize
+        if (resizingStackId && mode === 'EDIT') {
+            const deltaX = e.clientX - resizeStartMouse.current.x
+            const deltaY = e.clientY - resizeStartMouse.current.y
+            const gridDeltaX = Math.round(deltaX / (GRID_SIZE * scale))
+            const gridDeltaY = Math.round(deltaY / (GRID_SIZE * scale))
+
+            const newWidth = Math.max(1, resizeStartSize.current.width + gridDeltaX)
+            const newHeight = Math.max(1, resizeStartSize.current.height + gridDeltaY)
+
+            setLocations(prev => prev.map(loc => {
+                const stack = stacks.find(s => s.id === resizingStackId)
+                if (stack && stack.levels.some(l => l.id === loc.id)) {
+                    return { ...loc, width: newWidth, height: newHeight }
+                }
+                return loc
+            }))
+
+            setHasChanges(true)
+            return
+        }
+
         // 1. Panning
         if (isPanning.current) {
             const dx = e.clientX - lastMousePos.current.x
@@ -349,6 +384,11 @@ export default function WarehouseMapPage() {
     }
 
     const handleMouseUp = (e: React.MouseEvent) => {
+        if (resizingStackId) {
+            setResizingStackId(null)
+            return
+        }
+
         let actionTaken = false
 
         if (draggingStackId && mode === 'EDIT' && unstackZoneRef.current) {
@@ -866,12 +906,24 @@ export default function WarehouseMapPage() {
 
                             {/* Edit Mode Visual */}
                             {mode === 'EDIT' && (
-                                <div className="flex-1 flex items-center justify-center text-slate-300">
-                                    <div className="flex flex-col items-center gap-1">
-                                        <span className="font-bold text-slate-400">{stack.baseCode}</span>
-                                        <Move size={16} />
+                                <>
+                                    <div className="flex-1 flex items-center justify-center text-slate-300 pointer-events-none">
+                                        <div className="flex flex-col items-center gap-1">
+                                            <span className="font-bold text-slate-400">{stack.baseCode}</span>
+                                            <Move size={16} />
+                                        </div>
                                     </div>
-                                </div>
+                                    {/* Resize Handle - Bottom Right */}
+                                    <div
+                                        onMouseDown={(e) => handleResizeStart(e, stack.id)}
+                                        className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize pointer-events-auto bg-indigo-500 hover:bg-indigo-600 rounded-tl flex items-center justify-center text-white shadow-md transition-all z-10"
+                                        title="Kéo để resize"
+                                    >
+                                        <svg width="10" height="10" viewBox="0 0 10 10" className="opacity-80">
+                                            <path d="M10 10 L10 7 L7 10 Z M10 10 L10 3 L3 10 Z" fill="currentColor" />
+                                        </svg>
+                                    </div>
+                                </>
                             )}
                         </div>
                     ))}
