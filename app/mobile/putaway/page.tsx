@@ -639,7 +639,16 @@ function PutAwayContent() {
                                 <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
                                     <div className="flex-1 mr-4">
                                         <div className="font-bold text-slate-800 text-sm line-clamp-2">{item.name}</div>
-                                        <div className="text-xs font-mono text-slate-500 mt-1 bg-white inline-block px-1 rounded border border-slate-200">{item.sku}</div>
+                                        <div className="flex gap-2 mt-1 flex-wrap">
+                                            <div className="text-xs font-mono text-slate-500 bg-white inline-block px-1.5 py-0.5 rounded border border-slate-200">
+                                                <span className="text-slate-400">SKU:</span> {item.sku}
+                                            </div>
+                                            {item.barcode && item.barcode !== item.sku && (
+                                                <div className="text-xs font-mono text-blue-600 bg-blue-50 inline-block px-1.5 py-0.5 rounded border border-blue-200">
+                                                    <span className="text-blue-400">BC:</span> {item.barcode}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="font-bold text-blue-600 bg-blue-50 px-3 py-2 rounded-lg text-lg min-w-[3rem] text-center">
                                         x{item.qty}
