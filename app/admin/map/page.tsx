@@ -220,7 +220,8 @@ export default function WarehouseMapPage() {
                 pos_y: Number(l.pos_y) || 0,
                 width: Number(l.width) || 2,
                 height: Number(l.height) || 2,
-                rotation: Number(l.rotation || 0)
+                rotation: Number(l.rotation || 0),
+                level_order: Number(l.level_order) !== undefined ? Number(l.level_order) : 0
             }))
 
             const res = await fetch('/api/map/layout', {
@@ -790,63 +791,58 @@ export default function WarehouseMapPage() {
                                     }}
                                 >
                                     {/* User - Requested Heatmap Design */}
-                                    {mode === 'HEATMAP' && (
-                                        <div className={`absolute inset-0 flex flex-col justify-between p-1.5 pointer-events-none rounded-md transition-colors duration-300 ${stack.total_items > 500 ? 'bg-red-50/80 border-red-200' :
-                                            stack.total_items > 100 ? 'bg-yellow-50/80 border-yellow-200' :
-                                                'bg-white border-slate-200'
-                                            }`}>
-                                            {/* 1. Location & Level (Clearest) */}
-                                            <div className="flex items-center justify-between w-full border-b border-black/5 pb-1.5 mb-2">
-                                                <span className="font-extrabold text-base text-slate-800 leading-tight tracking-wide">
-                                                    {stack.levels.length > 1
-                                                        ? stack.baseCode.substring(0, 5)
-                                                        : stack.baseCode}
+                                    {/* Heatmap Mode Display - Reformatted */}
+                                    <div className="absolute inset-0 flex flex-col p-2 pointer-events-none rounded-md">
+                                        {/* Top Row: Location Name + Badge */}
+                                        <div className="flex items-center justify-between w-full mb-2">
+                                            <span className="font-extrabold text-base text-slate-800 leading-none tracking-wide truncate">
+                                                {stack.levels.length > 1
+                                                    ? stack.baseCode.substring(0, 5)
+                                                    : stack.baseCode}
+                                            </span>
+                                            {stack.levels.length > 1 && (
+                                                <span className="flex items-center justify-center bg-slate-800 text-white text-[10px] font-bold h-5 px-2 rounded shadow-sm ml-1" title={`${stack.levels.length} Tầng`}>
+                                                    {stack.levels.length}F
                                                 </span>
-                                                {stack.levels.length > 1 && (
-                                                    <span className="flex items-center justify-center bg-slate-800 text-white text-[10px] font-bold h-5 px-2 rounded shadow-sm" title={`${stack.levels.length} Tầng`}>
-                                                        {stack.levels.length}F
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* 2. Box Count Container */}
-                                            <div className="flex-1 flex flex-col items-center justify-center gap-0.5">
-                                                {stack.total_boxes > 0 ? (
-                                                    <>
-                                                        <span className={`text-2xl font-black leading-none ${stack.total_items > 500 ? 'text-red-700' :
-                                                            stack.total_items > 100 ? 'text-yellow-700' :
-                                                                'text-slate-700'
-                                                            }`}>
-                                                            {stack.total_boxes}
-                                                        </span>
-                                                        <span className="text-[8px] font-bold uppercase text-slate-400 tracking-wider">Thùng</span>
-                                                    </>
-                                                ) : (
-                                                    <span className="text-xs text-slate-300 italic font-light">Empty</span>
-                                                )}
-                                            </div>
-
-                                            {/* 4. Bar: Box Capacity (dynamic) */}
-                                            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden shrink-0 mt-auto">
-                                                {(() => {
-                                                    const maxCapacity = stack.levels.reduce((sum, level) => sum + (level.capacity || 15), 0) || 15
-                                                    const percentage = Math.min(100, Math.max(5, (stack.total_boxes / maxCapacity) * 100))
-
-                                                    // Dynamic color based on fullness
-                                                    const barColor = percentage > 90 ? 'bg-red-500' :
-                                                        percentage > 70 ? 'bg-yellow-500' :
-                                                            'bg-indigo-500'
-
-                                                    return (
-                                                        <div
-                                                            className={`h-full transition-all duration-500 ${barColor}`}
-                                                            style={{ width: `${percentage}%` }}
-                                                            title={`Sức chứa: ${stack.total_boxes}/${maxCapacity} thùng (${stack.levels.length} tầng)`}
-                                                        />
-                                                    )
-                                                })()}
-                                            </div>
+                                            )}
                                         </div>
+
+                                        {/* Middle: Box Count */}
+                                        <div className="flex-1 flex flex-col items-center justify-center gap-0.5">
+                                            {stack.total_boxes > 0 ? (
+                                                <>
+                                                    <span className={`text-3xl font-black leading-none ${stack.total_items > 500 ? 'text-red-700' :
+                                                        stack.total_items > 100 ? 'text-yellow-700' :
+                                                            'text-slate-700'
+                                                        }`}>
+                                                        {stack.total_boxes}
+                                                    </span>
+                                                    <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Thùng</span>
+                                                </>
+                                            ) : (
+                                                <span className="text-xs text-slate-300 italic font-light">Empty</span>
+                                            )}
+                                        </div>
+
+                                        {/* Bottom: Capacity Bar */}
+                                        <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-auto">
+                                            {(() => {
+                                                const maxCapacity = stack.levels.reduce((sum, level) => sum + (level.capacity || 15), 0) || 15
+                                                const percentage = Math.min(100, Math.max(5, (stack.total_boxes / maxCapacity) * 100))
+                                                const barColor = percentage > 90 ? 'bg-red-500' :
+                                                    percentage > 70 ? 'bg-yellow-500' :
+                                                        'bg-indigo-500'
+
+                                                return (
+                                                    <div
+                                                        className={`h-full transition-all duration-500 ${barColor}`}
+                                                        style={{ width: `${percentage}%` }}
+                                                        title={`Sức chứa: ${stack.total_boxes}/${maxCapacity} thùng (${stack.levels.length} tầng)`}
+                                                    />
+                                                )
+                                            })()}
+                                        </div>
+                                    </div>
                                     )}
 
                                     {/* Edit Mode Visual */}
