@@ -223,15 +223,14 @@ export default function BoxesPage() {
 
     const handleExport = async () => {
         if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
-        const { data } = await supabase.from('inventory_items').select('quantity, expiry_date, boxes(code), products(sku,name,barcode)').in('box_id', Array.from(selectedIds))
+        const { data } = await supabase.from('inventory_items').select('quantity, boxes(code), products(sku,name,barcode)').in('box_id', Array.from(selectedIds))
         if (!data) return
         const exportData = data.map((row: any) => ({
             'Mã Thùng': row.boxes?.code,
             'SKU': row.products?.sku,
             'Barcode': row.products?.barcode,
             'Tên SP': row.products?.name,
-            'Số Lượng': row.quantity,
-            'Hạn Sử Dụng': row.expiry_date ? new Date(row.expiry_date).toLocaleDateString('vi-VN') : '-'
+            'Số Lượng': row.quantity
         }))
         const ws = XLSX.utils.json_to_sheet(exportData)
         const wb = XLSX.utils.book_new()
