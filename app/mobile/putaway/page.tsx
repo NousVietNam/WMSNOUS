@@ -56,14 +56,14 @@ function PutAwayContent() {
 
         // Check if user is admin
         const { data: profile } = await supabase
-            .from('profiles')
+            .from('users')
             .select('role')
             .eq('id', session?.user?.id)
             .single()
 
         let query = supabase
             .from('transactions')
-            .select('created_at, sku, quantity, to_box:to_box_id(code), user_id, profiles!user_id(name)')
+            .select('created_at, sku, quantity, to_box:to_box_id(code), user_id, users!user_id(name)')
             .eq('type', 'IMPORT')
             .eq('entity_type', 'ITEM')
             .gte('created_at', start)
@@ -85,7 +85,7 @@ function PutAwayContent() {
                 const qty = curr.quantity || 0
                 const sku = curr.sku || 'Unknown'
                 const name = 'Sản phẩm'
-                const userName = (curr.profiles as any)?.name || 'Unknown User' // For admin view
+                const userName = (curr.users as any)?.name || 'Unknown User' // For admin view
 
                 const existing = acc.find(h => h.boxCode === boxCode && h.time === time)
                 if (existing) {
