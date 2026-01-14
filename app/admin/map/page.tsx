@@ -572,6 +572,9 @@ export default function WarehouseMapPage() {
                                     ? 'bg-white text-indigo-600 elevation-md'
                                     : 'text-white/80 hover:text-white hover:bg-white/10'
                                 }
+                            `}
+                        >
+                            <MousePointer2 size={16} /> Chỉnh Sửa
                         </button>
                     </div>
 
@@ -748,273 +751,273 @@ export default function WarehouseMapPage() {
                     className="absolute transition-transform duration-75 ease-out origin-top-left"
                     style={{
                         transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-                                width: '200000px', height: '200000px'
-                            }}
-                        >
-                            {/* Grid Background */}
-                            <div
-                                className="absolute inset-0 pointer-events-none opacity-10"
-                                style={{
-                                    backgroundImage: `linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)`,
-                                    backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`
-                                }}
-                            ></div>
+                        width: '200000px', height: '200000px'
+                    }}
+                >
+                    {/* Grid Background */}
+                    <div
+                        className="absolute inset-0 pointer-events-none opacity-10"
+                        style={{
+                            backgroundImage: `linear-gradient(#94a3b8 1px, transparent 1px), linear-gradient(90deg, #94a3b8 1px, transparent 1px)`,
+                            backgroundSize: `${GRID_SIZE}px ${GRID_SIZE}px`
+                        }}
+                    ></div>
 
-                            {/* Stacks Loop */}
-                            {stacks.map(stack => (
-                                <div
-                                    key={stack.id}
-                                    onMouseDown={(e) => handleStackMouseDown(e, stack)}
-                                    className={`
+                    {/* Stacks Loop */}
+                    {stacks.map(stack => (
+                        <div
+                            key={stack.id}
+                            onMouseDown={(e) => handleStackMouseDown(e, stack)}
+                            className={`
                                 absolute border-2 rounded-md shadow-md flex flex-col items-center justify-between p-1 transition-all overflow-hidden
                                 ${mode === 'EDIT' ? 'bg-white border-blue-600 hover:ring-2 ring-blue-300 cursor-grab active:cursor-grabbing' : getStackColor(stack)}
                                 ${draggingStackId === stack.id ? 'z-50 shadow-2xl scale-105' : 'z-auto hover:shadow-md'}
                                 ${
-                                        // Highlight Check: Check if THIS match ID or ANY level in it matches
-                                        highlightedIds.has(stack.id) || stack.levels.some(l => highlightedIds.has(l.id))
-                                            ? 'ring-4 ring-yellow-400 ring-offset-2 z-40 animate-pulse bg-yellow-100/50'
-                                            : ''
-                                        }
-                            `}
-                                    style={{
-                                        left: stack.pos_x * GRID_SIZE + 2, // +2 margin
-                                        top: stack.pos_y * GRID_SIZE + 2,
-                                        width: stack.width * GRID_SIZE - 4, // -4 margin
-                                        height: stack.height * GRID_SIZE - 4,
-                                        transition: draggingStackId === stack.id ? 'none' : 'left 0.2s, top 0.2s'
-                                    }}
-                                    onClick={(e) => {
-                                        e.stopPropagation()
-                                        if (mode === 'HEATMAP') {
-                                            setSelectedStack(stack)
-                                        }
-                                    }}
-                                >
-                                    {/* User - Requested Heatmap Design */}
-                                    {/* Heatmap Mode Display - Reformatted */}
-                                    {mode === 'HEATMAP' && (
-                                        <div className="absolute inset-0 flex flex-col p-2 pointer-events-none rounded-md">
-                                            {/* Top Row: Location Name + Badge */}
-                                            <div className="flex items-center justify-between w-full mb-2">
-                                                <span className="font-extrabold text-base text-slate-800 leading-none tracking-wide truncate">
-                                                    {stack.levels.length > 1
-                                                        ? stack.baseCode.substring(0, 5)
-                                                        : stack.baseCode}
-                                                </span>
-                                                {stack.levels.length > 1 && (
-                                                    <span className="flex items-center justify-center bg-slate-800 text-white text-[10px] font-bold h-5 px-2 rounded shadow-sm ml-1" title={`${stack.levels.length} Tầng`}>
-                                                        {stack.levels.length}F
-                                                    </span>
-                                                )}
-                                            </div>
-
-                                            {/* Middle: Box Count */}
-                                            <div className="flex-1 flex flex-col items-center justify-center gap-0.5">
-                                                {stack.total_boxes > 0 ? (
-                                                    <>
-                                                        <span className={`text-3xl font-black leading-none ${stack.total_items > 500 ? 'text-red-700' :
-                                                            stack.total_items > 100 ? 'text-yellow-700' :
-                                                                'text-slate-700'
-                                                            }`}>
-                                                            {stack.total_boxes}
-                                                        </span>
-                                                        <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Thùng</span>
-                                                    </>
-                                                ) : (
-                                                    <span className="text-xs text-slate-300 italic font-light">Empty</span>
-                                                )}
-                                            </div>
-
-                                            {/* Bottom: Capacity Bar */}
-                                            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-auto">
-                                                {(() => {
-                                                    const maxCapacity = stack.levels.reduce((sum, level) => sum + (level.capacity || 15), 0) || 15
-                                                    const percentage = Math.min(100, Math.max(5, (stack.total_boxes / maxCapacity) * 100))
-                                                    const barColor = percentage > 90 ? 'bg-red-500' :
-                                                        percentage > 70 ? 'bg-yellow-500' :
-                                                            'bg-indigo-500'
-
-                                                    return (
-                                                        <div
-                                                            className={`h-full transition-all duration-500 ${barColor}`}
-                                                            style={{ width: `${percentage}%` }}
-                                                            title={`Sức chứa: ${stack.total_boxes}/${maxCapacity} thùng (${stack.levels.length} tầng)`}
-                                                        />
-                                                    )
-                                                })()}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Edit Mode Visual */}
-                                    {mode === 'EDIT' && (
-                                        <div className="flex-1 flex items-center justify-center text-slate-300">
-                                            <div className="flex flex-col items-center gap-1">
-                                                <span className="font-bold text-slate-400">{stack.baseCode}</span>
-                                                <Move size={16} />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    </div >
-
-                    {/* Footer */}
-                    <div className="bg-white border-t px-4 py-2 text-xs text-muted-foreground flex justify-between shadow-sm z-10 shrink-0">
-                        <div className="flex gap-4">
-                            <span className="flex items-center gap-1"><Info size={12} /> {mode === 'EDIT' ? 'Kéo thả để di chuyển. Kéo vào góc dưới phải để tách kệ.' : 'Click vào Kệ để xem chi tiết.'}</span>
-                        </div>
-                        <div>Racks: {stacks.length} | Locations: {locations.length}</div>
-                    </div>
-
-                    {/* Detail Dialog */}
-                    <Dialog open={!!selectedStack} onOpenChange={(open) => !open && setSelectedStack(null)}>
-                        <DialogContent className="max-w-3xl">
-                            <DialogHeader>
-                                <DialogTitle className="flex items-center justify-between gap-2">
-                                    <div className="flex items-center gap-2">
-                                        <Box className="w-5 h-5 text-indigo-600" />
-                                        <span>Chi tiết Kệ {selectedStack?.baseCode}</span>
-                                    </div>
-                                    <Button
-                                        onClick={handleSave}
-                                        disabled={saving || !hasChanges}
-                                        size="sm"
-                                        variant={hasChanges ? "default" : "secondary"}
-                                        className={`mr-8 ${saving ? 'opacity-50' : ''}`}
-                                    >
-                                        {saving ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-                                        {hasChanges ? 'Lưu Thay Đổi' : 'Đã Lưu'}
-                                    </Button>
-                                </DialogTitle>
-                                <DialogDescription>
-                                    Tổng {selectedStack?.total_boxes} thùng - {selectedStack?.total_items} sản phẩm
-                                </DialogDescription>
-                            </DialogHeader>
-
-                            {(() => {
-                                if (!selectedStack) return null
-                                // Fix stale state: Find the latest version of the selected stack from the 'stacks' array
-                                const stack = stacks.find(s => s.id === selectedStack.id) || selectedStack
-                                if (!stack) return null
-
-                                // Sort levels descending by level_order (Highest floor first)
-                                const sortedLevels = [...stack.levels].sort((a, b) => (b.level_order || 0) - (a.level_order || 0))
-
-                                const moveLevel = (levelId: string, direction: 'up' | 'down') => {
-                                    // Find current level in the master 'locations' list
-                                    const levelIndex = locations.findIndex(l => l.id === levelId)
-                                    if (levelIndex === -1) return
-
-                                    // Fix 'All Level 1' bug:
-                                    // If we detect duplicate level_orders in this stack, we MUST normalize them first.
-                                    // Or simpler: We treat the current 'sortedLevels' as the TRUTH of order (visual order).
-                                    // And we simply RE-ASSIGN level_order for the WHOLE stack based on the desired visual swap.
-
-                                    const currentVisualIndex = sortedLevels.findIndex(l => l.id === levelId)
-                                    if (currentVisualIndex === -1) return
-
-                                    // Calculate Target Visual Index
-                                    // Visual UP (Arrow Up) = Previous in List (since list is DESC by level_order, meaning higher floors first)
-                                    // Wait, sortedLevels = [Floor 2 (Order 1), Floor 1 (Order 0)].
-                                    // If I am Floor 1 (Index 1). Up Arrow -> I want to be Floor 2.
-                                    // visual index 1 -> target 0.
-                                    const targetVisualIndex = direction === 'up' ? currentVisualIndex - 1 : currentVisualIndex + 1
-
-                                    if (targetVisualIndex < 0 || targetVisualIndex >= sortedLevels.length) return // Out of bounds
-
-                                    // Create a new order array based on the swap
-                                    const newSortedList = [...sortedLevels]
-                                    // Swap elements in the list
-                                    const temp = newSortedList[currentVisualIndex]
-                                    newSortedList[currentVisualIndex] = newSortedList[targetVisualIndex]
-                                    newSortedList[targetVisualIndex] = temp
-
-                                    // Now, re-assign 'level_order' for EVERY item in this stack based on the new list order.
-                                    // index 0 = Highest Order (N-1)
-                                    // index N = Lowest Order (0)
-                                    const maxOrder = newSortedList.length - 1
-
-                                    // Map of ID -> New Order
-                                    const orderMap = new Map<string, number>()
-                                    newSortedList.forEach((l, idx) => {
-                                        orderMap.set(l.id, maxOrder - idx)
-                                    })
-
-                                    // Update Master State
-                                    // We only touch the locations that are in this stack
-                                    const stackIds = new Set(newSortedList.map(l => l.id))
-
-                                    setLocations(prev => prev.map(l => {
-                                        if (stackIds.has(l.id)) {
-                                            return { ...l, level_order: orderMap.get(l.id) ?? 0 }
-                                        }
-                                        return l
-                                    }))
-                                    setHasChanges(true)
+                                // Highlight Check: Check if THIS match ID or ANY level in it matches
+                                highlightedIds.has(stack.id) || stack.levels.some(l => highlightedIds.has(l.id))
+                                    ? 'ring-4 ring-yellow-400 ring-offset-2 z-40 animate-pulse bg-yellow-100/50'
+                                    : ''
                                 }
-
-                                return (
-                                    <div className="space-y-4 max-h-[60vh] overflow-y-auto p-1 relative">
-                                        {sortedLevels.map((level, idx) => (
-                                            <div key={level.id} className="border rounded-md p-4 bg-slate-50 relative transition-all">
-                                                <div className="flex items-center justify-between mb-3 border-b pb-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold text-sm">
-                                                            Tầng {level.level_order !== undefined ? level.level_order + 1 : idx + 1}
-                                                        </div>
-                                                        <span className="font-mono text-xs text-slate-500">{level.code}</span>
-                                                    </div>
-                                                    <div className="flex gap-1">
-                                                        <Button
-                                                            variant="ghost" size="icon" className="h-6 w-6"
-                                                            disabled={idx === 0}
-                                                            onClick={() => moveLevel(level.id, 'up')}
-                                                            title="Chuyển Lên"
-                                                        >
-                                                            <ArrowUp size={14} />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost" size="icon" className="h-6 w-6"
-                                                            disabled={idx === sortedLevels.length - 1}
-                                                            onClick={() => moveLevel(level.id, 'down')}
-                                                            title="Chuyển Xuống"
-                                                        >
-                                                            <ArrowDown size={14} />
-                                                        </Button>
-                                                    </div>
-                                                </div>
-
-                                                {/* Boxes Grid for this Level */}
-                                                <div className="grid grid-cols-6 gap-3">
-                                                    {level.stats?.boxes && level.stats.boxes.length > 0 ? (
-                                                        level.stats.boxes.map(box => (
-                                                            <div key={box.id} className="group relative flex flex-col gap-1">
-                                                                <div className="w-full aspect-[3/4] bg-white border border-slate-300 rounded-sm relative flex items-end overflow-hidden shadow-sm">
-                                                                    <div
-                                                                        className={`w-full transition-all duration-500 ${box.items > 80 ? 'bg-red-500' : box.items > 30 ? 'bg-yellow-400' : 'bg-green-500'}`}
-                                                                        style={{ height: `${Math.min(100, box.items)}%` }}
-                                                                    ></div>
-                                                                    <span className="absolute inset-x-0 bottom-0 text-[10px] font-bold text-center text-slate-700/80 bg-white/50 backdrop-blur-[1px]">{box.items}</span>
-                                                                </div>
-                                                                <span className="text-[9px] text-center truncate font-mono text-slate-500" title={box.code}>{box.code.split('-').pop()}</span>
-                                                            </div>
-                                                        ))
-                                                    ) : (
-                                                        <div className="col-span-6 text-center text-slate-400 text-xs italic py-4 bg-slate-100/50 rounded-lg border border-dashed">
-                                                            (Trống)
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
+                            `}
+                            style={{
+                                left: stack.pos_x * GRID_SIZE + 2, // +2 margin
+                                top: stack.pos_y * GRID_SIZE + 2,
+                                width: stack.width * GRID_SIZE - 4, // -4 margin
+                                height: stack.height * GRID_SIZE - 4,
+                                transition: draggingStackId === stack.id ? 'none' : 'left 0.2s, top 0.2s'
+                            }}
+                            onClick={(e) => {
+                                e.stopPropagation()
+                                if (mode === 'HEATMAP') {
+                                    setSelectedStack(stack)
+                                }
+                            }}
+                        >
+                            {/* User - Requested Heatmap Design */}
+                            {/* Heatmap Mode Display - Reformatted */}
+                            {mode === 'HEATMAP' && (
+                                <div className="absolute inset-0 flex flex-col p-2 pointer-events-none rounded-md">
+                                    {/* Top Row: Location Name + Badge */}
+                                    <div className="flex items-center justify-between w-full mb-2">
+                                        <span className="font-extrabold text-base text-slate-800 leading-none tracking-wide truncate">
+                                            {stack.levels.length > 1
+                                                ? stack.baseCode.substring(0, 5)
+                                                : stack.baseCode}
+                                        </span>
+                                        {stack.levels.length > 1 && (
+                                            <span className="flex items-center justify-center bg-slate-800 text-white text-[10px] font-bold h-5 px-2 rounded shadow-sm ml-1" title={`${stack.levels.length} Tầng`}>
+                                                {stack.levels.length}F
+                                            </span>
+                                        )}
                                     </div>
-                                )
-                            })()}
 
-                        </DialogContent>
-                    </Dialog>
+                                    {/* Middle: Box Count */}
+                                    <div className="flex-1 flex flex-col items-center justify-center gap-0.5">
+                                        {stack.total_boxes > 0 ? (
+                                            <>
+                                                <span className={`text-3xl font-black leading-none ${stack.total_items > 500 ? 'text-red-700' :
+                                                    stack.total_items > 100 ? 'text-yellow-700' :
+                                                        'text-slate-700'
+                                                    }`}>
+                                                    {stack.total_boxes}
+                                                </span>
+                                                <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Thùng</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-xs text-slate-300 italic font-light">Empty</span>
+                                        )}
+                                    </div>
+
+                                    {/* Bottom: Capacity Bar */}
+                                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-auto">
+                                        {(() => {
+                                            const maxCapacity = stack.levels.reduce((sum, level) => sum + (level.capacity || 15), 0) || 15
+                                            const percentage = Math.min(100, Math.max(5, (stack.total_boxes / maxCapacity) * 100))
+                                            const barColor = percentage > 90 ? 'bg-red-500' :
+                                                percentage > 70 ? 'bg-yellow-500' :
+                                                    'bg-indigo-500'
+
+                                            return (
+                                                <div
+                                                    className={`h-full transition-all duration-500 ${barColor}`}
+                                                    style={{ width: `${percentage}%` }}
+                                                    title={`Sức chứa: ${stack.total_boxes}/${maxCapacity} thùng (${stack.levels.length} tầng)`}
+                                                />
+                                            )
+                                        })()}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Edit Mode Visual */}
+                            {mode === 'EDIT' && (
+                                <div className="flex-1 flex items-center justify-center text-slate-300">
+                                    <div className="flex flex-col items-center gap-1">
+                                        <span className="font-bold text-slate-400">{stack.baseCode}</span>
+                                        <Move size={16} />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ))}
                 </div>
-                )
+            </div >
+
+            {/* Footer */}
+            <div className="bg-white border-t px-4 py-2 text-xs text-muted-foreground flex justify-between shadow-sm z-10 shrink-0">
+                <div className="flex gap-4">
+                    <span className="flex items-center gap-1"><Info size={12} /> {mode === 'EDIT' ? 'Kéo thả để di chuyển. Kéo vào góc dưới phải để tách kệ.' : 'Click vào Kệ để xem chi tiết.'}</span>
+                </div>
+                <div>Racks: {stacks.length} | Locations: {locations.length}</div>
+            </div>
+
+            {/* Detail Dialog */}
+            <Dialog open={!!selectedStack} onOpenChange={(open) => !open && setSelectedStack(null)}>
+                <DialogContent className="max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                                <Box className="w-5 h-5 text-indigo-600" />
+                                <span>Chi tiết Kệ {selectedStack?.baseCode}</span>
+                            </div>
+                            <Button
+                                onClick={handleSave}
+                                disabled={saving || !hasChanges}
+                                size="sm"
+                                variant={hasChanges ? "default" : "secondary"}
+                                className={`mr-8 ${saving ? 'opacity-50' : ''}`}
+                            >
+                                {saving ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+                                {hasChanges ? 'Lưu Thay Đổi' : 'Đã Lưu'}
+                            </Button>
+                        </DialogTitle>
+                        <DialogDescription>
+                            Tổng {selectedStack?.total_boxes} thùng - {selectedStack?.total_items} sản phẩm
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {(() => {
+                        if (!selectedStack) return null
+                        // Fix stale state: Find the latest version of the selected stack from the 'stacks' array
+                        const stack = stacks.find(s => s.id === selectedStack.id) || selectedStack
+                        if (!stack) return null
+
+                        // Sort levels descending by level_order (Highest floor first)
+                        const sortedLevels = [...stack.levels].sort((a, b) => (b.level_order || 0) - (a.level_order || 0))
+
+                        const moveLevel = (levelId: string, direction: 'up' | 'down') => {
+                            // Find current level in the master 'locations' list
+                            const levelIndex = locations.findIndex(l => l.id === levelId)
+                            if (levelIndex === -1) return
+
+                            // Fix 'All Level 1' bug:
+                            // If we detect duplicate level_orders in this stack, we MUST normalize them first.
+                            // Or simpler: We treat the current 'sortedLevels' as the TRUTH of order (visual order).
+                            // And we simply RE-ASSIGN level_order for the WHOLE stack based on the desired visual swap.
+
+                            const currentVisualIndex = sortedLevels.findIndex(l => l.id === levelId)
+                            if (currentVisualIndex === -1) return
+
+                            // Calculate Target Visual Index
+                            // Visual UP (Arrow Up) = Previous in List (since list is DESC by level_order, meaning higher floors first)
+                            // Wait, sortedLevels = [Floor 2 (Order 1), Floor 1 (Order 0)].
+                            // If I am Floor 1 (Index 1). Up Arrow -> I want to be Floor 2.
+                            // visual index 1 -> target 0.
+                            const targetVisualIndex = direction === 'up' ? currentVisualIndex - 1 : currentVisualIndex + 1
+
+                            if (targetVisualIndex < 0 || targetVisualIndex >= sortedLevels.length) return // Out of bounds
+
+                            // Create a new order array based on the swap
+                            const newSortedList = [...sortedLevels]
+                            // Swap elements in the list
+                            const temp = newSortedList[currentVisualIndex]
+                            newSortedList[currentVisualIndex] = newSortedList[targetVisualIndex]
+                            newSortedList[targetVisualIndex] = temp
+
+                            // Now, re-assign 'level_order' for EVERY item in this stack based on the new list order.
+                            // index 0 = Highest Order (N-1)
+                            // index N = Lowest Order (0)
+                            const maxOrder = newSortedList.length - 1
+
+                            // Map of ID -> New Order
+                            const orderMap = new Map<string, number>()
+                            newSortedList.forEach((l, idx) => {
+                                orderMap.set(l.id, maxOrder - idx)
+                            })
+
+                            // Update Master State
+                            // We only touch the locations that are in this stack
+                            const stackIds = new Set(newSortedList.map(l => l.id))
+
+                            setLocations(prev => prev.map(l => {
+                                if (stackIds.has(l.id)) {
+                                    return { ...l, level_order: orderMap.get(l.id) ?? 0 }
+                                }
+                                return l
+                            }))
+                            setHasChanges(true)
+                        }
+
+                        return (
+                            <div className="space-y-4 max-h-[60vh] overflow-y-auto p-1 relative">
+                                {sortedLevels.map((level, idx) => (
+                                    <div key={level.id} className="border rounded-md p-4 bg-slate-50 relative transition-all">
+                                        <div className="flex items-center justify-between mb-3 border-b pb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className="bg-indigo-100 text-indigo-700 px-2 py-1 rounded font-bold text-sm">
+                                                    Tầng {level.level_order !== undefined ? level.level_order + 1 : idx + 1}
+                                                </div>
+                                                <span className="font-mono text-xs text-slate-500">{level.code}</span>
+                                            </div>
+                                            <div className="flex gap-1">
+                                                <Button
+                                                    variant="ghost" size="icon" className="h-6 w-6"
+                                                    disabled={idx === 0}
+                                                    onClick={() => moveLevel(level.id, 'up')}
+                                                    title="Chuyển Lên"
+                                                >
+                                                    <ArrowUp size={14} />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost" size="icon" className="h-6 w-6"
+                                                    disabled={idx === sortedLevels.length - 1}
+                                                    onClick={() => moveLevel(level.id, 'down')}
+                                                    title="Chuyển Xuống"
+                                                >
+                                                    <ArrowDown size={14} />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Boxes Grid for this Level */}
+                                        <div className="grid grid-cols-6 gap-3">
+                                            {level.stats?.boxes && level.stats.boxes.length > 0 ? (
+                                                level.stats.boxes.map(box => (
+                                                    <div key={box.id} className="group relative flex flex-col gap-1">
+                                                        <div className="w-full aspect-[3/4] bg-white border border-slate-300 rounded-sm relative flex items-end overflow-hidden shadow-sm">
+                                                            <div
+                                                                className={`w-full transition-all duration-500 ${box.items > 80 ? 'bg-red-500' : box.items > 30 ? 'bg-yellow-400' : 'bg-green-500'}`}
+                                                                style={{ height: `${Math.min(100, box.items)}%` }}
+                                                            ></div>
+                                                            <span className="absolute inset-x-0 bottom-0 text-[10px] font-bold text-center text-slate-700/80 bg-white/50 backdrop-blur-[1px]">{box.items}</span>
+                                                        </div>
+                                                        <span className="text-[9px] text-center truncate font-mono text-slate-500" title={box.code}>{box.code.split('-').pop()}</span>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="col-span-6 text-center text-slate-400 text-xs italic py-4 bg-slate-100/50 rounded-lg border border-dashed">
+                                                    (Trống)
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )
+                    })()}
+
+                </DialogContent>
+            </Dialog>
+        </div>
+    )
 }
