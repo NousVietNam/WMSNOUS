@@ -703,14 +703,14 @@ export default function WarehouseMapPage() {
                                         'bg-white border-slate-200'
                                     }`}>
                                     {/* 1. Location & Level (Clearest) */}
-                                    <div className="flex items-center justify-between w-full border-b border-black/5 pb-1 mb-1">
-                                        <span className="font-extrabold text-sm text-slate-800 leading-none tracking-tight">
+                                    <div className="flex items-center justify-between w-full border-b border-black/5 pb-1.5 mb-2">
+                                        <span className="font-extrabold text-base text-slate-800 leading-tight tracking-wide">
                                             {stack.levels.length > 1
                                                 ? stack.baseCode.substring(0, 5)
                                                 : stack.baseCode}
                                         </span>
                                         {stack.levels.length > 1 && (
-                                            <span className="flex items-center justify-center bg-slate-800 text-white text-[9px] font-bold h-4 px-1.5 rounded shadow-sm" title={`${stack.levels.length} Tầng`}>
+                                            <span className="flex items-center justify-center bg-slate-800 text-white text-[10px] font-bold h-5 px-2 rounded shadow-sm" title={`${stack.levels.length} Tầng`}>
                                                 {stack.levels.length}F
                                             </span>
                                         )}
