@@ -282,8 +282,21 @@ function PutAwayContent() {
 
     // Step 3: Save All
     const handleSaveBox = async () => {
-        if (items.length === 0) return
-        if (!confirm("Xác nhận lưu các mặt hàng này vào thùng?")) return
+        console.log('🔵 handleSaveBox STARTED', { itemsCount: items.length, items, session: session?.user?.id })
+
+        if (items.length === 0) {
+            console.log('❌ Exiting: No items')
+            return
+        }
+
+        const confirmResult = confirm("Xác nhận lưu các mặt hàng này vào thùng?")
+        console.log('🤔 Confirm result:', confirmResult)
+        if (!confirmResult) {
+            console.log('❌ User cancelled')
+            return
+        }
+
+        console.log('✅ Proceeding with save...')
         setLoading(true)
 
         try {
