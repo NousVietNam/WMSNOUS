@@ -33,6 +33,7 @@ export default function BoxesPage() {
     const [printQueue, setPrintQueue] = useState<Box[]>([]) // For Actual Print - Hidden
     const [bulkQty, setBulkQty] = useState<string>('')
     const [searchTerm, setSearchTerm] = useState<string>('')
+    const [customCode, setCustomCode] = useState<string>('')
 
     const printRef = useRef(null)
     const handleReactToPrint = useReactToPrint({
@@ -165,6 +166,50 @@ export default function BoxesPage() {
         })
         if (error) alert("Lỗi: " + error.message)
         else { setOpenDialog(false); fetchBoxes() }
+    }
+
+    const handleCreateCustom = async () => {
+        const code = customCode.trim()
+        if (!code) return alert("Vui lòng nhập mã thùng")
+        if (!code.toLowerCase().startsWith("box")) {
+            return alert("Mã thùng phải bắt đầu bằng chữ 'Box'")
+        }
+
+        setLoading(true)
+        try {
+            // Check uniqueness
+            const { data: existing } = await supabase
+                .from('boxes')
+                .select('id')
+                .eq('code', code)
+                .single()
+
+            if (existing) {
+                setLoading(false)
+                return alert(`Mã thùng '${code}' đã tồn tại!`)
+            }
+
+            const receivingLocId = await getLocationReceivingId()
+            if (!receivingLocId) { setLoading(false); return }
+
+            const { error } = await supabase.from('boxes').insert({
+                code,
+                status: 'OPEN',
+                type: 'STORAGE',
+                location_id: receivingLocId
+            })
+
+            if (error) throw error
+
+            setOpenDialog(false)
+            setCustomCode('')
+            fetchBoxes()
+            alert(`Đã tạo thùng '${code}' thành công!`)
+        } catch (e: any) {
+            alert("Lỗi: " + e.message)
+        } finally {
+            setLoading(false)
+        }
     }
 
     const handleCreateBulk = async (qty: number) => {
@@ -308,9 +353,24 @@ export default function BoxesPage() {
                                 <DialogContent>
                                     <DialogHeader><DialogTitle>Tạo Thùng Mới</DialogTitle></DialogHeader>
                                     <div className="py-4 space-y-6">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">Tạo lẻ (1 thùng)</label>
-                                            <Button size="lg" onClick={handleCreateAuto} className="w-full" variant="outline">Tạo Mã Kế Tiếp</Button>
+                                        <div className="space-y-4 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium">Tạo 1 thùng lẻ</label>
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        placeholder="VD: BOX-VIP-01"
+                                                        value={customCode}
+                                                        onChange={(e) => setCustomCode(e.target.value)}
+                                                        className="bg-white"
+                                                    />
+                                                    <Button onClick={handleCreateCustom} disabled={loading} size="sm">
+                                                        Tạo
+                                                    </Button>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 italic">* Phải bắt đầu bằng 'Box'</p>
+                                            </div>
+                                            <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t border-blue-200" /></div><div className="relative flex justify-center text-[10px] uppercase"><span className="bg-[#f8fafc] px-2 text-blue-400 font-bold">Hoặc</span></div></div>
+                                            <Button size="sm" onClick={handleCreateAuto} className="w-full" variant="outline">Tạo Mã Kế Tiếp</Button>
                                         </div>
 
                                         <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-muted-foreground">Hoặc tạo hàng loạt</span></div></div>
