@@ -362,9 +362,12 @@ export default function WarehouseMapPage() {
             ) {
                 const targetStack = stacks.find(s => s.id === draggingStackId)
                 if (targetStack && targetStack.levels.length > 1) {
-                    // Scatter Logic
+                    // Scatter Logic - Create dedicated unstack zone with better spacing
+                    // Calculate max Y position (bottom edge of all existing locations)
                     const maxY = Math.max(...locations.map(l => (Number(l.pos_y) || 0) + (Number(l.height) || 2)), 0)
-                    const startY = maxY + 2
+
+                    // Add 5 rows of spacing to create a clear separation zone
+                    const startY = maxY + 5
 
                     // Pre-calculate new positions for deterministic scattering
                     const newPositions = new Map<string, { x: number, y: number }>()
@@ -372,8 +375,8 @@ export default function WarehouseMapPage() {
                     let cy = startY
                     targetStack.levels.forEach(l => {
                         newPositions.set(l.id, { x: cx, y: cy })
-                        cx += 2
-                        if (cx >= 20) { cx = 0; cy += 2 }
+                        cx += 2 // 2 grid units spacing horizontally
+                        if (cx >= 20) { cx = 0; cy += 2 } // Wrap to next row after 10 locations
                     })
 
                     setLocations(prev => prev.map(l => {
@@ -385,11 +388,11 @@ export default function WarehouseMapPage() {
                     }))
                     setHasChanges(true)
 
-                    // Auto-pan logic...
+                    // Auto-pan to unstack zone
                     const targetLocalY = startY * GRID_SIZE
                     const newOffsetY = 100 - (targetLocalY * scale)
                     setOffset({ x: 0, y: Math.min(0, newOffsetY) })
-                    alert(`Đã tách ${targetStack.levels.length} vị trí ra khu vực trống cuối bản đồ. (Row Y=${startY})`)
+                    alert(`Đã tách ${targetStack.levels.length} vị trí ra khu vực trống (Row Y=${startY})\n\nCác vị trí đã được đặt cách khu vực chính 5 hàng để tránh đè lên.`)
                     actionTaken = true
                 }
             }
