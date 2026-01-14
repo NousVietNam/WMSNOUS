@@ -54,7 +54,7 @@ export default function OutboxPage() {
         if (filterDate) {
             const [y, m, d] = filterDate.split('-')
             const dateStr = `${d}${m}${y.slice(-2)}`
-            query = query.ilike('code', `%-${dateStr}-%`)
+            query = query.ilike('code', `%${dateStr}%`)
         }
 
         const { data, error } = await query
@@ -138,23 +138,29 @@ export default function OutboxPage() {
     }
 
     const handleExport = async () => {
-        if (selectedIds.size === 0) return alert("Chọn ít nhất 1 thùng")
-        const { data } = await supabase.from('inventory_items').select('quantity, boxes(code), products(sku,name,barcode)').in('box_id', Array.from(selectedIds))
-        if (!data?.length) return alert("Không có dữ liệu")
+        if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
 
-        const rows = data.map((r: any) => ({
-            'Mã Thùng': r.boxes?.code,
-            'SKU': r.products?.sku,
-            'Tên SP': r.products?.name,
-            'SL': r.quantity
-        }))
-        const ws = XLSX.utils.json_to_sheet(rows)
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, "List")
-        const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '')
+        try {
+            setLoading(true)
+            const response = await fetch('/api/export/boxes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ boxIds: Array.from(selectedIds) })
+            })
 
-        // Direct XLSX export (most compatible)
-        XLSX.writeFile(wb, `OutboxList_${timestamp}.xlsx`)
+            if (!response.ok) {
+                const error = await response.json()
+                throw new Error(error.error || 'Lỗi xuất file')
+            }
+
+            const blob = await response.blob()
+            const filename = `Export_Outboxes_${new Date().toISOString().split('T')[0]}.xlsx`
+            saveAs(blob, filename)
+        } catch (e: any) {
+            alert(e.message)
+        } finally {
+            setLoading(false)
+        }
     }
 
     // Print State
@@ -250,11 +256,11 @@ export default function OutboxPage() {
                                     <td className="p-3 text-center"><input type="checkbox" checked={selectedIds.has(box.id)} onChange={() => toggleSelect(box.id)} className="w-4 h-4" /></td>
                                     <td className="p-3 font-bold text-blue-700 cursor-pointer" onClick={() => setPrintBox(box)}>{box.code}</td>
                                     <td className="p-3">{box.orders?.code || '-'}</td>
-                                    <td className="p-3 text-center">{box.inventory_items?.[0]?.count || 0}</td>
+                                    <td className="p-3 text-center">{box.inventory_items?.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0) || 0}</td>
                                     <td className="p-3 text-center">{box.status}</td>
                                     <td className="p-3 text-right flex justify-end gap-2">
                                         <Button size="sm" variant="outline" onClick={() => setPrintBox(box)}><Printer className="h-4 w-4" /></Button>
-                                        <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleDelete(box.id, box.inventory_items?.[0]?.count || 0)}><Trash2 className="h-4 w-4" /></Button>
+                                        <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleDelete(box.id, box.inventory_items?.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0) || 0)}><Trash2 className="h-4 w-4" /></Button>
                                     </td>
                                 </tr>
                             ))}
