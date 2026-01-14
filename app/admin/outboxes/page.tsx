@@ -10,12 +10,12 @@ import { Plus, Printer, RefreshCw, Trash2, Box, Download } from "lucide-react"
 import QRCode from "react-qr-code"
 import * as XLSX from 'xlsx'
 
-// Helper - returns MMYY format to match storage box naming
+// Helper - returns DDMM format for outbox naming (day-month)
 const getDefaultDateStr = () => {
     const d = new Date()
+    const day = d.getDate().toString().padStart(2, '0')
     const month = (d.getMonth() + 1).toString().padStart(2, '0')
-    const year = d.getFullYear().toString().slice(-2)
-    return `${month}${year}`
+    return `${day}${month}`
 }
 
 export default function OutboxPage() {

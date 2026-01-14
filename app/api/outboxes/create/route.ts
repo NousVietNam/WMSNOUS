@@ -28,8 +28,8 @@ export async function POST(request: Request) {
         }
 
         // Generate Codes
-        // Format: OUT-MMYY-XXX
-        // e.g., OUT-0126-001
+        // Format: OUT-DDMM-XXX
+        // e.g., OUT-1401-001 (January 14)
         const codesToCreate: string[] = []
         for (let i = start; i <= end; i++) {
             const numPart = i.toString().padStart(3, '0')
