@@ -303,19 +303,12 @@ function PutAwayContent() {
             // Log Transaction (Detailed per Item)
             const transactions = items.map((item, index) => ({
                 type: 'IMPORT',
-                entity_type: 'ITEM', // Changed to ITEM per user request
+                entity_type: 'ITEM',
                 entity_id: newInvs && newInvs[index] ? newInvs[index].id : null,
-                to_box_id: box.id, // Fix: Populate distinct column
-                quantity: item.qty, // Fix: Populate distinct column
-                sku: item.sku, // Fix: Populate top-level SKU
+                to_box_id: box.id,
+                quantity: item.qty,
+                sku: item.sku,
                 user_id: session?.user?.id,
-                details: {
-                    box_code: boxCode,
-                    sku: item.sku,
-                    product_name: item.name,
-                    quantity: item.qty,
-                    to: boxCode
-                },
                 created_at: new Date().toISOString()
             }))
 
