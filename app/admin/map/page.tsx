@@ -490,6 +490,21 @@ export default function WarehouseMapPage() {
 
     // Modern heatmap colors based on capacity utilization %
     const getStackColor = (stack: StackNode) => {
+        // Check if this is a special zone (not a SHELF)
+        const firstLevel = stack.levels[0]
+        if (firstLevel) {
+            if (firstLevel.type === 'OFFICE') {
+                return 'bg-blue-100/90 border-blue-500 border-2 text-blue-900' // Office - Blue
+            }
+            if (firstLevel.type === 'SHIPPING') {
+                return 'bg-green-100/90 border-green-500 border-2 text-green-900' // Shipping - Green
+            }
+            if (firstLevel.type === 'RECEIVING') {
+                return 'bg-orange-100/90 border-orange-500 border-2 text-orange-900' // Receiving - Orange
+            }
+        }
+
+        // Regular shelf color logic
         const boxCount = stack.total_boxes || 0
         // Calculate total capacity from all levels in the stack
         const totalCapacity = stack.levels.reduce((sum, level) => sum + (level.capacity || 10), 0)
