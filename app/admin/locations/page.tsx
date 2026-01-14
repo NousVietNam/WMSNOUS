@@ -190,6 +190,12 @@ export default function LocationsPage() {
     const handlePrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: `Location-${printLocation?.code || 'Code'}`,
+        pageStyle: `
+        @page {
+            size: 100mm 150mm;
+            margin: 0;
+        }
+    `
     })
 
     const filteredLocations = locations.filter(l =>

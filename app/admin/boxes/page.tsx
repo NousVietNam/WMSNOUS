@@ -37,6 +37,12 @@ export default function BoxesPage() {
     const handleReactToPrint = useReactToPrint({
         contentRef: printRef,
         documentTitle: `Box-Labels-${new Date().toISOString()}`,
+        pageStyle: `
+        @page {
+            size: 100mm 150mm;
+            margin: 0;
+        }
+    `,
         onAfterPrint: () => setPrintQueue([])
     })
 
