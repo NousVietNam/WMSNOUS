@@ -706,12 +706,12 @@ export default function WarehouseMapPage() {
                                     <div className="flex items-center justify-between w-full border-b border-black/5 pb-1 mb-1">
                                         <span className="font-extrabold text-sm text-slate-800 leading-none tracking-tight">
                                             {stack.levels.length > 1
-                                                ? (stack.baseCode.split('-').slice(1).join('-') || stack.baseCode)
+                                                ? stack.baseCode.substring(0, 5)
                                                 : stack.baseCode}
                                         </span>
                                         {stack.levels.length > 1 && (
                                             <span className="flex items-center justify-center bg-slate-800 text-white text-[9px] font-bold h-4 px-1.5 rounded shadow-sm" title={`${stack.levels.length} Tầng`}>
-                                                {stack.levels.length}L
+                                                {stack.levels.length}F
                                             </span>
                                         )}
                                     </div>
