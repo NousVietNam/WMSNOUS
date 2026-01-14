@@ -9,7 +9,9 @@ const supabase = createClient(
 
 export async function POST(request: Request) {
     try {
-        const { prefix = "OUT", from, to, dateStr } = await request.json()
+        const body = await request.json()
+        const { prefix = "OUT", from, to } = body
+        const dateStr = body.dateStr || body.date
 
         // Validation
         if (!from || !to || !dateStr) {
@@ -38,12 +40,19 @@ export async function POST(request: Request) {
         }
 
         // Check for Conflicts
+        console.log('Checking for conflicts. Codes to create:', codesToCreate.slice(0, 5), '... total:', codesToCreate.length)
+
         const { data: existing, error: checkError } = await supabase
             .from('boxes')
             .select('code')
             .in('code', codesToCreate)
 
-        if (checkError) throw checkError
+        if (checkError) {
+            console.error('Check error:', checkError)
+            throw checkError
+        }
+
+        console.log('Existing boxes found:', existing?.length || 0, existing?.slice(0, 5))
 
         if (existing && existing.length > 0) {
             const conflictingCodes = existing.map(b => b.code).join(', ')

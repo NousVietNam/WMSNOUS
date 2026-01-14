@@ -12,12 +12,12 @@ import * as XLSX from 'xlsx'
 import { useReactToPrint } from "react-to-print"
 import { saveAs } from 'file-saver'
 
-// Helper - returns DDMM format for outbox naming (day-month)
 const getDefaultDateStr = () => {
     const d = new Date()
     const day = d.getDate().toString().padStart(2, '0')
     const month = (d.getMonth() + 1).toString().padStart(2, '0')
-    return `${day}${month}`
+    const year = d.getFullYear().toString().slice(-2)
+    return `${day}${month}${year}`
 }
 
 export default function OutboxPage() {
@@ -53,8 +53,8 @@ export default function OutboxPage() {
         if (searchCode) query = query.ilike('code', `%${searchCode}%`)
         if (filterDate) {
             const [y, m, d] = filterDate.split('-')
-            const dateSuffix = `${d}${m}${y.slice(-2)}`
-            query = query.ilike('code', `%-${dateSuffix}%`)
+            const dateStr = `${d}${m}${y.slice(-2)}`
+            query = query.ilike('code', `%-${dateStr}-%`)
         }
 
         const { data, error } = await query
@@ -72,10 +72,28 @@ export default function OutboxPage() {
     const handleCreate = async () => {
         try {
             setLoading(true)
-            await fetch('/api/outboxes/create', { method: 'POST', body: JSON.stringify(formData) })
+            const response = await fetch('/api/outboxes/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(formData)
+            })
+
+            const result = await response.json()
+
+            if (!response.ok || !result.success) {
+                setLoading(false)
+                return alert(result.error || "Lỗi tạo thùng xuất")
+            }
+
+            alert(`Đã tạo ${result.count} thùng xuất thành công!`)
             setCreateOpen(false)
             fetchOutboxes()
-        } catch (e) { alert("Lỗi"); setLoading(false) }
+        } catch (e: any) {
+            console.error('Create outbox error:', e)
+            alert("Lỗi: " + e.message)
+        } finally {
+            setLoading(false)
+        }
     }
 
     const handleDelete = async (id: string, count: number) => {
