@@ -115,20 +115,20 @@ export default function OutboxPage() {
 
     const handleExport = async () => {
         if (selectedIds.size === 0) return alert("Chọn ít nhất 1 thùng")
-        const { data } = await supabase.from('inventory_items').select('quantity, expiry_date, boxes(code), products(sku,name,barcode)').in('box_id', Array.from(selectedIds))
+        const { data } = await supabase.from('inventory_items').select('quantity, boxes(code), products(sku,name,barcode)').in('box_id', Array.from(selectedIds))
         if (!data?.length) return alert("Không có dữ liệu")
 
         const rows = data.map((r: any) => ({
             'Mã Thùng': r.boxes?.code,
             'SKU': r.products?.sku,
             'Tên SP': r.products?.name,
-            'SL': r.quantity,
-            'HSD': r.expiry_date
+            'SL': r.quantity
         }))
         const ws = XLSX.utils.json_to_sheet(rows)
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, "List")
-        XLSX.writeFile(wb, "OutboxList.xlsx")
+        const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '')
+        XLSX.writeFile(wb, `OutboxList_${timestamp}.xlsx`)
     }
 
     // --- TRIGGER PRINT ---
@@ -244,9 +244,8 @@ export default function OutboxPage() {
             <style jsx global>{`
                 @media print {
                     @page { margin: 0; size: 100mm 150mm; }
-                    body { background: white; }
-                    body * { display: none; }
-                    #print-area, #print-area * { display: block; visibility: visible; }
+                    body { visibility: hidden; background: white; }
+                    #print-area, #print-area * { visibility: visible; }
                     #print-area { position: absolute; left: 0; top: 0; width: 100%; }
                     .page-break { page-break-after: always; break-after: page; }
                     .page-break:last-child { page-break-after: avoid; break-after: avoid; }

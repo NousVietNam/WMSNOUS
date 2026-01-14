@@ -28,12 +28,12 @@ export async function POST(request: Request) {
         }
 
         // Generate Codes
-        // Format: OUT-XXX-DDMMYY
-        // e.g., OUT-001-070126
+        // Format: OUT-MMYY-XXX
+        // e.g., OUT-0126-001
         const codesToCreate: string[] = []
         for (let i = start; i <= end; i++) {
             const numPart = i.toString().padStart(3, '0')
-            const code = `${prefix}-${numPart}-${dateStr}`
+            const code = `${prefix}-${dateStr}-${numPart}`
             codesToCreate.push(code)
         }
 

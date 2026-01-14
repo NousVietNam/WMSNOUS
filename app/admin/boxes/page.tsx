@@ -235,7 +235,8 @@ export default function BoxesPage() {
         const ws = XLSX.utils.json_to_sheet(exportData)
         const wb = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(wb, ws, "Packing_List")
-        XLSX.writeFile(wb, `PackingList_Storage.xlsx`)
+        const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '')
+        XLSX.writeFile(wb, `PackingList_Storage_${timestamp}.xlsx`)
     }
 
     // UNIFIED PRINT
