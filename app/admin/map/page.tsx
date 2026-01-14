@@ -811,40 +811,40 @@ export default function WarehouseMapPage() {
                             {/* User - Requested Heatmap Design */}
                             {/* Heatmap Mode Display - Reformatted */}
                             {mode === 'HEATMAP' && (
-                                <div className="absolute inset-0 flex flex-col p-2 pointer-events-none rounded-md">
-                                    {/* Top Row: Location Name + Badge */}
-                                    <div className="flex items-center justify-between w-full mb-2 gap-2">
-                                        <span className="font-extrabold text-base text-slate-800 leading-tight tracking-wide flex-1 break-words">
+                                <div className="absolute inset-0 flex flex-col p-3 pointer-events-none rounded-md">
+                                    {/* Top Row: Location Name + Badge - SINGLE LINE */}
+                                    <div className="flex items-center justify-between w-full mb-3 gap-2">
+                                        <span className="font-extrabold text-lg text-slate-800 leading-none tracking-normal whitespace-nowrap overflow-hidden text-ellipsis flex-1">
                                             {stack.levels.length > 1
-                                                ? stack.baseCode.substring(0, 5)
+                                                ? stack.baseCode.substring(0, 8)
                                                 : stack.baseCode}
                                         </span>
                                         {stack.levels.length > 1 && (
-                                            <span className="flex items-center justify-center bg-slate-800 text-white text-[10px] font-bold h-5 px-2 rounded shadow-sm flex-shrink-0" title={`${stack.levels.length} Tầng`}>
+                                            <span className="flex items-center justify-center bg-slate-800 text-white text-xs font-bold h-6 px-2.5 rounded shadow-sm flex-shrink-0" title={`${stack.levels.length} Tầng`}>
                                                 {stack.levels.length}F
                                             </span>
                                         )}
                                     </div>
 
                                     {/* Middle: Box Count */}
-                                    <div className="flex-1 flex flex-col items-center justify-center gap-0.5">
+                                    <div className="flex-1 flex flex-col items-center justify-center gap-1">
                                         {stack.total_boxes > 0 ? (
                                             <>
-                                                <span className={`text-3xl font-black leading-none ${stack.total_items > 500 ? 'text-red-700' :
+                                                <span className={`text-4xl font-black leading-none ${stack.total_items > 500 ? 'text-red-700' :
                                                     stack.total_items > 100 ? 'text-yellow-700' :
                                                         'text-slate-700'
                                                     }`}>
                                                     {stack.total_boxes}
                                                 </span>
-                                                <span className="text-[9px] font-bold uppercase text-slate-400 tracking-wider">Thùng</span>
+                                                <span className="text-xs font-bold uppercase text-slate-400 tracking-wider">Thùng</span>
                                             </>
                                         ) : (
-                                            <span className="text-xs text-slate-300 italic font-light">Empty</span>
+                                            <span className="text-sm text-slate-300 italic font-light">Empty</span>
                                         )}
                                     </div>
 
                                     {/* Bottom: Capacity Bar */}
-                                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mt-auto">
+                                    <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden mt-auto">
                                         {(() => {
                                             const maxCapacity = stack.levels.reduce((sum, level) => sum + (level.capacity || 15), 0) || 15
                                             const percentage = Math.min(100, Math.max(5, (stack.total_boxes / maxCapacity) * 100))
