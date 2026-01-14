@@ -203,35 +203,35 @@ export default function SeedPage() {
         try {
             // Delete in correct order (respecting foreign keys)
             logs.push("Đang xóa picking tasks...")
-            const { error: e1 } = await supabase.from('picking_tasks').delete().gte('id', 0)
+            const { error: e1 } = await supabase.from('picking_tasks').delete().not('id', 'is', null)
             if (e1) logs.push(`⚠️ Picking tasks: ${e1.message}`)
 
             logs.push("Đang xóa picking jobs...")
-            const { error: e2 } = await supabase.from('picking_jobs').delete().gte('id', 0)
+            const { error: e2 } = await supabase.from('picking_jobs').delete().not('id', 'is', null)
             if (e2) logs.push(`⚠️ Picking jobs: ${e2.message}`)
 
             logs.push("Đang xóa order items...")
-            const { error: e3 } = await supabase.from('order_items').delete().gte('id', 0)
+            const { error: e3 } = await supabase.from('order_items').delete().not('id', 'is', null)
             if (e3) logs.push(`⚠️ Order items: ${e3.message}`)
 
             logs.push("Đang xóa orders...")
-            const { error: e4 } = await supabase.from('orders').delete().gte('id', 0)
+            const { error: e4 } = await supabase.from('orders').delete().not('id', 'is', null)
             if (e4) logs.push(`⚠️ Orders: ${e4.message}`)
 
             logs.push("Đang xóa transactions...")
-            const { error: e5 } = await supabase.from('transactions').delete().gte('id', 0)
+            const { error: e5 } = await supabase.from('transactions').delete().not('id', 'is', null)
             if (e5) logs.push(`⚠️ Transactions: ${e5.message}`)
 
             logs.push("Đang xóa inventory items...")
-            const { error: e6 } = await supabase.from('inventory_items').delete().gte('id', 0)
+            const { error: e6 } = await supabase.from('inventory_items').delete().not('id', 'is', null)
             if (e6) logs.push(`⚠️ Inventory items: ${e6.message}`)
 
             logs.push("Đang xóa boxes...")
-            const { error: e7 } = await supabase.from('boxes').delete().gte('id', 0)
+            const { error: e7 } = await supabase.from('boxes').delete().not('id', 'is', null)
             if (e7) logs.push(`⚠️ Boxes: ${e7.message}`)
 
             logs.push("Đang xóa locations...")
-            const { error: e8 } = await supabase.from('locations').delete().gte('id', 0)
+            const { error: e8 } = await supabase.from('locations').delete().not('id', 'is', null)
             if (e8) logs.push(`⚠️ Locations: ${e8.message}`)
 
             logs.push("✅ Hoàn tất!")
