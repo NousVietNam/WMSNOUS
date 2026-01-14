@@ -100,6 +100,27 @@ export default function OutboxPage() {
         }
     }
 
+    const handleBulkDelete = async () => {
+        if (selectedIds.size === 0) return alert("Chọn ít nhất 1 thùng để xóa")
+
+        // Check if any selected boxes have items
+        const selectedBoxes = outboxes.filter(b => selectedIds.has(b.id))
+        const boxesWithItems = selectedBoxes.filter(b => (b.inventory_items?.[0]?.count || 0) > 0)
+
+        if (boxesWithItems.length > 0) {
+            return alert(`Không thể xóa! ${boxesWithItems.length} thùng đang chứa sản phẩm.`)
+        }
+
+        if (!confirm(`Xác nhận xóa ${selectedIds.size} thùng rỗng?`)) return
+
+        const { error } = await supabase.from('boxes').delete().in('id', Array.from(selectedIds))
+        if (error) alert("Lỗi: " + error.message)
+        else {
+            setSelectedIds(new Set())
+            fetchOutboxes()
+        }
+    }
+
     const toggleSelect = (id: string) => {
         const next = new Set(selectedIds)
         if (next.has(id)) next.delete(id)
@@ -155,6 +176,9 @@ export default function OutboxPage() {
                         </Button>
                         <Button variant="outline" onClick={handleExport} disabled={selectedIds.size === 0}>
                             <Download className="mr-2 h-4 w-4" /> Excel
+                        </Button>
+                        <Button variant="outline" onClick={handleBulkDelete} disabled={selectedIds.size === 0} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+                            <Trash2 className="mr-2 h-4 w-4" /> Xóa Đã Chọn ({selectedIds.size})
                         </Button>
                         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
                             <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Tạo Mới</Button></DialogTrigger>
