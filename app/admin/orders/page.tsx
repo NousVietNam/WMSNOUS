@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/lib/supabase"
-import { AlertCircle, FileText, Plus, Upload, Eye, ShieldCheck } from "lucide-react"
+import { AlertCircle, FileText, Plus, Upload, Eye, ShieldCheck, Download } from "lucide-react"
 import Link from "next/link"
 import Papa from "papaparse"
 
@@ -142,6 +142,26 @@ export default function OrdersPage() {
         })
     }
 
+
+    const handleDownloadTemplate = () => {
+        const headers = ['OrderCode', 'Customer', 'SKU', 'Quantity']
+        const sampleRow = ['DH-SAMPLE-01', 'Nguyen Van A', 'SP-001', '10']
+
+        const csvContent = [
+            headers.join(','),
+            sampleRow.join(',')
+        ].join('\n')
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', 'template_import_don_hang.csv')
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+    }
+
     const processImport = async (rows: any[]) => {
         // Group by OrderCode
         const orderMap: Record<string, { customer: string, items: any[] }> = {}
@@ -229,6 +249,9 @@ export default function OrdersPage() {
                         />
                         <Button variant="outline" disabled={importLoading} onClick={() => document.getElementById('import-csv')?.click()}>
                             <Upload className="mr-2 h-4 w-4" /> Import CSV
+                        </Button>
+                        <Button variant="outline" onClick={handleDownloadTemplate}>
+                            <Download className="mr-2 h-4 w-4" /> Tải Mẫu
                         </Button>
                         <Button
                             variant="secondary"
@@ -429,8 +452,8 @@ export default function OrdersPage() {
                                     <tbody className="divide-y">
                                         {shortageData.map((item, idx) => (
                                             <tr key={idx} className={`hover:bg-slate-50 ${item.status === 'SUFFICIENT' ? 'bg-green-50/30' :
-                                                    item.status === 'PARTIAL' ? 'bg-yellow-50/30' :
-                                                        'bg-red-50/50'
+                                                item.status === 'PARTIAL' ? 'bg-yellow-50/30' :
+                                                    'bg-red-50/50'
                                                 }`}>
                                                 <td className="p-3">
                                                     {item.status === 'SUFFICIENT' ? (
@@ -451,7 +474,7 @@ export default function OrdersPage() {
                                                 <td className="p-3">{item.name}</td>
                                                 <td className="p-3 text-right font-medium">{item.needed}</td>
                                                 <td className={`p-3 text-right font-semibold ${item.available >= item.needed ? 'text-green-600' :
-                                                        item.available > 0 ? 'text-yellow-600' : 'text-red-600'
+                                                    item.available > 0 ? 'text-yellow-600' : 'text-red-600'
                                                     }`}>{item.available}</td>
                                                 <td className="p-3 text-right font-bold text-red-600">
                                                     {item.missing > 0 ? `-${item.missing}` : '—'}
