@@ -403,6 +403,39 @@ export default function InventoryPage() {
         return true
     })
 
+    // Summary View Aggregation
+    const summaryItems = (() => {
+        if (viewMode !== 'SUMMARY') return []
+        const map: Record<string, any> = {}
+
+        filteredItems.forEach(item => {
+            if (!item.products?.sku) return
+            const sku = item.products.sku
+            if (!map[sku]) {
+                map[sku] = {
+                    ...item.products,
+                    totalQty: 0,
+                    totalAllocated: 0,
+                    locations: new Set(),
+                    items: [] // Keep track of individual items for drill-down
+                }
+            }
+            map[sku].totalQty += item.quantity
+            map[sku].totalAllocated += (item.allocated_quantity || 0)
+
+            const locCode = item.boxes?.locations?.code || item.locations?.code
+            if (locCode) map[sku].locations.add(locCode)
+
+            map[sku].items.push(item)
+        })
+
+        return Object.values(map).map(i => ({
+            ...i,
+            locationStr: Array.from(i.locations).sort().join(', '),
+            available: Math.max(0, i.totalQty - i.totalAllocated)
+        }))
+    })()
+
     const handleExport = async () => {
         try {
             toast.info("Đang tải dữ liệu toàn hệ thống...")
