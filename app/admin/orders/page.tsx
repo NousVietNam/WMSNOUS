@@ -4,7 +4,6 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { supabase } from "@/lib/supabase"
 import { AlertCircle, FileText, Plus, Upload, Eye, ShieldCheck, Download } from "lucide-react"
 import Link from "next/link"
@@ -13,7 +12,6 @@ import Papa from "papaparse"
 export default function OrdersPage() {
     const [orders, setOrders] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
-    const [openDialog, setOpenDialog] = useState(false)
     const [importLoading, setImportLoading] = useState(false)
 
     // Assign State
@@ -22,9 +20,6 @@ export default function OrdersPage() {
     const [selectedOrder, setSelectedOrder] = useState<any>(null)
     const [selectedStaff, setSelectedStaff] = useState("")
 
-    // Manual Create State
-    const [newCode, setNewCode] = useState("")
-    const [newCustomer, setNewCustomer] = useState("")
 
     // Shortage Report State
     const [shortageDialog, setShortageDialog] = useState(false)
@@ -60,22 +55,6 @@ export default function OrdersPage() {
         setLoading(false)
     }
 
-    const handleCreate = async () => {
-        if (!newCode) return alert("Vui lòng nhập mã đơn hàng")
-        const { error } = await supabase.from('orders').insert({
-            code: newCode.toUpperCase(),
-            customer_name: newCustomer,
-            status: 'PENDING'
-        })
-
-        if (error) alert("Lỗi: " + error.message)
-        else {
-            setOpenDialog(false)
-            fetchOrders()
-            setNewCode("")
-            setNewCustomer("")
-        }
-    }
 
     const handleAssign = async () => {
         if (!selectedOrder || !selectedStaff) return
@@ -270,25 +249,6 @@ export default function OrdersPage() {
                             ⚡ Tạo Bộ Đơn Test
                         </Button>
                     </div>
-                    <Dialog open={openDialog} onOpenChange={setOpenDialog}>
-                        <DialogTrigger asChild>
-                            <Button><Plus className="mr-2 h-4 w-4" /> Tạo Đơn Lẻ</Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                            <DialogHeader><DialogTitle>Tạo Đơn Hàng Mới</DialogTitle></DialogHeader>
-                            <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                    <label>Mã Đơn Hàng</label>
-                                    <Input placeholder="DH-001" value={newCode} onChange={e => setNewCode(e.target.value)} />
-                                </div>
-                                <div className="space-y-2">
-                                    <label>Khách Hàng</label>
-                                    <Input placeholder="Tên khách hàng" value={newCustomer} onChange={e => setNewCustomer(e.target.value)} />
-                                </div>
-                                <Button onClick={handleCreate} className="w-full">Tạo Đơn</Button>
-                            </div>
-                        </DialogContent>
-                    </Dialog>
 
                     {/* Assign Dialog */}
                     <Dialog open={assignDialog} onOpenChange={setAssignDialog}>
