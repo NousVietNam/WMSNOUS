@@ -7,6 +7,7 @@ import { Save, ZoomIn, ZoomOut, Move, Grid, Layers, Loader2, MousePointer2, Info
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import WarehouseScene3D from '@/components/map/WarehouseScene3D'
 
 // -- Types --
 
@@ -69,6 +70,7 @@ export default function WarehouseMapPage() {
     // Search State
     const [searchQuery, setSearchQuery] = useState('')
     const [highlightedIds, setHighlightedIds] = useState<Set<string>>(new Set())
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const [isSearching, setIsSearching] = useState(false)
 
     // Debounce Search
@@ -139,7 +141,6 @@ export default function WarehouseMapPage() {
     // Map Elements State
     const [mapElements, setMapElements] = useState<DrawElement[]>([])
     const [drawMode, setDrawMode] = useState<'NONE' | 'WALL' | 'DOOR'>('NONE')
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
     const isDrawing = useRef(false)
     const drawStart = useRef({ x: 0, y: 0 })
     const [tempDraw, setTempDraw] = useState<DrawElement | null>(null)
@@ -1095,6 +1096,37 @@ export default function WarehouseMapPage() {
                     )
                 }
 
+                {is3D && (
+                    <div className="absolute inset-0 z-0">
+                        <WarehouseScene3D
+                            stacks={stacks}
+                            mapElements={mapElements}
+                            GRID_SIZE={GRID_SIZE}
+                            scale={scale}
+                            is3D={is3D}
+                            highlightedIds={highlightedIds}
+                            selectedIds={selectedIds}
+                            onStackClick={(id) => {
+                                // 1. Toggle Tooltip Selection
+                                const newSet = new Set(selectedIds)
+                                if (newSet.has(id)) newSet.delete(id)
+                                else {
+                                    newSet.clear(); newSet.add(id)
+                                }
+                                setSelectedIds(newSet)
+
+                                // 2. Trigger Detail Panel (The User's Request)
+                                const clickedStack = stacks.find(s => s.id === id)
+                                if (clickedStack) {
+                                    setSelectedStack(clickedStack)
+                                } else {
+                                    setSelectedStack(null)
+                                }
+                            }}
+                        />
+                    </div>
+                )}
+
                 <div
                     className="absolute transition-all duration-700 ease-in-out"
                     style={{
@@ -1103,7 +1135,8 @@ export default function WarehouseMapPage() {
                             ? `translate(${offset.x}px, ${offset.y}px) scale(${scale}) rotateX(55deg) rotateZ(45deg)`
                             : `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
                         width: '200000px', height: '200000px',
-                        transformStyle: 'preserve-3d'
+                        transformStyle: 'preserve-3d',
+                        display: is3D ? 'none' : 'block' // Hide 2D layer when 3D is active
                     }}
                 >
                     {/* Grid Background */}
