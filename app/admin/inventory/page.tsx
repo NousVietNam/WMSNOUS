@@ -79,6 +79,18 @@ export default function InventoryPage() {
     const [detailLoading, setDetailLoading] = useState(false)
     const [detailTitle, setDetailTitle] = useState("")
 
+    // Summary View State
+    const [viewMode, setViewMode] = useState<'DETAILED' | 'SUMMARY'>('DETAILED')
+    const [locationDetailOpen, setLocationDetailOpen] = useState(false)
+    const [locationDetailData, setLocationDetailData] = useState<any[]>([])
+    const [locationDetailTitle, setLocationDetailTitle] = useState("")
+
+    const showLocationDetails = (summaryItem: any) => {
+        setLocationDetailTitle(`Chi tiết vị trí - ${summaryItem.sku}`)
+        setLocationDetailData(summaryItem.items)
+        setLocationDetailOpen(true)
+    }
+
     const showApprovedDetails = async (item: InventoryItem) => {
         if (!item.products?.id) return
         setDetailType('APPROVED')
@@ -499,6 +511,20 @@ export default function InventoryPage() {
                         <Button variant="outline" onClick={handleExport}>
                             <Download className="mr-2 h-4 w-4" /> Xuất Excel
                         </Button>
+                        <div className="border rounded-md p-1 bg-slate-100 flex">
+                            <button
+                                onClick={() => setViewMode('DETAILED')}
+                                className={`px-3 py-1 text-xs font-medium rounded-sm transition-all ${viewMode === 'DETAILED' ? 'bg-white shadow text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Chi Tiết
+                            </button>
+                            <button
+                                onClick={() => setViewMode('SUMMARY')}
+                                className={`px-3 py-1 text-xs font-medium rounded-sm transition-all ${viewMode === 'SUMMARY' ? 'bg-white shadow text-primary' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Tổng Hợp
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -600,8 +626,58 @@ export default function InventoryPage() {
                                     <td colSpan={2}></td>
                                 </tr>
 
+
                                 {loading ? (
                                     <tr><td colSpan={13} className="p-8 text-center">Đang tải...</td></tr>
+                                ) : viewMode === 'SUMMARY' ? (
+                                    // SUMMARY VIEW RENDER
+                                    summaryItems.map((item: any) => (
+                                        <tr key={item.sku} className="border-t hover:bg-slate-50 text-xs">
+                                            <td className="p-2">
+                                                {item.barcode ? (
+                                                    <div className="bg-white p-1 rounded border border-slate-100 w-fit">
+                                                        <Barcode value={item.barcode} height={20} width={0.8} displayValue={false} margin={0} background="transparent" />
+                                                        <div className="text-[9px] text-center font-mono mt-0.5 text-slate-500">{item.barcode}</div>
+                                                    </div>
+                                                ) : <span className="text-xs text-slate-400 italic">--</span>}
+                                            </td>
+                                            <td className="p-2">
+                                                <button
+                                                    className="font-bold text-xs text-blue-600 hover:underline hover:text-blue-800 text-left"
+                                                    onClick={() => {
+                                                        if (item.image_url) setViewImage(item.image_url)
+                                                        else toast.error("Sản phẩm chưa có hình ảnh")
+                                                    }}
+                                                >
+                                                    {item.sku}
+                                                </button>
+                                            </td>
+                                            <td className="p-2">
+                                                <div className="font-medium text-sm line-clamp-2 leading-relaxed" title={item.name}>
+                                                    {item.name}
+                                                </div>
+                                            </td>
+                                            <td className="p-2 text-xs">{item.brand || '-'}</td>
+                                            <td className="p-2 text-xs">{item.target_audience || '-'}</td>
+                                            <td className="p-2 text-xs">{item.product_group || '-'}</td>
+                                            <td className="p-2 text-center text-xs">{item.season || '-'}</td>
+                                            <td className="p-2 text-center text-xs">{item.launch_month || '-'}</td>
+                                            <td className="p-2 text-center font-bold text-base text-slate-700">{item.totalQty}</td>
+                                            <td className="p-2 text-center font-bold text-base text-orange-600">{item.totalAllocated > 0 ? item.totalAllocated : '-'}</td>
+                                            <td className="p-2 text-center font-bold text-base text-green-600">{item.available}</td>
+                                            <td className="p-2 text-center text-slate-400 italic">--</td>
+                                            <td className="p-2">
+                                                {item.locationStr ? (
+                                                    <button
+                                                        onClick={() => showLocationDetails(item)}
+                                                        className="bg-purple-100 hover:bg-purple-200 text-purple-900 px-2 py-1 rounded text-xs font-semibold text-left line-clamp-2 max-w-[200px]"
+                                                    >
+                                                        {item.locationStr}
+                                                    </button>
+                                                ) : <span className="text-slate-300">-</span>}
+                                            </td>
+                                        </tr>
+                                    ))
                                 ) : filteredItems.length === 0 ? (
                                     <tr><td colSpan={13} className="p-8 text-center text-muted-foreground">Không tìm thấy.</td></tr>
                                 ) : (
@@ -730,7 +806,43 @@ export default function InventoryPage() {
                         </div>
                     </DialogContent>
                 </Dialog>
+
+                {/* LOCATION DETAIL DIALOG */}
+                <Dialog open={locationDetailOpen} onOpenChange={setLocationDetailOpen}>
+                    <DialogContent className="max-w-md">
+                        <h3 className="text-lg font-bold mb-4">{locationDetailTitle}</h3>
+                        <div className="border rounded-md overflow-hidden max-h-[400px] overflow-y-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-100 font-bold sticky top-0">
+                                    <tr>
+                                        <th className="p-3 text-left">Mã Thùng</th>
+                                        <th className="p-3 text-left">Vị Trí</th>
+                                        <th className="p-3 text-right">Số Lượng</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    {locationDetailData.map((item, idx) => {
+                                        const boxCode = item.boxes?.code || 'Không có'
+                                        const locCode = item.boxes?.locations?.code || item.locations?.code || 'Không có'
+                                        return (
+                                            <tr key={idx} className="hover:bg-slate-50">
+                                                <td className="p-3 font-medium text-blue-700">{boxCode}</td>
+                                                <td className="p-3">
+                                                    <span className={`px-2 py-1 rounded text-xs font-semibold ${locCode === 'RECEIVING' ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'
+                                                        }`}>
+                                                        {locCode}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-right font-bold text-slate-800">{item.quantity}</td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </main>
-        </div >
+        </div>
     )
 }
