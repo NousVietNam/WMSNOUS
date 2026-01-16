@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import MemoizedStack from '@/components/map/MemoizedStack'
 import Link from "next/link"
 import { Save, ZoomIn, ZoomOut, Move, Grid, Layers, Loader2, MousePointer2, Info, Box, ArrowUp, ArrowDown, Search, X as SearchX, Home, Plus, Square, DoorOpen, Trash2, LayoutGrid } from "lucide-react"
@@ -134,6 +134,7 @@ export default function WarehouseMapPage() {
     const resizeStartSize = useRef({ width: 0, height: 0 })
     const resizeStartMouse = useRef({ x: 0, y: 0 })
     const unstackZoneRef = useRef<HTMLDivElement>(null)
+    const canvasRef = useRef<HTMLDivElement>(null) // For wheel zoom
     const dragStartPositions = useRef<Map<string, { x: number, y: number }>>(new Map())
 
     const [hasChanges, setHasChanges] = useState(false)
@@ -256,6 +257,49 @@ export default function WarehouseMapPage() {
             setLoading(false)
         }
     }
+
+    // Mouse wheel zoom handler - Throttled for performance
+    useEffect(() => {
+        let throttleTimeout: NodeJS.Timeout | null = null
+
+        const handleDocumentWheel = (e: WheelEvent) => {
+            const canvas = canvasRef.current
+            if (!canvas) return
+
+            // Check if mouse is within canvas bounds
+            const rect = canvas.getBoundingClientRect()
+            const mouseX = e.clientX
+            const mouseY = e.clientY
+
+            if (
+                mouseX >= rect.left &&
+                mouseX <= rect.right &&
+                mouseY >= rect.top &&
+                mouseY <= rect.bottom
+            ) {
+                // Mouse is over map - handle zoom (ONLY scale, NO offset change)
+                e.preventDefault()
+                e.stopPropagation()
+
+                // Throttle zoom updates to max 60fps (16ms)
+                if (!throttleTimeout) {
+                    const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9
+                    setScale(prev => Math.min(Math.max(prev * zoomFactor, 0.2), 5))
+
+                    throttleTimeout = setTimeout(() => {
+                        throttleTimeout = null
+                    }, 16) // ~60fps
+                }
+            }
+        }
+
+        // Attach to document instead of element
+        document.addEventListener('wheel', handleDocumentWheel, { passive: false })
+        return () => {
+            document.removeEventListener('wheel', handleDocumentWheel)
+            if (throttleTimeout) clearTimeout(throttleTimeout)
+        }
+    }, [])
 
     // ... (logic)
 
@@ -755,7 +799,7 @@ export default function WarehouseMapPage() {
             if (changed) {
                 setLocations(newLocs)
                 setHasChanges(true)
-                console.log("Auto-corrected stack levels")
+                // Auto-corrected stack levels
             }
         }
 
@@ -1069,6 +1113,7 @@ export default function WarehouseMapPage() {
 
             {/* Viewport */}
             < div
+                ref={canvasRef}
                 className={`flex-1 relative overflow-visible ${mode === 'EDIT' ? 'cursor-default' : 'cursor-grab'} ${isPanning.current ? 'cursor-grabbing' : ''}`
                 }
                 onMouseDown={handleMouseDown}
