@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { History, ArrowRight, Filter, RefreshCw, Download } from "lucide-react"
+import { History, ArrowRight, Filter, RefreshCw, Download, ChevronLeft, ChevronRight } from "lucide-react"
 import * as XLSX from "xlsx"
 import { saveAs } from 'file-saver'
 
@@ -53,11 +53,22 @@ export default function HistoryPage() {
     const [dateFrom, setDateFrom] = useState(getPastDate(30))
     const [dateTo, setDateTo] = useState(getLocalDate())
     const [filterType, setFilterType] = useState("ALL")
+    const [filterUser, setFilterUser] = useState("ALL")
     const [filterSearch, setFilterSearch] = useState("") // Searches Box, SKU, Location
+    const [page, setPage] = useState(1)
+    const [total, setTotal] = useState(0)
+    const pageSize = 200
+    const [users, setUsers] = useState<{ id: string, name: string }[]>([])
 
     useEffect(() => {
+        fetchUsers()
         fetchHistory()
     }, [])
+
+    const fetchUsers = async () => {
+        const { data } = await supabase.from('users').select('id, name').order('name')
+        if (data) setUsers(data)
+    }
 
     const fetchHistory = async () => {
         setLoading(true)
@@ -69,14 +80,15 @@ export default function HistoryPage() {
                 to_loc:to_location_id (code),
                 from_box:from_box_id (code),
                 to_box:to_box_id (code)
-            `)
+            `, { count: 'exact' })
             .order('created_at', { ascending: false })
-            .limit(100) // Page size
+            .range((page - 1) * pageSize, page * pageSize - 1)
 
         // Apply Filters
         if (dateFrom) query = query.gte('created_at', dateFrom)
         if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59')
         if (filterType !== 'ALL') query = query.eq('type', filterType)
+        if (filterUser !== 'ALL') query = query.eq('user_id', filterUser)
 
         // Server-side Search (Limited to columns now)
         if (filterSearch) {
@@ -85,13 +97,15 @@ export default function HistoryPage() {
             query = query.or(`sku.ilike.${term},type.ilike.${term}`)
         }
 
-        const { data: txData, error } = await query
+        const { data: txData, count, error } = await query
 
         if (error) {
             console.error(error)
             setLoading(false)
             return
         }
+
+        if (count !== null) setTotal(count)
 
         const rawTxs = txData as any[]
 
@@ -127,6 +141,18 @@ export default function HistoryPage() {
             users?.forEach(u => userMap[u.id] = u.name)
         }
 
+        // Fetch Product Names by SKU (for transactions that have SKU but no entity_id)
+        const skus = new Set<string>()
+        rawTxs.forEach(tx => {
+            if (tx.sku) skus.add(tx.sku)
+        })
+
+        const skuMap: Record<string, string> = {}
+        if (skus.size > 0) {
+            const { data: products } = await supabase.from('products').select('sku, name').in('sku', Array.from(skus))
+            products?.forEach(p => skuMap[p.sku] = p.name)
+        }
+
         const enriched = rawTxs.map(tx => {
             let code = 'N/A'
             let name = ''
@@ -137,6 +163,9 @@ export default function HistoryPage() {
                 const item = itemMap[tx.entity_id]
                 code = item?.sku || 'Deleted Item'
                 name = item?.name || ''
+            } else if (tx.sku) {
+                code = tx.sku
+                name = skuMap[tx.sku] || ''
             }
             return { ...tx, computed_entity_code: code, computed_entity_name: name, computed_user_name: userMap[tx.user_id] || 'Unknown' }
         })
@@ -188,35 +217,66 @@ export default function HistoryPage() {
                     <History className="h-8 w-8 text-primary" />
                     Lịch Sử Giao Dịch
                 </h1>
-                <Button variant="outline" onClick={handleExport} className="gap-2">
-                    <Download className="h-4 w-4" /> Xuất Excel
-                </Button>
+                <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 bg-white border rounded-md px-2 py-1 h-10 shadow-sm">
+                        <div className="text-xs text-muted-foreground mr-2 whitespace-nowrap hidden sm:block">
+                            {(page - 1) * pageSize + 1}-{Math.min(page * pageSize, total)} / {total}
+                        </div>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={page === 1} onClick={() => { setPage(p => Math.max(1, p - 1)); fetchHistory(); }}>
+                            <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <div className="text-xs font-medium px-1">{page}</div>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" disabled={page * pageSize >= total} onClick={() => { setPage(p => p + 1); fetchHistory(); }}>
+                            <ChevronRight className="h-4 w-4" />
+                        </Button>
+                    </div>
+                    <Button variant="outline" onClick={handleExport} className="gap-2">
+                        <Download className="h-4 w-4" /> Xuất Excel
+                    </Button>
+                </div>
             </div>
 
             {/* FILTERS */}
-            <div className="bg-white p-4 rounded-xl border shadow-sm grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-                <div className="space-y-1">
+            <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-wrap gap-2 items-end">
+                <div className="space-y-1 min-w-[140px]">
                     <label className="text-xs font-bold text-slate-500">Từ Ngày</label>
                     <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-1 min-w-[140px]">
                     <label className="text-xs font-bold text-slate-500">Đến Ngày</label>
                     <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
                 </div>
-                <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500">Loại Giao Dịch</label>
+                <div className="space-y-1 min-w-[160px]">
+                    <label className="text-xs font-bold text-slate-500">Loại GD</label>
                     <Select value={filterType} onValueChange={setFilterType}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="ALL">Tất Cả</SelectItem>
-                            <SelectItem value="IMPORT">Nhập (Import)</SelectItem>
-                            <SelectItem value="EXPORT">Xuất (Export)</SelectItem>
-                            <SelectItem value="MOVE_BOX">Di Chuyển Thùng (Move Box)</SelectItem>
-                            <SelectItem value="AUDIT">Kiểm Kê (Audit)</SelectItem>
+                            <SelectItem value="ALL">ALL</SelectItem>
+                            <SelectItem value="IMPORT">IMPORT</SelectItem>
+                            <SelectItem value="EXPORT">EXPORT</SelectItem>
+                            <SelectItem value="MOVE">MOVE</SelectItem>
+                            <SelectItem value="MOVE_BOX">MOVE_BOX</SelectItem>
+                            <SelectItem value="AUDIT">AUDIT</SelectItem>
+                            <SelectItem value="RESERVE">RESERVE</SelectItem>
+                            <SelectItem value="RELEASE">RELEASE</SelectItem>
+                            <SelectItem value="SHIP">SHIP</SelectItem>
+                            <SelectItem value="INBOUND_BULK">INBOUND_BULK</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
-                <div className="space-y-1 md:col-span-1">
+                <div className="space-y-1 min-w-[160px]">
+                    <label className="text-xs font-bold text-slate-500">Người Dùng</label>
+                    <Select value={filterUser} onValueChange={setFilterUser}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ALL">Tất Cả</SelectItem>
+                            {users.map(u => (
+                                <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div className="space-y-1 flex-1 min-w-[140px]">
                     <label className="text-xs font-bold text-slate-500">Tìm Kiếm</label>
                     <Input
                         placeholder="Mã, SKU..."
@@ -224,7 +284,7 @@ export default function HistoryPage() {
                         onChange={e => setFilterSearch(e.target.value)}
                     />
                 </div>
-                <Button onClick={fetchHistory} className="w-full">
+                <Button onClick={() => { setPage(1); fetchHistory(); }} className="min-w-[100px]">
                     <RefreshCw className="mr-2 h-4 w-4" /> Lọc
                 </Button>
             </div>
@@ -319,7 +379,7 @@ export default function HistoryPage() {
                                             </td>
                                             {/* Qty */}
                                             <td className="p-4 text-center font-bold">
-                                                {qty !== '-' ? `x${qty}` : '-'}
+                                                {qty !== '-' ? qty : '-'}
                                             </td>
                                             {/* From Box */}
                                             <td className="p-4 text-blue-700 font-medium text-sm">

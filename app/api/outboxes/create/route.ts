@@ -40,7 +40,7 @@ export async function POST(request: Request) {
         }
 
         // Check for Conflicts
-        console.log('Checking for conflicts. Codes to create:', codesToCreate.slice(0, 5), '... total:', codesToCreate.length)
+        // Checking for conflicts
 
         const { data: existing, error: checkError } = await supabase
             .from('boxes')
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
             throw checkError
         }
 
-        console.log('Existing boxes found:', existing?.length || 0, existing?.slice(0, 5))
+        // Existing boxes found
 
         if (existing && existing.length > 0) {
             const conflictingCodes = existing.map(b => b.code).join(', ')

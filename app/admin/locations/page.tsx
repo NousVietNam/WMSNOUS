@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase"
-import { MapPin, Plus, Printer, Trash2, Search, Box as BoxIcon, Package } from "lucide-react"
+import { MapPin, Plus, Printer, Trash2, Search, Box as BoxIcon, Package, Upload, Download } from "lucide-react"
 import QRCode from "react-qr-code"
 
 interface Location {
@@ -210,8 +210,8 @@ export default function LocationsPage() {
                     <MapPin className="h-8 w-8 text-primary" />
                     Quản Lý Vị Trí
                 </h1>
-                <div className="flex flex-1 w-full md:w-auto md:max-w-sm gap-2">
-                    <div className="relative flex-1">
+                <div className="flex gap-2 w-full md:w-auto items-center">
+                    <div className="relative w-full md:w-64">
                         <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                         <Input
                             placeholder="Tìm kiếm vị trí..."
@@ -220,14 +220,12 @@ export default function LocationsPage() {
                             onChange={e => setSearchTerm(e.target.value)}
                         />
                     </div>
-                </div>
-                <div className="flex gap-2">
                     <Button variant="outline" onClick={handleDownloadExample} title="Tải file mẫu import">
-                        File Mẫu
+                        <Download className="mr-2 h-4 w-4" /> File Mẫu
                     </Button>
                     <div className="relative">
                         <Button variant="outline" className="cursor-pointer">
-                            Import CSV
+                            <Upload className="mr-2 h-4 w-4" /> Import CSV
                             <input type="file" accept=".csv" onChange={handleImport} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                         </Button>
                     </div>

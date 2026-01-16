@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
-import { Box as BoxIcon, Plus, Printer, Trash2, Download, Package, Search } from "lucide-react"
+import { Box as BoxIcon, Plus, Printer, Trash2, Download, Package, Search, ArrowRightLeft } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import QRCode from "react-qr-code"
 import * as XLSX from 'xlsx'
@@ -34,6 +36,13 @@ export default function BoxesPage() {
     const [bulkQty, setBulkQty] = useState<string>('')
     const [searchTerm, setSearchTerm] = useState<string>('')
     const [customCode, setCustomCode] = useState<string>('')
+
+    // Transfer Creation State
+    const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+    const [destinationId, setDestinationId] = useState('')
+    const [transferNote, setTransferNote] = useState('')
+    const [destinations, setDestinations] = useState<any[]>([])
+    const [creatingTransfer, setCreatingTransfer] = useState(false)
 
     const printRef = useRef(null)
     const handleReactToPrint = useReactToPrint({
@@ -78,7 +87,13 @@ export default function BoxesPage() {
 
     useEffect(() => {
         fetchBoxes()
+        fetchDestinations()
     }, [])
+
+    const fetchDestinations = async () => {
+        const { data } = await supabase.from('destinations').select('id, name, type').order('name')
+        if (data) setDestinations(data)
+    }
 
     const fetchBoxes = async () => {
         setLoading(true)
@@ -322,10 +337,49 @@ export default function BoxesPage() {
         }
     }
 
-    // UNIFIED PRINT
     const triggerSinglePrint = (box: Box) => {
         triggerPrint([box])
     }
+
+    const handleCreateTransfer = async () => {
+        if (!destinationId) return alert("Vui lòng chọn nơi đến")
+        if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
+
+        setCreatingTransfer(true)
+        try {
+            const res = await fetch('/api/transfers/create-from-boxes', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    boxIds: Array.from(selectedIds),
+                    destinationId,
+                    note: transferNote || null
+                })
+            })
+
+            const json = await res.json()
+
+            if (!res.ok) throw new Error(json.error || 'Failed to create transfer')
+
+            alert(`✅ Đã tạo đơn điều chuyển: ${json.transferCode}\n\nSố thùng: ${selectedIds.size}\nMã đơn: ${json.transferCode}`)
+
+            // Reset state
+            setTransferDialogOpen(false)
+            setDestinationId('')
+            setTransferNote('')
+            setSelectedIds(new Set())
+
+            // Optional: Navigate to transfer detail
+            if (json.transferId) {
+                window.location.href = `/admin/transfers/${json.transferId}`
+            }
+        } catch (error: any) {
+            alert("Lỗi tạo đơn: " + error.message)
+        } finally {
+            setCreatingTransfer(false)
+        }
+    }
+
 
     return (
         <div className="h-[calc(100vh-74px)] flex flex-col bg-slate-50 overflow-hidden">
@@ -409,13 +463,16 @@ export default function BoxesPage() {
                                 </DialogContent>
                             </Dialog>
                             <div className="grid grid-cols-2 gap-2">
-                                <Button variant="outline" onClick={handleExport} disabled={selectedIds.size === 0} className="w-full">
-                                    <Download className="mr-2 h-4 w-4" /> Xuất ({selectedIds.size})
+                                <Button variant="outline" onClick={() => setTransferDialogOpen(true)} disabled={selectedIds.size === 0} className="w-full">
+                                    <ArrowRightLeft className="mr-2 h-4 w-4" /> Tạo Đơn DC ({selectedIds.size})
                                 </Button>
                                 <Button variant="outline" onClick={handlePrintBatch} disabled={selectedIds.size === 0} className="w-full">
                                     <Printer className="mr-2 h-4 w-4" /> In ({selectedIds.size})
                                 </Button>
                             </div>
+                            <Button variant="outline" onClick={handleExport} disabled={selectedIds.size === 0} className="w-full">
+                                <Download className="mr-2 h-4 w-4" /> Xuất Excel ({selectedIds.size})
+                            </Button>
                         </div>
 
                         {/* Stats Dashboard */}
@@ -518,6 +575,55 @@ export default function BoxesPage() {
                             )}
                         </div>
                         <DialogFooter><Button onClick={() => printBox && triggerSinglePrint(printBox)}>In Ngay</Button></DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+
+                {/* Create Transfer Dialog */}
+                <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Tạo Đơn Điều Chuyển từ {selectedIds.size} Thùng</DialogTitle>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label>Nơi Đến *</Label>
+                                <Select value={destinationId} onValueChange={setDestinationId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Chọn nơi đến" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {destinations.map(d => (
+                                            <SelectItem key={d.id} value={d.id}>
+                                                {d.name} ({d.type === 'store' ? 'Kho' : 'KH'})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Ghi Chú (Tùy chọn)</Label>
+                                <Input
+                                    value={transferNote}
+                                    onChange={e => setTransferNote(e.target.value)}
+                                    placeholder="Ghi chú về đơn điều chuyển..."
+                                />
+                            </div>
+                            <div className="bg-blue-50 p-3 rounded-lg">
+                                <p className="text-sm text-blue-800">
+                                    Đơn điều chuyển sẽ được tạo với loại: <strong>Cả Thùng</strong>
+                                </p>
+                                <p className="text-xs text-blue-600 mt-1">
+                                    Sau khi tạo, vào chi tiết đơn và nhấn "Phân Bổ" để tạo picking jobs.
+                                </p>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Hủy</Button>
+                            <Button onClick={handleCreateTransfer} disabled={creatingTransfer || !destinationId}>
+                                {creatingTransfer ? 'Đang Tạo...' : 'Tạo Đơn'}
+                            </Button>
+                        </DialogFooter>
                     </DialogContent>
                 </Dialog>
 

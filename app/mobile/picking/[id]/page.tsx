@@ -9,6 +9,7 @@ import dynamic from "next/dynamic"
 // import { ChevronLeft, Package, MapPin, AlertTriangle, Lock, Camera, Check, ClipboardList } from "lucide-react"
 
 import { QRScanner } from "@/components/mobile/QRScanner"
+import { toast } from "sonner"
 
 // Types
 type PickingTask = {
@@ -115,8 +116,25 @@ export default function DoPickingPage() {
     // or keeping simple ref
     const scanInputRef = useRef<HTMLInputElement>(null)
 
+    const [transferType, setTransferType] = useState<'BOX' | 'ITEM'>('ITEM')
+
     const fetchTasks = async () => {
         setLoading(true)
+
+        // 1. Get Job Info to know Type
+        const { data: jobInfo, error: jobError } = await supabase
+            .from('picking_jobs')
+            .select('orders(transfer_type)')
+            .eq('id', id)
+            .single()
+
+        if (jobInfo?.orders) {
+            // Supabase returns array for joined relation sometimes implies array if not strict
+            // @ts-ignore
+            const type = Array.isArray(jobInfo.orders) ? jobInfo.orders[0]?.transfer_type : jobInfo.orders?.transfer_type
+            if (type) setTransferType(type)
+        }
+
         const { data: tasks, error } = await supabase
             .from('picking_tasks')
             .select(`
@@ -167,18 +185,58 @@ export default function DoPickingPage() {
         else handleScanOutbox(code)
     }
 
-    const validateBoxCode = (code: string) => {
+    const validateBoxCode = async (code: string) => {
         let activeGroup: BoxGroup | undefined
         for (const l of groups) {
             const found = l.boxes.find(b => b.boxId === activeBoxId)
             if (found) { activeGroup = found; break }
         }
-        if (!activeGroup) return
+
+        // If no box is selected, try to find one that matches the scanned code
+        if (!activeGroup) {
+            for (const l of groups) {
+                const found = l.boxes.find(b => b.boxCode.toUpperCase() === code.trim().toUpperCase())
+                if (found) {
+                    activeGroup = found
+                    setActiveBoxId(found.boxId)
+                    break
+                }
+            }
+        }
+
+        if (!activeGroup) {
+            alert("Không tìm thấy thùng này trong danh sách!")
+            return
+        }
 
         if (code.trim().toUpperCase() === activeGroup.boxCode.toUpperCase()) {
             setUnlockedBoxes(prev => new Set(prev).add(activeGroup!.boxId))
             setScanInput("")
             setShowScanner(false)
+
+            // AUTO PICK LOGIC for BOX Type
+            if (transferType === 'BOX') {
+                if (!activeOutbox) {
+                    alert("⚠️ Vui lòng quét Outbox trước khi xác nhận thùng!")
+                    setScannerMode('OUTBOX')
+                    setShowScanner(true)
+                    return
+                }
+
+                // Confirm all pending tasks in this box
+                const tasksToPick = activeGroup.tasks.filter(t => t.status !== 'COMPLETED')
+                if (tasksToPick.length > 0) {
+                    const confirm = window.confirm(`Bạn có muốn xác nhận lấy toàn bộ ${tasksToPick.length} mã trong thùng ${activeGroup.boxCode}?`)
+                    if (confirm) {
+                        for (const task of tasksToPick) {
+                            await handleConfirmPick(task)
+                        }
+                        toast.success(`Đã lấy xong thùng ${activeGroup.boxCode}`)
+                        // Auto close box after short delay
+                        setTimeout(() => setActiveBoxId(null), 1000)
+                    }
+                }
+            }
         } else {
             alert("Sai mã thùng!")
             setScanInput("")
@@ -204,7 +262,8 @@ export default function DoPickingPage() {
                     return
                 }
                 setActiveOutbox({ id: json.box.id, code: json.box.code, count: json.box.count })
-                alert(`Đã chọn thùng: ${json.box.code}`)
+                // alert(`Đã chọn thùng: ${json.box.code}`)
+                toast.success(`Active Outbox: ${json.box.code}`)
                 setShowScanner(false)
             } else {
                 alert(json.error)
@@ -212,7 +271,6 @@ export default function DoPickingPage() {
         } catch (e) {
             alert("Lỗi kết nối")
         } finally {
-            // Delay unlock slightly to prevent immediate re-scan if scanner improperly unmounts
             setTimeout(() => {
                 isScanningRef.current = false
             }, 1000)

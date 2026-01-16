@@ -1,201 +1,367 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/components/ui/table"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { ArrowLeft, Save, Upload, Download, CheckCircle, Trash2, Plus } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Target, Loader2, Package, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
-import * as XLSX from 'xlsx'
 import Link from "next/link"
-
-interface TransferItem {
-    id: string
-    product_id: string
-    quantity: number
-    products?: {
-        sku: string
-        name: string
-        image_url: string
-    }
-}
 
 interface TransferOrder {
     id: string
     code: string
     from_location_id: string | null
     destination_id: string | null
+    transfer_type: 'BOX' | 'ITEM'
     status: string
     note: string | null
     created_at: string
+    created_by: string | null
     from_location?: { code: string }
-    destination?: { name: string, type: string }
-    created_by_user?: { email: string }
+    destination?: { name: string }
+    creator?: { name: string }
 }
 
-export default function TransferDetailsPage() {
+interface TransferItem {
+    id: string
+    transfer_id: string
+    product_id: string
+    box_id?: string
+    quantity: number
+    from_location_id: string | null
+    product?: { sku: string, name: string }
+    box?: { code: string }
+    from_location?: { code: string }
+}
+
+interface PickingJob {
+    id: string
+    status: string
+    type: string
+    created_at: string
+}
+
+export default function TransferDetailPage() {
     const params = useParams()
     const router = useRouter()
-    const id = params.id as string
+    const transferId = params.id as string
 
-    const [order, setOrder] = useState<TransferOrder | null>(null)
+    const [transfer, setTransfer] = useState<TransferOrder | null>(null)
     const [items, setItems] = useState<TransferItem[]>([])
+    const [jobs, setJobs] = useState<PickingJob[]>([])
     const [loading, setLoading] = useState(true)
-    const [importing, setImporting] = useState(false)
-    const fileInputRef = useRef<HTMLInputElement>(null)
+    const [allocating, setAllocating] = useState(false)
+
+    const [confirmAllocateOpen, setConfirmAllocateOpen] = useState(false)
+    const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+    const [approveDialogOpen, setApproveDialogOpen] = useState(false)
+
+    // User ID for tracking actions
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
     useEffect(() => {
-        if (id) fetchData()
-    }, [id])
+        // Fetch current user
+        supabase.auth.getUser().then(({ data }) => {
+            if (data?.user) setCurrentUserId(data.user.id)
+        })
+    }, [])
+
+    // Add Item Dialog State (Restored)
+    const [addOpen, setAddOpen] = useState(false)
+    const [newItem, setNewItem] = useState({
+        product_id: "",
+        quantity: 1,
+        from_location_id: ""
+    })
+    const [products, setProducts] = useState<any[]>([])
+    const [locations, setLocations] = useState<any[]>([])
+
+    // ...
+
+    const handleAllocate = () => {
+        setConfirmAllocateOpen(true)
+    }
+
+    const executeAllocate = async () => {
+        setAllocating(true)
+        try {
+            const res = await fetch(`/api/transfers/${transferId}/allocate`, {
+                method: 'POST'
+            })
+
+            const json = await res.json()
+
+            if (!res.ok) throw new Error(json.error || 'Allocate failed')
+
+            toast.success(`Đã phân bổ thành công! Tạo ${json.jobsCreated || 0} picking jobs.`)
+            setConfirmAllocateOpen(false)
+            fetchData()
+        } catch (error: any) {
+            toast.error("Lỗi phân bổ: " + error.message)
+        } finally {
+            setAllocating(false)
+        }
+    }
+
+    useEffect(() => {
+        fetchData()
+        fetchProducts()
+        fetchLocations()
+    }, [transferId])
 
     const fetchData = async () => {
         setLoading(true)
-        // Fetch Order Header
-        const { data: orderData, error: orderError } = await supabase
+        // Fetch transfer
+        const { data: transferData, error: transferError } = await supabase
             .from('transfer_orders')
             .select(`
                 *,
                 from_location:locations!transfer_orders_from_location_id_fkey(code),
-                destination:destinations(name, type)
+                destination:destinations(name),
+                creator:users!transfer_orders_created_by_fkey(name)
             `)
-            .eq('id', id)
+            .eq('id', transferId)
             .single()
 
-        if (orderError) {
-            toast.error("Lỗi tải thông tin phiếu: " + orderError.message)
-            setLoading(false)
+        if (transferError) {
+            toast.error("Lỗi tải đơn: " + transferError.message)
             return
         }
-        setOrder(orderData)
 
-        // Fetch Order Items
-        const { data: itemsData, error: itemsError } = await supabase
+        setTransfer(transferData)
+
+        // Fetch items
+        const { data: itemsData } = await supabase
             .from('transfer_order_items')
             .select(`
                 *,
-                products (sku, name, image_url)
+                product:products(sku, name),
+                box:boxes(code),
+                from_location:locations(code)
             `)
-            .eq('transfer_id', id)
-            .order('created_at', { ascending: true })
+            .eq('transfer_id', transferId)
 
-        if (itemsError) {
-            toast.error("Lỗi tải chi tiết: " + itemsError.message)
-        } else {
-            setItems(itemsData || [])
-        }
+        setItems(itemsData || [])
+
+        // Fetch picking jobs
+        const { data: jobsData } = await supabase
+            .from('picking_jobs')
+            .select('id, status, type, created_at')
+            .eq('transfer_order_id', transferId)
+            .order('created_at', { ascending: false })
+
+        setJobs(jobsData || [])
         setLoading(false)
     }
 
-    const handleDownloadTemplate = () => {
-        const template = [
-            { SKU: "SKU123", SoLuong: 10 },
-            { SKU: "SKU456", SoLuong: 5 },
-        ]
-        const ws = XLSX.utils.json_to_sheet(template)
-        const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, "Template")
-        XLSX.writeFile(wb, "Mau_Nhap_Dieu_Chuyen.xlsx")
+    const fetchProducts = async () => {
+        const { data } = await supabase.from('products').select('id, sku, name').order('sku')
+        setProducts(data || [])
     }
 
-    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
+    const fetchLocations = async () => {
+        const { data } = await supabase.from('locations').select('id, code').order('code')
+        setLocations(data || [])
+    }
 
-        const reader = new FileReader()
-        reader.onload = async (evt) => {
-            try {
-                setImporting(true)
-                const bstr = evt.target?.result
-                const wb = XLSX.read(bstr, { type: 'binary' })
-                const wsname = wb.SheetNames[0]
-                const ws = wb.Sheets[wsname]
-                const data = XLSX.utils.sheet_to_json(ws) as any[]
-
-                // Validate and Prepare items
-                const validItems = []
-                const errors = []
-
-                // Get all SKUs to map to IDs
-                const { data: products } = await supabase.from('products').select('id, sku')
-                const productMap = new Map(products?.map(p => [p.sku, p.id]))
-
-                for (const row of data) {
-                    const sku = row['SKU'] || row['sku']
-                    const qty = row['SoLuong'] || row['soluong'] || row['Quantity'] || row['quantity']
-
-                    if (!sku || !qty) continue
-
-                    const productId = productMap.get(sku)
-                    if (productId) {
-                        validItems.push({
-                            transfer_id: id,
-                            product_id: productId,
-                            quantity: Number(qty)
-                        })
-                    } else {
-                        errors.push(sku)
-                    }
-                }
-
-                if (validItems.length > 0) {
-                    const { error } = await supabase.from('transfer_order_items').insert(validItems)
-                    if (error) throw error
-                    toast.success(`Đã thêm ${validItems.length} sản phẩm`)
-                    if (errors.length > 0) toast.warning(`Không tìm thấy SKU: ${errors.join(', ')}`)
-                    fetchData() // Refresh
-                } else {
-                    toast.warning("Không tìm thấy dữ liệu hợp lệ trong file")
-                }
-
-            } catch (error: any) {
-                toast.error("Lỗi import: " + error.message)
-            } finally {
-                setImporting(false)
-                if (fileInputRef.current) fileInputRef.current.value = ""
-            }
+    const handleAddItem = async () => {
+        if (!newItem.product_id || newItem.quantity <= 0) {
+            return toast.error("Vui lòng chọn sản phẩm và nhập số lượng")
         }
-        reader.readAsBinaryString(file)
+
+        try {
+            const { error } = await supabase
+                .from('transfer_order_items')
+                .insert({
+                    transfer_id: transferId,
+                    product_id: newItem.product_id,
+                    quantity: newItem.quantity,
+                    from_location_id: newItem.from_location_id || null
+                })
+
+            if (error) throw error
+
+            toast.success("Đã thêm sản phẩm")
+            setAddOpen(false)
+            setNewItem({ product_id: "", quantity: 1, from_location_id: "" })
+            fetchData()
+        } catch (error: any) {
+            toast.error("Lỗi: " + error.message)
+        }
     }
 
     const handleDeleteItem = async (itemId: string) => {
-        if (!confirm("Bạn muốn xóa dòng này?")) return
-        const { error } = await supabase.from('transfer_order_items').delete().eq('id', itemId)
-        if (error) toast.error("Lỗi xóa: " + error.message)
-        else {
-            toast.success("Đã xóa")
+        if (!confirm("Xóa sản phẩm này khỏi đơn?")) return
+
+        try {
+            const { error } = await supabase
+                .from('transfer_order_items')
+                .delete()
+                .eq('id', itemId)
+
+            if (error) throw error
+
+            toast.success("Đã xóa sản phẩm")
             fetchData()
+        } catch (error: any) {
+            toast.error("Lỗi: " + error.message)
         }
     }
 
-    const handleApprove = async () => {
-        if (!confirm("Xác nhận DUYỆT phiếu điều chuyển? Hành động này sẽ trừ tồn kho và ghi nhận giao dịch.")) return
 
+
+    const getStatusBadge = (status: string) => {
+        switch (status) {
+            case 'pending': return <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold">Chờ Xử Lý</span>
+            case 'approved': return <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-bold">Đã Duyệt</span>
+            case 'allocated': return <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm font-bold">Đã Phân Bổ</span>
+            case 'picking': return <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm font-bold">Đang Lấy Hàng</span>
+            case 'completed': return <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-bold">Hoàn Thành</span>
+            case 'cancelled': return <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-sm font-bold">Hủy</span>
+            default: return <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm font-bold">{status}</span>
+        }
+    }
+
+    if (loading) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+        )
+    }
+
+    if (!transfer) {
+        return (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+                <div className="text-center">
+                    <p className="text-lg text-muted-foreground mb-4">Không tìm thấy đơn điều chuyển</p>
+                    <Link href="/admin/transfers">
+                        <Button>Quay lại</Button>
+                    </Link>
+                </div>
+            </div>
+        )
+    }
+
+
+
+
+    const handleCancelApprove = () => {
+        setCancelDialogOpen(true)
+    }
+
+    const handleApprove = () => {
+        setApproveDialogOpen(true)
+    }
+
+
+
+    const executeApprove = async () => {
+        setApproveDialogOpen(false)
+        console.log("Approved Confirmed via Dialog")
+
+        console.log("Confirmed. Sending Request...")
+        setLoading(true)
         try {
             const res = await fetch('/api/transfers/approve', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ transferId: id })
+                body: JSON.stringify({
+                    transferId,
+                    userId: currentUserId // Pass User ID
+                })
             })
-            const result = await res.json()
-            if (result.success) {
-                toast.success("Đã duyệt phiếu thành công!")
-                fetchData()
-            } else {
-                toast.error("Lỗi duyệt phiếu: " + result.error)
-            }
+
+            console.log("Response Status:", res.status)
+            const json = await res.json()
+            console.log("Response JSON:", json)
+
+            if (!res.ok) throw new Error(json.error || 'Approve failed')
+
+            toast.success("Duyệt thành công!")
+            await fetchData() // Await fetch data to ensure UI updates
         } catch (error: any) {
-            toast.error("Lỗi hệ thống: " + error.message)
+            console.error("Approve Caught Error:", error)
+            toast.error("Lỗi: " + error.message)
+        } finally {
+            setLoading(false)
         }
     }
 
-    if (loading) return <div className="p-8 text-center text-muted-foreground">Đang tải chi tiết...</div>
-    if (!order) return <div className="p-8 text-center text-rose-500">Không tìm thấy phiếu điều chuyển</div>
+    const confirmApprove = async () => {
+        setApproveDialogOpen(false)
+        setLoading(true)
+        console.log("Starting approval process...")
+
+        try {
+            // 1. Calculate items with SKU
+            // ... (rest of logic moved here)
+            // But wait, the original logic was long.
+            // Let's call the original logic or wrap it.
+            // Better to refactor: move original handleApprove logic to `executeApprove`.
+            await executeApprove()
+        } catch (error: any) {
+            toast.error("Lỗi: " + error.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const confirmCancelApprove = async () => {
+        setCancelDialogOpen(false)
+        setLoading(true)
+        try {
+            const res = await fetch('/api/transfers/cancel-approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    transferId,
+                    userId: currentUserId
+                })
+            })
+
+            const json = await res.json()
+
+            if (!res.ok) throw new Error(json.error || 'Cancel failed')
+
+            toast.success("Đã hủy duyệt thành công!")
+            fetchData()
+        } catch (error: any) {
+            toast.error("Lỗi: " + error.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const canEdit = transfer.status === 'pending'
+    const canApprove = transfer.status === 'pending' && items.length > 0
+    const canAllocate = (transfer.status === 'pending' || transfer.status === 'approved') && items.length > 0 && transfer.status !== 'allocated'
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col">
-            <main className="flex-1 p-6 space-y-6">
-
-                {/* Header Actions */}
+        <div className="min-h-screen bg-slate-50">
+            <main className="p-6 space-y-6 max-w-7xl mx-auto">
+                {/* Header */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <Link href="/admin/transfers">
@@ -204,87 +370,302 @@ export default function TransferDetailsPage() {
                             </Button>
                         </Link>
                         <div>
-                            <h1 className="text-2xl font-bold flex items-center gap-2">
-                                {order.code}
-                                <span className={`px-2 py-1 rounded text-xs font-semibold
-                                    ${order.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                                        order.status === 'approved' ? 'bg-blue-100 text-blue-800' :
-                                            'bg-gray-100 text-gray-800'}
-                                `}>
-                                    {order.status}
-                                </span>
-                            </h1>
-                            <p className="text-slate-500 text-sm">
-                                Từ: <strong>{order.from_location?.code || 'Kho Chung'}</strong>
-                                {' -> '}
-                                Đến: <strong>{order.destination?.name}</strong>
-                                {order.destination?.type === 'customer' && <span className="ml-2 bg-orange-100 text-orange-800 px-1 py-0.5 rounded text-xs">KHACH HANG</span>}
+                            <h1 className="text-2xl font-bold">{transfer.code}</h1>
+                            <p className="text-sm text-muted-foreground">
+                                Tạo bởi {transfer.creator?.name} - {new Date(transfer.created_at).toLocaleString('vi-VN')}
                             </p>
                         </div>
                     </div>
+                    {getStatusBadge(transfer.status)}
+                </div>
 
-                    <div className="flex gap-2">
-                        {order.status === 'pending' && (
-                            <>
-                                <Button variant="outline" onClick={handleDownloadTemplate} className="gap-2">
-                                    <Download className="h-4 w-4" /> Mẫu Excel
-                                </Button>
-                                <div className="relative">
-                                    <input
-                                        type="file"
-                                        ref={fileInputRef}
-                                        onChange={handleFileUpload}
-                                        accept=".xlsx, .xls"
-                                        className="hidden"
-                                    />
-                                    <Button onClick={() => fileInputRef.current?.click()} disabled={importing} className="gap-2">
-                                        <Upload className="h-4 w-4" /> {importing ? 'Đang tải...' : 'Upload Excel'}
-                                    </Button>
-                                </div>
-                                <Button className="bg-green-600 hover:bg-green-700 gap-2" onClick={handleApprove}>
-                                    <CheckCircle className="h-4 w-4" /> Duyệt Phiếu
-                                </Button>
-                            </>
-                        )}
-                        {/* If approved, maybe show "In phiếu" or similar */}
+                {/* Info Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-white p-4 rounded-lg border">
+                        <p className="text-xs text-muted-foreground mb-1">Từ Kho</p>
+                        <p className="font-bold">{transfer.from_location?.code || '--'}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg border">
+                        <p className="text-xs text-muted-foreground mb-1">Nơi Đến</p>
+                        <p className="font-bold">{transfer.destination?.name || '--'}</p>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg border">
+                        <p className="text-xs text-muted-foreground mb-1">Loại Đơn</p>
+                        <p className="font-bold">{transfer.transfer_type === 'BOX' ? '📦 Cả Thùng' : '📋 Lẻ'}</p>
                     </div>
                 </div>
 
-                {/* Items Table */}
-                <div className="bg-white rounded-md border shadow-sm">
-                    <table className="w-full text-sm">
-                        <thead className="bg-slate-100 font-medium text-slate-700">
-                            <tr>
-                                <th className="p-3 text-left">SKU</th>
-                                <th className="p-3 text-left">Tên Sản Phẩm</th>
-                                <th className="p-3 text-center">Số Lượng</th>
-                                <th className="p-3 text-right">Thao Tác</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                            {items.length === 0 ? (
-                                <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">Chưa có sản phẩm nào. Hãy upload Excel.</td></tr>
-                            ) : (
-                                items.map(item => (
-                                    <tr key={item.id} className="hover:bg-slate-50">
-                                        <td className="p-3 font-medium">{item.products?.sku}</td>
-                                        <td className="p-3">{item.products?.name}</td>
-                                        <td className="p-3 text-center font-bold text-lg">{item.quantity}</td>
-                                        <td className="p-3 text-right">
-                                            {order.status === 'pending' && (
-                                                <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item.id)} className="text-red-500 hover:text-red-700 hover:bg-red-50">
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
+                {/* Actions: Approve & Allocate */}
+                <div className="flex gap-4 justify-end">
+                    {/* Approve Button */}
+                    {canApprove && (
+                        <div className="bg-white p-4 rounded-lg border flex items-center justify-between flex-1">
+                            <div>
+                                <p className="font-bold text-slate-900">1. Duyệt Phiếu</p>
+                                <p className="text-sm text-slate-500">Chốt danh sách và tạo giao dịch</p>
+                            </div>
+                            <Button onClick={handleApprove} className="gap-2 bg-slate-800 hover:bg-slate-700">
+                                <CheckCircle className="h-4 w-4" />
+                                Chốt Phiếu
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Cancel Approve Button */}
+                    {transfer.status === 'approved' && !allocating && (
+                        <div className="bg-orange-50 p-4 rounded-lg border border-orange-200 flex items-center justify-between flex-1">
+                            <div>
+                                <p className="font-bold text-orange-900">Hủy Duyệt</p>
+                                <p className="text-sm text-orange-700">Quay về trạng thái chờ xử lý</p>
+                            </div>
+                            <Button
+                                onClick={handleCancelApprove}
+                                variant="outline"
+                                className="gap-2 border-orange-300 text-orange-800 hover:bg-orange-100"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                Hủy Duyệt
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Allocate Button */}
+                    {canAllocate && transfer.status === 'approved' && (
+                        <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-lg border border-blue-200 flex items-center justify-between flex-1">
+                            <div>
+                                <p className="font-bold text-blue-900">2. Phân Bổ</p>
+                                <p className="text-sm text-blue-700">Tạo Picking Jobs cho kho</p>
+                            </div>
+                            <Button
+                                onClick={handleAllocate}
+                                disabled={allocating}
+                                className="gap-2"
+                            >
+                                {allocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Target className="h-4 w-4" />}
+                                Phân Bổ & Tạo Jobs
+                            </Button>
+                        </div>
+                    )}
                 </div>
 
+                {/* Items Table */}
+                <div className="bg-white rounded-lg border shadow-sm">
+                    <div className="p-4 border-b flex items-center justify-between">
+                        <h2 className="font-bold">Danh Sách Hàng Hóa ({items.length})</h2>
+                        {canEdit && transfer.transfer_type === 'ITEM' && (
+                            <Button onClick={() => setAddOpen(true)} size="sm" className="gap-2">
+                                <Plus className="h-4 w-4" />
+                                Thêm Sản Phẩm
+                            </Button>
+                        )}
+                    </div>
+                    <div className="overflow-auto">
+                        <table className="w-full text-sm">
+                            <thead className="bg-slate-50 font-medium text-slate-700">
+                                <tr>
+                                    {transfer.transfer_type === 'BOX' && <th className="p-3 text-left">Thùng</th>}
+                                    <th className="p-3 text-left">SKU</th>
+                                    <th className="p-3 text-left">Tên Sản Phẩm</th>
+                                    <th className="p-3 text-center">Số Lượng</th>
+                                    <th className="p-3 text-left">Từ Vị Trí</th>
+                                    {canEdit && <th className="p-3 text-right">Thao Tác</th>}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y">
+                                {items.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={transfer.transfer_type === 'BOX' ? 6 : 5} className="p-8 text-center text-muted-foreground">
+                                            Chưa có sản phẩm nào
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    items.map(item => (
+                                        <tr key={item.id} className="hover:bg-slate-50">
+                                            {transfer.transfer_type === 'BOX' && (
+                                                <td className="p-3 font-mono font-bold text-purple-600">
+                                                    📦 {item.box?.code || '--'}
+                                                </td>
+                                            )}
+                                            <td className="p-3 font-mono">{item.product?.sku}</td>
+                                            <td className="p-3">{item.product?.name}</td>
+                                            <td className="p-3 text-center font-bold">{item.quantity}</td>
+                                            <td className="p-3">{item.from_location?.code || '--'}</td>
+                                            {canEdit && (
+                                                <td className="p-3 text-right">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0 text-red-600"
+                                                        onClick={() => handleDeleteItem(item.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {/* Picking Jobs */}
+                {jobs.length > 0 && (
+                    <div className="bg-white rounded-lg border shadow-sm">
+                        <div className="p-4 border-b">
+                            <h2 className="font-bold">Picking Jobs ({jobs.length})</h2>
+                        </div>
+                        <div className="p-4 space-y-2">
+                            {jobs.map(job => (
+                                <div key={job.id} className="flex items-center justify-between p-3 bg-slate-50 rounded">
+                                    <div className="flex items-center gap-3">
+                                        <Package className="h-5 w-5 text-slate-500" />
+                                        <div>
+                                            <p className="font-medium text-sm">{job.type}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {new Date(job.created_at).toLocaleString('vi-VN')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded text-xs font-bold ${job.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                        job.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
+                                            'bg-yellow-100 text-yellow-700'
+                                        }`}>
+                                        {job.status}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </main>
+
+            {/* Add Item Dialog */}
+            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Thêm Sản Phẩm</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label>Sản Phẩm *</Label>
+                            <Select value={newItem.product_id} onValueChange={(val) => setNewItem({ ...newItem, product_id: val })}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Chọn sản phẩm" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {products.map(p => (
+                                        <SelectItem key={p.id} value={p.id}>
+                                            {p.sku} - {p.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Số Lượng *</Label>
+                            <Input
+                                type="number"
+                                min="1"
+                                value={newItem.quantity}
+                                onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) || 1 })}
+                            />
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>Từ Vị Trí (Tùy chọn)</Label>
+                            <Select value={newItem.from_location_id} onValueChange={(val) => setNewItem({ ...newItem, from_location_id: val })}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Tự động" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="">-- Tự động --</SelectItem>
+                                    {locations.map(l => (
+                                        <SelectItem key={l.id} value={l.id}>
+                                            {l.code}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAddOpen(false)}>Hủy</Button>
+                        <Button onClick={handleAddItem}>Thêm</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Config Allocate Dialog */}
+            <Dialog open={confirmAllocateOpen} onOpenChange={setConfirmAllocateOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Xác nhận phân bổ</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <p>Bạn có chắc chắn muốn phân bổ hàng hóa cho đơn này?</p>
+                        <p className="text-sm text-muted-foreground mt-2">
+                            Hệ thống sẽ tạo Picking Jobs tương ứng. <br />
+                            Danh sách hàng hóa sẽ bị khóa sau khi phân bổ.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setConfirmAllocateOpen(false)}>Hủy</Button>
+                        <Button onClick={executeAllocate} disabled={allocating}>
+                            {allocating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                            Xác Nhận
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Xác nhận hủy duyệt</DialogTitle>
+                        <DialogDescription>
+                            Bạn có chắc chắn muốn hủy duyệt phiếu này không?
+                            <br /><br />
+                            Hành động này sẽ:
+                            <ul className="list-disc pl-4 mt-2 mb-2">
+                                <li><strong>Ghi log hoàn trả (RELEASE)</strong> toàn bộ số lượng đang giữ.</li>
+                                <li>Đưa phiếu về trạng thái <strong>Chờ xử lý (Pending)</strong>.</li>
+                            </ul>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>Đóng</Button>
+                        <Button variant="destructive" onClick={confirmCancelApprove} disabled={loading}>
+                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Xác nhận Hủy
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Xác nhận Duyệt Phiếu</DialogTitle>
+                        <DialogDescription>
+                            Bạn có chắc chắn muốn duyệt phiếu điều chuyển này không?
+                            <br /><br />
+                            Hệ thống sẽ:
+                            <ul className="list-disc pl-4 mt-2 mb-2">
+                                <li><strong>Chốt danh sách</strong> sản phẩm trong phiếu.</li>
+                                <li>Tạo giao dịch <strong>RESERVE (Giữ hàng)</strong> trên hệ thống.</li>
+                                <li>Chuyển trạng thái sang <strong>Đã Duyệt (Approved)</strong>.</li>
+                            </ul>
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>Hủy</Button>
+                        <Button onClick={executeApprove} className="bg-slate-800 hover:bg-slate-700">
+                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Xác nhận Duyệt
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

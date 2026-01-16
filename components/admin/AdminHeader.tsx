@@ -25,6 +25,7 @@ export function AdminHeader() {
         { href: "/admin/boxes", icon: Box, label: "Thùng" },
         { href: "/admin/transfers", icon: ArrowRightLeft, label: "Điều Chuyển" },
         { href: "/admin/outboxes", icon: Package, label: "Outbox" },
+        { href: "/admin/picking-jobs", icon: Package, label: "Jobs" },
         { href: "/admin/history", icon: History, label: "Lịch Sử" },
         { href: "/admin/bulk-print", icon: Printer, label: "In Lô" },
         { href: "/admin/destinations", icon: MapPin, label: "Đối Tác" },

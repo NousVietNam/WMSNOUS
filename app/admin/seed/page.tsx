@@ -235,7 +235,7 @@ export default function SeedPage() {
             if (e8) logs.push(`⚠️ Locations: ${e8.message}`)
 
             logs.push("✅ Hoàn tất!")
-            console.log("Delete logs:", logs)
+            // Delete logs
             alert("Đã xoá sạch dữ liệu (Ngoại trừ Users & Products).\n\n" + logs.join("\n"))
         } catch (e: any) {
             console.error("Delete error:", e)
