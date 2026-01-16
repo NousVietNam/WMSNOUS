@@ -3,10 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const transferId = params.id
+        const { id: transferId } = await params
 
         if (!transferId) {
             return NextResponse.json({ error: 'Missing transferId' }, { status: 400 })
@@ -65,7 +65,7 @@ export async function POST(
                 transfer_order_id: transferId,
                 type: 'BOX_PICK',
                 box_id: boxId,
-                status: 'PENDING',
+                status: 'OPEN',
                 created_at: new Date().toISOString()
             }))
 
@@ -151,7 +151,7 @@ export async function POST(
                     .insert({
                         transfer_order_id: transferId,
                         type: 'ITEM_PICK',
-                        status: 'PENDING',
+                        status: 'OPEN',
                         created_at: new Date().toISOString()
                     })
                     .select()
