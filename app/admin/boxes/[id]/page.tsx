@@ -4,19 +4,17 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { supabase } from "@/lib/supabase"
-import { ArrowLeft, Box as BoxIcon, Printer } from "lucide-react"
+import { ArrowLeft, Box as BoxIcon, Printer, MoveRight } from "lucide-react"
 import QRCode from "react-qr-code"
+import { toast } from "sonner"
 
 export default function BoxDetailPage() {
     const params = useParams()
-    // Support both ID and Code in URL? usually ID.
-    // However, if we scan a code, we might want to redirect here.
-    // Let's assume URL is /admin/boxes/[id].
-    // If the param is a UUID, search by ID. If it looks like 'BOX-...', search by code.
-    // For simplicity, let's assume [id] is effectively the ID, but handle Code if needed?
-    // Actually, usually easier to just query both.
-
     const idOrCode = params.id as string
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -25,8 +23,19 @@ export default function BoxDetailPage() {
     const [items, setItems] = useState<any[]>([])
     const router = useRouter()
 
+    // Transfer feature state
+    const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set())
+    const [transferDialogOpen, setTransferDialogOpen] = useState(false)
+    const [destinationBoxCode, setDestinationBoxCode] = useState("")
+    const [transferring, setTransferring] = useState(false)
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
     useEffect(() => {
         fetchBox()
+        // Get current user for audit
+        supabase.auth.getUser().then(({ data }) => {
+            if (data?.user) setCurrentUserId(data.user.id)
+        })
     }, [idOrCode])
 
     const fetchBox = async () => {
@@ -57,9 +66,86 @@ export default function BoxDetailPage() {
             .eq('box_id', boxData.id)
 
         if (itemData) setItems(itemData)
+
+        // Clear selection
+        setSelectedItems(new Set())
+    }
+
+    const handleSelectAll = (checked: boolean) => {
+        if (checked) {
+            setSelectedItems(new Set(items.map(item => item.id)))
+        } else {
+            setSelectedItems(new Set())
+        }
+    }
+
+    const handleSelectItem = (itemId: string, checked: boolean) => {
+        const newSelection = new Set(selectedItems)
+        if (checked) {
+            newSelection.add(itemId)
+        } else {
+            newSelection.delete(itemId)
+        }
+        setSelectedItems(newSelection)
+    }
+
+    const handleTransferClick = () => {
+        if (selectedItems.size === 0) {
+            toast.error("Vui lòng chọn ít nhất 1 sản phẩm để chuyển")
+            return
+        }
+        setTransferDialogOpen(true)
+    }
+
+    const handleTransferConfirm = async () => {
+        if (!destinationBoxCode.trim()) {
+            toast.error("Vui lòng nhập mã thùng đích")
+            return
+        }
+
+        const payload = {
+            sourceBoxId: box.id,
+            destinationBoxCode: destinationBoxCode.trim(),
+            inventoryItemIds: Array.from(selectedItems),
+            userId: currentUserId
+        }
+
+        setTransferring(true)
+        try {
+            const res = await fetch('/api/boxes/transfer-items', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+
+            const data = await res.json()
+
+            if (!res.ok) {
+                if (data.error === 'BOX_ALLOCATED') {
+                    toast.error(data.message || 'Thùng đang được phân bổ, không thể chuyển!')
+                } else if (data.details) {
+                    console.error('Transfer failed details:', data)
+                    toast.error(`Lỗi: ${data.error}`)
+                } else {
+                    throw new Error(data.error || 'Transfer failed')
+                }
+                return
+            }
+
+            toast.success(`Đã chuyển ${data.movedCount} sản phẩm sang thùng ${data.destinationBox}`)
+            setTransferDialogOpen(false)
+            setDestinationBoxCode("")
+            fetchBox() // Refresh data
+        } catch (error: any) {
+            toast.error('Lỗi: ' + error.message)
+        } finally {
+            setTransferring(false)
+        }
     }
 
     if (!box) return <div>Loading...</div>
+
+    const allSelected = items.length > 0 && selectedItems.size === items.length
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -100,12 +186,26 @@ export default function BoxDetailPage() {
 
                     <Card className="md:col-span-2">
                         <CardHeader>
-                            <CardTitle>Danh Sách Hàng Hoá Trong Thùng ({items.length})</CardTitle>
+                            <div className="flex items-center justify-between">
+                                <CardTitle>Danh Sách Hàng Hoá Trong Thùng ({items.length})</CardTitle>
+                                {selectedItems.size > 0 && (
+                                    <Button onClick={handleTransferClick} className="gap-2">
+                                        <MoveRight className="h-4 w-4" />
+                                        Chuyển ({selectedItems.size})
+                                    </Button>
+                                )}
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-100 font-medium">
                                     <tr>
+                                        <th className="p-3 w-12">
+                                            <Checkbox
+                                                checked={allSelected}
+                                                onCheckedChange={handleSelectAll}
+                                            />
+                                        </th>
                                         <th className="p-3">Sản Phẩm</th>
                                         <th className="p-3 text-right">Số Lượng</th>
                                         <th className="p-3">Hạn Sử Dụng</th>
@@ -114,6 +214,12 @@ export default function BoxDetailPage() {
                                 <tbody>
                                     {items.map(item => (
                                         <tr key={item.id} className="border-t">
+                                            <td className="p-3">
+                                                <Checkbox
+                                                    checked={selectedItems.has(item.id)}
+                                                    onCheckedChange={(checked) => handleSelectItem(item.id, checked as boolean)}
+                                                />
+                                            </td>
                                             <td className="p-3">
                                                 <div className="font-medium">{item.product?.name}</div>
                                                 <div className="text-xs text-muted-foreground">{item.product?.sku}</div>
@@ -126,7 +232,7 @@ export default function BoxDetailPage() {
                                     ))}
                                     {items.length === 0 && (
                                         <tr>
-                                            <td colSpan={3} className="p-8 text-center text-muted-foreground">Thùng rỗng</td>
+                                            <td colSpan={4} className="p-8 text-center text-muted-foreground">Thùng rỗng</td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -134,6 +240,38 @@ export default function BoxDetailPage() {
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Transfer Dialog */}
+                <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Chuyển Hàng Sang Thùng Khác</DialogTitle>
+                            <DialogDescription>
+                                Chuyển {selectedItems.size} sản phẩm từ thùng <strong>{box.code}</strong>
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="destBox">Mã Thùng Đích</Label>
+                                <Input
+                                    id="destBox"
+                                    placeholder="Nhập mã thùng..."
+                                    value={destinationBoxCode}
+                                    onChange={(e) => setDestinationBoxCode(e.target.value)}
+                                    disabled={transferring}
+                                />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setTransferDialogOpen(false)} disabled={transferring}>
+                                Hủy
+                            </Button>
+                            <Button onClick={handleTransferConfirm} disabled={transferring}>
+                                {transferring ? 'Đang chuyển...' : 'Xác Nhận'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Hidden Print Wrapper */}
                 <div id="print-area" className="hidden print:flex flex-col items-center justify-center w-full h-full">

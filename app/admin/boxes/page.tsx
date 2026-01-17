@@ -522,7 +522,7 @@ export default function BoxesPage() {
                                 </thead>
                                 <tbody className="divide-y">
                                     {filteredBoxes.map(box => (
-                                        <tr key={box.id} className="hover:bg-slate-50 cursor-pointer group" onClick={() => handleViewItems(box)}>
+                                        <tr key={box.id} className="hover:bg-slate-50 cursor-pointer group" onClick={() => window.location.href = `/admin/boxes/${box.id}`}>
                                             <td className="p-3" onClick={e => e.stopPropagation()}>
                                                 <Checkbox checked={selectedIds.has(box.id)} onCheckedChange={() => toggleSelect(box.id)} />
                                             </td>
