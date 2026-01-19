@@ -44,6 +44,13 @@ export default function BoxesPage() {
     const [destinations, setDestinations] = useState<any[]>([])
     const [creatingTransfer, setCreatingTransfer] = useState(false)
 
+    const [orderDialogOpen, setOrderDialogOpen] = useState(false)
+    const [orderCustomer, setOrderCustomer] = useState('') // Still used? Rename to orderCustomerId
+    const [orderCustomerId, setOrderCustomerId] = useState('')
+    const [orderNote, setOrderNote] = useState('')
+    const [creatingOrder, setCreatingOrder] = useState(false)
+    const [customers, setCustomers] = useState<any[]>([])
+
     const printRef = useRef(null)
     const handleReactToPrint = useReactToPrint({
         contentRef: printRef,
@@ -92,8 +99,12 @@ export default function BoxesPage() {
 
     const fetchDestinations = async () => {
         const { data } = await supabase.from('destinations').select('id, name, type').order('name')
-        if (data) setDestinations(data)
+        if (data) {
+            setDestinations(data.filter((d: any) => d.type !== 'customer')) // Stores
+            setCustomers(data.filter((d: any) => d.type === 'customer'))   // Customers
+        }
     }
+
 
     const fetchBoxes = async () => {
         setLoading(true)
@@ -380,6 +391,60 @@ export default function BoxesPage() {
         }
     }
 
+    const handleCreateOrder = async () => {
+        if (!orderCustomerId) return alert("Vui lòng chọn khách hàng")
+        if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
+
+        const selectedCust = customers.find(c => c.id === orderCustomerId)
+        if (!selectedCust) return
+
+        setCreatingOrder(true)
+        try {
+            // Generate Order Code (client side or server side? create API expects code)
+            // Server API expects 'code'. Let's generating one here.
+            const orderCode = `ORD-${Date.now().toString().slice(-6)}`
+
+            const payload = {
+                code: orderCode,
+                // customerName: orderCustomer, // Replace with selected Name
+                customerName: selectedCust.name,
+                customerId: selectedCust.id,
+                note: orderNote,
+                type: 'BOX',
+                items: [],
+                boxes: Array.from(selectedIds).map(id => ({ id })) // API only needs IDs
+            }
+
+            const res = await fetch('/api/orders/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+
+            const json = await res.json()
+            if (!json.success) throw new Error(json.error)
+
+            alert(`✅ Đã tạo đơn hàng: ${orderCode}\n\nSố thùng: ${selectedIds.size}`)
+
+            // Reset
+            setOrderDialogOpen(false)
+            setOrderCustomerId('')
+            setOrderNote('')
+            setSelectedIds(new Set())
+            fetchBoxes() // Refresh to update status if needed (though API updates boxes)
+
+            // Navigate
+            if (json.orderId) {
+                window.location.href = `/admin/orders/${json.orderId}`
+            }
+
+        } catch (error: any) {
+            alert("Lỗi tạo đơn: " + error.message)
+        } finally {
+            setCreatingOrder(false)
+        }
+    }
+
 
     return (
         <div className="h-[calc(100vh-74px)] flex flex-col bg-slate-50 overflow-hidden">
@@ -466,10 +531,13 @@ export default function BoxesPage() {
                                 <Button variant="outline" onClick={() => setTransferDialogOpen(true)} disabled={selectedIds.size === 0} className="w-full">
                                     <ArrowRightLeft className="mr-2 h-4 w-4" /> Tạo Đơn DC ({selectedIds.size})
                                 </Button>
-                                <Button variant="outline" onClick={handlePrintBatch} disabled={selectedIds.size === 0} className="w-full">
-                                    <Printer className="mr-2 h-4 w-4" /> In ({selectedIds.size})
+                                <Button variant="outline" onClick={() => setOrderDialogOpen(true)} disabled={selectedIds.size === 0} className="w-full">
+                                    <Package className="mr-2 h-4 w-4" /> Tạo Đơn Hàng ({selectedIds.size})
                                 </Button>
                             </div>
+                            <Button variant="outline" onClick={handlePrintBatch} disabled={selectedIds.size === 0} className="w-full">
+                                <Printer className="mr-2 h-4 w-4" /> In ({selectedIds.size})
+                            </Button>
                             <Button variant="outline" onClick={handleExport} disabled={selectedIds.size === 0} className="w-full">
                                 <Download className="mr-2 h-4 w-4" /> Xuất Excel ({selectedIds.size})
                             </Button>
@@ -622,6 +690,54 @@ export default function BoxesPage() {
                             <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Hủy</Button>
                             <Button onClick={handleCreateTransfer} disabled={creatingTransfer || !destinationId}>
                                 {creatingTransfer ? 'Đang Tạo...' : 'Tạo Đơn'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Create Order Dialog */}
+                <Dialog open={orderDialogOpen} onOpenChange={setOrderDialogOpen}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Tạo Đơn Hàng từ {selectedIds.size} Thùng</DialogTitle>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label>Khách Hàng *</Label>
+                                <Select value={orderCustomerId} onValueChange={setOrderCustomerId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Chọn khách hàng..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {customers.length === 0 ? (
+                                            <div className="p-2 text-sm text-muted-foreground">Chưa có khách hàng</div>
+                                        ) : customers.map(c => (
+                                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Ghi Chú</Label>
+                                <Input
+                                    placeholder="Ghi chú đơn hàng..."
+                                    value={orderNote}
+                                    onChange={e => setOrderNote(e.target.value)}
+                                />
+                            </div>
+                            <div className="bg-green-50 p-3 rounded-lg border border-green-100">
+                                <p className="text-sm text-green-800">
+                                    Chế độ: <strong>Bán Nguyên Thùng</strong>
+                                </p>
+                                <p className="text-xs text-green-600 mt-1">
+                                    Hệ thống sẽ tạo đơn hàng và tự động gán {selectedIds.size} thùng này vào đơn.
+                                </p>
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setOrderDialogOpen(false)}>Hủy</Button>
+                            <Button onClick={handleCreateOrder} disabled={creatingOrder || !orderCustomerId}>
+                                {creatingOrder ? 'Đang Tạo...' : 'Tạo Đơn Hàng'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>

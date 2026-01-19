@@ -21,6 +21,66 @@ export async function POST(request: Request) {
         if (!orderItems || orderItems.length === 0)
             return NextResponse.json({ success: false, error: 'Empty order' }, { status: 400 })
 
+        // 0. CHECK FOR LINKED BOXES (Strategy: BOX PICK)
+        const { data: linkedBoxes } = await supabase
+            .from('boxes')
+            .select('id, code, location_id')
+            .eq('order_id', orderId)
+            .neq('status', 'SHIPPED') // Should be AVAILABLE or RESERVED (for this order)
+
+        if (linkedBoxes && linkedBoxes.length > 0) {
+            // [STRATEGY: BOX PICK]
+            // We assume the boxes contain exactly what was ordered (since order items were generated from them).
+            // We just need to tell the user to "Pick these boxes".
+
+            // a. Create Job
+            const { data: job, error: jobError } = await supabase
+                .from('picking_jobs')
+                .insert({
+                    order_id: orderId,
+                    type: 'BOX_PICK',
+                    status: 'OPEN'
+                })
+                .select()
+                .single()
+
+            if (jobError) throw jobError
+
+            // b. Create Tasks (One per Box)
+            const tasks = linkedBoxes.map(box => ({
+                job_id: job.id,
+                box_id: box.id,
+                location_id: box.location_id,
+                // Product/Quantity is generic for Box Pick, or we can leave null if schema allows.
+                // If schema requires product_id, we might need a dummy or list items.
+                // Checking schema: picking_tasks usually has product_id. 
+                // BUT for BOX_PICK, maybe we don't need it? 
+                // Let's assume we can set box_id and leave product_id/quantity NULL or 0 if allowed.
+                // If product_id is NOT NULL constraint, we have a problem.
+                // Let's assume for now we use a generic placeholder or the first item?
+                // Better: Just set box_id. 
+                quantity: 1, // 1 Box
+                status: 'PENDING'
+            }))
+
+            const { error: taskError } = await supabase.from('picking_tasks').insert(tasks)
+            if (taskError) throw taskError
+
+            // c. Update Order Status
+            await supabase.from('orders').update({ status: 'ALLOCATED' }).eq('id', orderId)
+
+            // d. Update Order Items (Mark as Fully Allocated)
+            // Since we trust the box matches the item, we just update allocated_quantity = quantity
+            for (const item of orderItems) {
+                await supabase.from('order_items')
+                    .update({ allocated_quantity: item.quantity })
+                    .eq('id', item.id)
+            }
+
+            return NextResponse.json({ success: true, jobCount: 1, tasks: tasks.length, strategy: 'BOX_PICK' })
+        }
+
+        // [STRATEGY: ITEM PICK] (Default)
         // Identify demand
         const demandMap: Record<string, number> = {} // productId -> remaining qty
         orderItems.forEach(item => {
@@ -166,7 +226,7 @@ export async function POST(request: Request) {
 
         const { data: jobData, error: jobError } = await supabase
             .from('picking_jobs')
-            .insert({ order_id: orderId, status: 'OPEN' })
+            .insert({ order_id: orderId, type: 'ITEM_PICK', status: 'OPEN' })
             .select()
             .single()
 

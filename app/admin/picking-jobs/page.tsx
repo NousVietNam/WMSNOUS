@@ -168,7 +168,15 @@ export default function PickingJobsPage() {
                                                 </Link>
                                             </div>
                                         </td>
-                                        <td className="p-3 font-mono text-xs">{job.type}</td>
+                                        <td className="p-3 font-mono text-xs">
+                                            {job.type === 'BOX_PICK' ? (
+                                                <Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100">Lấy Thùng</Badge>
+                                            ) : job.type === 'ITEM_PICK' ? (
+                                                <Badge className="bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-100">Lấy Lẻ</Badge>
+                                            ) : (
+                                                <span className="text-slate-500">{job.type}</span>
+                                            )}
+                                        </td>
                                         <td className="p-3 text-slate-600">{info}</td>
                                         <td className="p-3 text-center">{getStatusBadge(job.status)}</td>
                                         <td className="p-3 text-right text-slate-500 text-xs">

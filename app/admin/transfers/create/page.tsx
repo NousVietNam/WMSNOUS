@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
-import { ArrowLeft, Plus, Save, Search, Trash2, X, Box as BoxIcon, Package, Upload, Download } from "lucide-react"
+import { ArrowLeft, Plus, Save, Search, Trash2, X, Box as BoxIcon, Package, Upload, Download, Eye } from "lucide-react"
 import { toast } from "sonner"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import Papa from "papaparse"
@@ -33,6 +33,28 @@ export default function CreateTransferPage() {
     const [availableOptions, setAvailableOptions] = useState<any[]>([])
     const [loading, setLoading] = useState(false)
     const [importLoading, setImportLoading] = useState(false)
+
+    // Box Viewer State
+    const [viewingBox, setViewingBox] = useState<{ id: string, code: string } | null>(null)
+    const [boxDetails, setBoxDetails] = useState<any[]>([])
+    const [loadingDetails, setLoadingDetails] = useState(false)
+
+    useEffect(() => {
+        if (viewingBox) {
+            fetchBoxDetails(viewingBox.id)
+        }
+    }, [viewingBox])
+
+    const fetchBoxDetails = async (boxId: string) => {
+        setLoadingDetails(true)
+        const { data, error } = await supabase.from('inventory_items')
+            .select('*, products(name, sku)')
+            .eq('box_id', boxId)
+            .gt('quantity', 0)
+
+        if (data) setBoxDetails(data)
+        setLoadingDetails(false)
+    }
 
     useEffect(() => {
         setCode(`TRFx${Date.now().toString().slice(-6)}`)
@@ -501,6 +523,11 @@ export default function CreateTransferPage() {
                                             </div>
 
                                             <div className="flex items-center gap-2">
+                                                {transferType === 'BOX' && (
+                                                    <Button variant="ghost" size="icon" onClick={() => setViewingBox({ id: item.id, code: item.code })}>
+                                                        <Eye className="h-4 w-4 text-blue-500" />
+                                                    </Button>
+                                                )}
                                                 {transferType === 'ITEM' && (
                                                     <Input
                                                         type="number"
@@ -570,6 +597,42 @@ export default function CreateTransferPage() {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        </Card>
+                    </div>
+                )}
+
+                {/* VIEW BOX DETAILS DIALOG */}
+                {viewingBox && (
+                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                        <Card className="w-full max-w-lg max-h-[80vh] flex flex-col bg-white">
+                            <CardHeader className="flex flex-row items-center justify-between border-b py-3">
+                                <CardTitle className="text-lg">Chi tiết thùng {viewingBox.code}</CardTitle>
+                                <Button variant="ghost" size="icon" onClick={() => setViewingBox(null)}>
+                                    <X className="h-5 w-5" />
+                                </Button>
+                            </CardHeader>
+                            <div className="flex-1 overflow-auto p-4">
+                                {loadingDetails ? (
+                                    <div className="text-center py-8">Đang tải dữ liệu...</div>
+                                ) : boxDetails.length === 0 ? (
+                                    <div className="text-center py-8 text-muted-foreground">Thùng rỗng</div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {boxDetails.map((item: any) => (
+                                            <div key={item.id} className="flex justify-between items-center border-b pb-2 last:border-0">
+                                                <div>
+                                                    <div className="font-medium">{item.products?.name || 'Sản phẩm không tên'}</div>
+                                                    <div className="text-xs text-slate-500">SKU: {item.products?.sku}</div>
+                                                </div>
+                                                <div className="font-bold text-lg">x{item.quantity}</div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-4 border-t bg-slate-50 text-right">
+                                <Button onClick={() => setViewingBox(null)}>Đóng</Button>
                             </div>
                         </Card>
                     </div>

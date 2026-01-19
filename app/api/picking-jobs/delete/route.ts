@@ -100,11 +100,26 @@ export async function POST(req: NextRequest) {
 
         // 4. Revert Order/Transfer Status
         if (job.transfer_order_id) {
-            // Revert Transfer to 'approved' (Still Reserved)
-            await supabaseAdmin
-                .from('transfer_orders')
-                .update({ status: 'approved' })
-                .eq('id', job.transfer_order_id)
+            // Check if there are other ACTIVE jobs for this transfer
+            const { count } = await supabaseAdmin
+                .from('picking_jobs')
+                .select('id', { count: 'exact', head: true })
+                .eq('transfer_order_id', job.transfer_order_id)
+                .neq('id', jobId) // Exclude current job
+                .neq('status', 'CANCELLED')
+
+            console.log(`[DeleteJob] Transfer ${job.transfer_order_id} has ${count} other active jobs`)
+
+            if (count === 0) {
+                // If this was the last job, revert to 'approved' (Ready to Allocate)
+                const { error: updateError } = await supabaseAdmin
+                    .from('transfer_orders')
+                    .update({ status: 'approved' })
+                    .eq('id', job.transfer_order_id)
+
+                if (updateError) console.error("Failed to revert transfer status:", updateError)
+                else console.log(`[DeleteJob] Reverted Transfer ${job.transfer_order_id} to 'approved'`)
+            }
         } else if (job.order_id) {
             // Revert Sales Order
             // We also need to decrease 'allocated_quantity' on 'order_items'

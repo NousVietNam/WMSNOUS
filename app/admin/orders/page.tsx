@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
-import { AlertCircle, FileText, Plus, Upload, Eye, ShieldCheck, Download } from "lucide-react"
+import { AlertCircle, FileText, Plus, Upload, Eye, ShieldCheck, Download, Trash2 } from "lucide-react"
 import Link from "next/link"
 import Papa from "papaparse"
 
@@ -99,6 +99,24 @@ export default function OrdersPage() {
         } else {
             alert(`✅ Điều phối thành công! Đã tạo ${json.tasks} nhiệm vụ lấy hàng.`)
             fetchOrders()
+        }
+    }
+
+    const handleDelete = async (order: any) => {
+        if (!confirm(`Bạn có chắc chắn muốn xóa đơn hàng ${order.code}? hành động này không thể hoàn tác.`)) return
+
+        const res = await fetch('/api/orders/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: order.id })
+        })
+        const json = await res.json()
+
+        if (json.success) {
+            // alert("Đã xóa đơn hàng thành công")
+            fetchOrders()
+        } else {
+            alert("Lỗi xóa đơn: " + json.error)
         }
     }
 
@@ -283,6 +301,7 @@ export default function OrdersPage() {
                             <tr>
                                 <th className="p-4">Mã Đơn</th>
                                 <th className="p-4">Khách Hàng</th>
+                                <th className="p-4">Loại</th>
                                 <th className="p-4">Số Mặt Hàng</th>
                                 <th className="p-4">Nhân Viên Gán</th>
                                 <th className="p-4">Trạng Thái</th>
@@ -296,6 +315,14 @@ export default function OrdersPage() {
                                 <tr key={order.id} className="border-t hover:bg-slate-50">
                                     <td className="p-4 font-bold text-primary">{order.code}</td>
                                     <td className="p-4">{order.customer_name}</td>
+                                    <td className="p-4">
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${order.type === 'BOX'
+                                            ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                            : 'bg-blue-100 text-blue-800 border border-blue-200'
+                                            }`}>
+                                            {order.type === 'BOX' ? 'Nguyên Thùng' : 'Lẻ'}
+                                        </span>
+                                    </td>
                                     <td className="p-4 font-bold">{order.order_items?.[0]?.count || 0}</td>
                                     <td className="p-4">
                                         {(() => {
@@ -330,9 +357,11 @@ export default function OrdersPage() {
                                     <td className="p-4 text-muted-foreground">{new Date(order.created_at).toLocaleDateString('vi-VN')}</td>
                                     <td className="p-4 text-right flex justify-end gap-2">
                                         {order.status === 'PENDING' && (
-                                            <Button size="sm" onClick={() => handleAllocate(order)}>
-                                                Điều phối
-                                            </Button>
+                                            <>
+                                                <Button size="sm" variant="destructive" onClick={() => handleDelete(order)} title="Xóa Đơn Hàng">
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </>
                                         )}
                                         {order.status === 'ALLOCATED' && (
                                             <Button size="sm" variant="outline" onClick={() => {
