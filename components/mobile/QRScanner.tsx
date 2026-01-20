@@ -21,24 +21,26 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
     const [selectedCameraId, setSelectedCameraId] = useState<string>("")
     const [camerasLoaded, setCamerasLoaded] = useState(false)
 
-    // 1. Enumerate Cameras & Initialize
+    // 1. Initialize
     useEffect(() => {
-        const initScanner = async () => {
-            try {
-                const devices = await Html5Qrcode.getCameras()
-                console.log("Scanner Devices:", devices)
+        const init = async () => {
+            // Optimistic check for cached ID
+            const cachedId = localStorage.getItem(CAMERA_PREF_KEY)
 
-                if (devices && devices.length > 0) {
-                    setCameras(devices)
-
-                    // 1. Check cached preference
-                    const cachedId = localStorage.getItem(CAMERA_PREF_KEY)
-                    const cachedCam = devices.find(d => d.id === cachedId)
-
-                    if (cachedCam) {
-                        setSelectedCameraId(cachedCam.id)
-                    } else {
-                        // 2. Intelligent Auto-Select (Fallback)
+            if (cachedId) {
+                // If we have a preference, try to start it immediately WITHOUT waiting for enum
+                setSelectedCameraId(cachedId)
+                // We still fetch cameras in background to populate the dropdown
+                Html5Qrcode.getCameras().then(devices => {
+                    setCameras(devices || [])
+                }).catch(err => console.error("Bg camera fetch failed", err))
+            } else {
+                // No preference, we must enumerate first
+                try {
+                    const devices = await Html5Qrcode.getCameras()
+                    if (devices && devices.length > 0) {
+                        setCameras(devices)
+                        // Intelligent Auto-Select Logic
                         let bestId = devices[0].id
                         const backCams = devices.filter((d: any) => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('sau'))
 
@@ -51,18 +53,15 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                             bestId = mainBack ? mainBack.id : backCams[0].id
                         }
                         setSelectedCameraId(bestId)
+                    } else {
+                        setError("Không tìm thấy camera")
                     }
-                } else {
-                    setError("Không tìm thấy camera")
+                } catch (e: any) {
+                    setError("Lỗi quyền truy cập Camera")
                 }
-                setCamerasLoaded(true)
-            } catch (e: any) {
-                console.error("Camera enum error", e)
-                setError("Lỗi quyền truy cập Camera")
             }
         }
-
-        initScanner()
+        init()
     }, [])
 
     // 2. Start/Restart Camera when ID changes
@@ -80,7 +79,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 try {
                     await scannerRef.current.stop()
                     scannerRef.current.clear()
-                } catch (e) { console.warn("Stop error", e) }
+                } catch (e) { }
                 scannerRef.current = null
             }
 
@@ -128,14 +127,15 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 setCameraStarted(true)
             } catch (e: any) {
                 console.error("Start failed", e)
-                setError("Không thể khởi động camera này")
+                // If start failed (maybe cached ID is dead), try to re-enumerate and pick best
+                setError("Không thể khởi động camera")
             }
         }
 
-        // Reduced delay to 50ms for faster startup
-        const t = setTimeout(startCamera, 50)
+        // START IMMEDIATELY - No setTimeout
+        startCamera()
+
         return () => {
-            clearTimeout(t)
             if (scannerRef.current) {
                 try {
                     scannerRef.current.stop().then(() => scannerRef.current.clear()).catch(() => { })
