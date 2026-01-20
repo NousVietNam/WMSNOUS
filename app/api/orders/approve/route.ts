@@ -56,13 +56,10 @@ export async function POST(request: Request) {
                                 transactions.push({
                                     type: 'RESERVE',
                                     sku: inv.products?.sku || 'UNKNOWN',
-                                    product_id: inv.product_id,
-                                    quantity: -inv.quantity, // Negative to indicate reservation/hold
-                                    from_location_id: box.location_id, // Specific location if known
-                                    warehouse_id: inv.warehouse_id,
+                                    quantity: inv.quantity,
+                                    location_id: box.location_id,
                                     user_id: userId,
                                     reference_id: order.id,
-                                    reference_code: order.code,
                                     note: `Giữ hàng (Thùng) cho đơn: ${order.code} - ${order.customer_name}`,
                                     created_at: new Date().toISOString()
                                 });
@@ -78,12 +75,9 @@ export async function POST(request: Request) {
                         transactions.push({
                             type: 'RESERVE',
                             sku: item.products?.sku || 'UNKNOWN',
-                            product_id: item.product_id,
-                            quantity: -item.quantity,
-                            // from_location_id: null, // Unknown yet
+                            quantity: item.quantity,
                             user_id: userId,
                             reference_id: order.id,
-                            reference_code: order.code,
                             note: `Giữ hàng (Lẻ) cho đơn: ${order.code} - ${order.customer_name}`,
                             created_at: new Date().toISOString()
                         });
