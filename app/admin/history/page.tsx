@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { History, ArrowRight, Filter, RefreshCw, Download, ChevronLeft, ChevronRight } from "lucide-react"
+import { History, ArrowRight, Filter, RefreshCw, Download, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
 import * as XLSX from "xlsx"
 import { saveAs } from 'file-saver'
 
@@ -186,7 +186,24 @@ export default function HistoryPage() {
         setLoading(false)
     }
 
+    const handleDelete = async (id: string) => {
+        if (!confirm("Bạn có chắc chắn muốn xóa giao dịch này? Hành động này không thể hoàn tác.")) return
 
+        try {
+            const { error } = await supabase
+                .from('transactions')
+                .delete()
+                .eq('id', id)
+
+            if (error) throw error
+
+            setTransactions(prev => prev.filter(tx => tx.id !== id))
+            setTotal(prev => prev - 1)
+        } catch (e: any) {
+            console.error(e)
+            alert("Lỗi khi xóa giao dịch: " + e.message)
+        }
+    }
 
     const handleExport = () => {
         const data = transactions.map(tx => ({
@@ -308,6 +325,8 @@ export default function HistoryPage() {
                                 <th className="p-4">Vị trí Đi (From Loc)</th>
                                 <th className="p-4">Thùng Đến (To Box)</th>
                                 <th className="p-4">Vị trí Đến (To Loc)</th>
+                                <th className="p-4 w-[60px] text-center"></th>
+
                             </tr>
                         </thead>
                         <tbody>
@@ -397,6 +416,17 @@ export default function HistoryPage() {
                                             <td className="p-4 text-green-700 font-medium text-sm">
                                                 {toLoc !== '-' ? `📍 ${toLoc}` : '-'}
                                             </td>
+                                            <td className="p-4 text-center">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                    onClick={() => handleDelete(tx.id)}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </td>
+
                                         </tr>
                                     )
                                 })

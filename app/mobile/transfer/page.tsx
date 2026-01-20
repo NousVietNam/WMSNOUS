@@ -28,6 +28,7 @@ export default function TransferPage() {
             .select(`
                 id, 
                 code, 
+                order_id,
                 locations (id, code)
             `)
             .eq('code', sourceCode)
@@ -35,6 +36,13 @@ export default function TransferPage() {
 
         if (error || !box) {
             alert("Không tìm thấy Thùng này!")
+            setLoading(false)
+            return
+        }
+
+        // NEW: Check if box is assigned to an order (LOCKED)
+        if (box.order_id) {
+            alert("THÙNG ĐÃ BỊ KHÓA!\nThùng này đã được gán vào một đơn hàng và đang chờ xuất. Không thể di chuyển thùng này.")
             setLoading(false)
             return
         }
