@@ -41,52 +41,65 @@ export async function POST(request: Request) {
         );
 
         if (isApproved) {
-            let transactions = [];
+            // Check if RESERVE transactions already exist to prevent duplicates
+            const { data: existingTx } = await supabaseAdmin
+                .from('transactions')
+                .select('id')
+                .eq('reference_id', order.id)
+                .eq('type', 'RESERVE')
+                .limit(1)
 
-            // Logic: Create 'RESERVE' transactions (Negative Quantity)
-            // Note: This logic mirrors Transfer Approve which creates transactions but doesn't auto-decrement inventory table rows (that happens at Allocate).
-            // However, having these transactions allows for "Soft Reserve" calculation if implemented in search.
+            if (existingTx && existingTx.length > 0) {
+                // Already created RESERVE transactions, skip
+                console.log(`RESERVE transactions already exist for order ${order.code}, skipping creation`)
+            } else {
+                let transactions = [];
 
-            if (order.type === 'BOX') {
-                // For Box Orders, we reserve the specific items in those boxes
-                if (order.boxes && order.boxes.length > 0) {
-                    for (const box of order.boxes) {
-                        if (box.inventory_items) {
-                            for (const inv of box.inventory_items) {
-                                transactions.push({
-                                    type: 'RESERVE',
-                                    sku: inv.products?.sku || 'UNKNOWN',
-                                    quantity: inv.quantity,
-                                    user_id: userId,
-                                    reference_id: order.id,
-                                    note: `Giữ hàng (Thùng) cho đơn: ${order.code} - ${order.customer_name}`,
-                                    created_at: new Date().toISOString()
-                                });
+                // Logic: Create 'RESERVE' transactions (Negative Quantity)
+                // Note: This logic mirrors Transfer Approve which creates transactions but doesn't auto-decrement inventory table rows (that happens at Allocate).
+                // However, having these transactions allows for "Soft Reserve" calculation if implemented in search.
+
+                if (order.type === 'BOX') {
+                    // For Box Orders, we reserve the specific items in those boxes
+                    if (order.boxes && order.boxes.length > 0) {
+                        for (const box of order.boxes) {
+                            if (box.inventory_items) {
+                                for (const inv of box.inventory_items) {
+                                    transactions.push({
+                                        type: 'RESERVE',
+                                        sku: inv.products?.sku || 'UNKNOWN',
+                                        quantity: inv.quantity,
+                                        user_id: userId,
+                                        reference_id: order.id,
+                                        note: `Giữ hàng (Thùng) cho đơn: ${order.code} - ${order.customer_name}`,
+                                        created_at: new Date().toISOString()
+                                    });
+                                }
                             }
                         }
                     }
-                }
-            } else {
-                // For Item Orders, we don't know the location/box yet (until Allocate).
-                // So we create a "General" reservation at Warehouse level (or NULL location).
-                if (order.order_items && order.order_items.length > 0) {
-                    for (const item of order.order_items) {
-                        transactions.push({
-                            type: 'RESERVE',
-                            sku: item.products?.sku || 'UNKNOWN',
-                            quantity: item.quantity,
-                            user_id: userId,
-                            reference_id: order.id,
-                            note: `Giữ hàng (Lẻ) cho đơn: ${order.code} - ${order.customer_name}`,
-                            created_at: new Date().toISOString()
-                        });
+                } else {
+                    // For Item Orders, we don't know the location/box yet (until Allocate).
+                    // So we create a "General" reservation at Warehouse level (or NULL location).
+                    if (order.order_items && order.order_items.length > 0) {
+                        for (const item of order.order_items) {
+                            transactions.push({
+                                type: 'RESERVE',
+                                sku: item.products?.sku || 'UNKNOWN',
+                                quantity: item.quantity,
+                                user_id: userId,
+                                reference_id: order.id,
+                                note: `Giữ hàng (Lẻ) cho đơn: ${order.code} - ${order.customer_name}`,
+                                created_at: new Date().toISOString()
+                            });
+                        }
                     }
                 }
-            }
 
-            if (transactions.length > 0) {
-                const { error: txError } = await supabaseAdmin.from('transactions').insert(transactions);
-                if (txError) throw txError;
+                if (transactions.length > 0) {
+                    const { error: txError } = await supabaseAdmin.from('transactions').insert(transactions);
+                    if (txError) throw txError;
+                }
             }
         }
 
