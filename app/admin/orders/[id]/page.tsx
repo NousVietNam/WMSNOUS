@@ -19,6 +19,7 @@ export default function OrderDetailPage() {
     // Data State
     const [order, setOrder] = useState<any>(null)
     const [items, setItems] = useState<any[]>([])
+    const [boxes, setBoxes] = useState<any[]>([])
     const [jobs, setJobs] = useState<any[]>([])
     const [availableStock, setAvailableStock] = useState<Record<string, number>>({})
     const [availableUsers, setAvailableUsers] = useState<any[]>([])
@@ -81,14 +82,21 @@ export default function OrderDetailPage() {
         const { data: orderData } = await supabase.from('orders').select('*').eq('id', id).single()
         setOrder(orderData)
 
-        // Fetch Items
+        // Fetch Items (for ITEM orders)
         const { data: itemData } = await supabase
             .from('order_items')
             .select('*, products(id, name, sku, barcode)')
             .eq('order_id', id)
-            .order('id') // Stable order
+            .order('id')
         setItems(itemData || [])
         setEditingItems(JSON.parse(JSON.stringify(itemData || []))) // Init edit state
+
+        // Fetch Boxes (for BOX orders)
+        const { data: boxData } = await supabase
+            .from('boxes')
+            .select('id, code, status, location_id, inventory_items(quantity, products(sku, name))')
+            .eq('order_id', id)
+        setBoxes(boxData || [])
 
         // Fetch Jobs
         const { data: jobData } = await supabase
@@ -307,7 +315,9 @@ export default function OrderDetailPage() {
                     {/* Items List */}
                     <Card className="md:col-span-2">
                         <CardHeader className="flex flex-row items-center justify-between">
-                            <CardTitle>Danh Sách Hàng Hoá ({items.length})</CardTitle>
+                            <CardTitle>
+                                {order.type === 'BOX' ? `Danh Sách Thùng (${boxes.length})` : `Danh Sách Hàng Hoá (${items.length})`}
+                            </CardTitle>
                             {editMode && (
                                 <div className="flex gap-2">
                                     {/* ADD ITEM DIALOG */}
@@ -365,63 +375,116 @@ export default function OrderDetailPage() {
                             )}
                         </CardHeader>
                         <CardContent>
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-slate-100 font-medium">
-                                    <tr>
-                                        <th className="p-3">Sản Phẩm</th>
-                                        <th className="p-3 text-right">Yêu Cầu</th>
-                                        <th className="p-3 text-right text-slate-500">Tồn Có Sẵn</th>
-                                        {!editMode && order.status !== 'PENDING' && (
-                                            <>
-                                                <th className="p-3 text-right">Đã Giữ</th>
-                                                <th className="p-3 text-right">Đã Nhặt</th>
-                                            </>
-                                        )}
-                                        {editMode && <th className="p-3 text-right">Xóa</th>}
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y">
-                                    {(editMode ? editingItems : items).map((item, idx) => {
-                                        const avail = availableStock[item.product_id] || 0;
-                                        const isShortage = item.quantity > avail;
-                                        return (
-                                            <tr key={idx} className="border-t">
-                                                <td className="p-3">
-                                                    <div className="font-bold">{item.products?.sku}</div>
-                                                    <div className="text-xs text-muted-foreground">{item.products?.name}</div>
-                                                </td>
-                                                <td className="p-3 text-right font-bold text-lg">
-                                                    {editMode ? (
-                                                        <Input
-                                                            type="number"
-                                                            className="w-20 text-right ml-auto h-8"
-                                                            value={item.quantity}
-                                                            onChange={e => updateEditItem(idx, 'quantity', parseInt(e.target.value) || 0)}
-                                                        />
-                                                    ) : item.quantity}
-                                                </td>
-                                                <td className={`p-3 text-right font-mono ${isShortage ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
-                                                    {avail}
-                                                </td>
-                                                {!editMode && order.status !== 'PENDING' && (
-                                                    <>
-                                                        <td className="p-3 text-right text-blue-600 font-bold">{item.allocated_quantity}</td>
-                                                        <td className="p-3 text-right text-green-600 font-bold">{item.picked_quantity}</td>
-                                                    </>
-                                                )}
-                                                {editMode && (
-                                                    <td className="p-3 text-right">
-                                                        <Button variant="ghost" size="sm" className="text-red-500 h-8 w-8 p-0" onClick={() => {
-                                                            const newItems = editingItems.filter((_, i) => i !== idx);
-                                                            setEditingItems(newItems);
-                                                        }}>x</Button>
+                            {order.type === 'BOX' ? (
+                                /* BOX ORDER DISPLAY */
+                                <div className="space-y-3">
+                                    {boxes.length === 0 ? (
+                                        <div className="text-center text-slate-500 py-8">Chưa có thùng nào</div>
+                                    ) : (
+                                        boxes.map((box, idx) => {
+                                            const totalQty = box.inventory_items?.reduce((sum: number, inv: any) => sum + inv.quantity, 0) || 0
+                                            return (
+                                                <div key={box.id} className="border rounded-lg p-4 bg-slate-50">
+                                                    <div className="flex items-center justify-between mb-3">
+                                                        <div className="flex items-center gap-2">
+                                                            <Box className="h-5 w-5 text-blue-600" />
+                                                            <span className="font-bold text-lg">{box.code}</span>
+                                                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">{box.status}</span>
+                                                        </div>
+                                                        <div className="text-sm text-slate-600">
+                                                            <span className="font-semibold">{totalQty}</span> sản phẩm
+                                                        </div>
+                                                    </div>
+                                                    {box.inventory_items && box.inventory_items.length > 0 && (
+                                                        <div className="space-y-2 pl-7">
+                                                            {box.inventory_items.map((inv: any, invIdx: number) => (
+                                                                <div key={invIdx} className="flex justify-between text-sm border-l-2 border-blue-200 pl-3 py-1">
+                                                                    <span className="text-slate-700">
+                                                                        <span className="font-mono">{inv.products?.sku}</span>
+                                                                        {' - '}
+                                                                        <span>{inv.products?.name}</span>
+                                                                    </span>
+                                                                    <span className="font-bold">x{inv.quantity}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {!box.inventory_items || box.inventory_items.length === 0 && (
+                                                        <div className="text-xs text-slate-400 pl-7">Thùng rỗng</div>
+                                                    )}
+                                                </div>
+                                            )
+                                        })
+                                    )}
+                                    <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-4">
+                                        <div className="flex items-start gap-2">
+                                            <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
+                                            <span className="text-sm text-amber-800">
+                                                <strong>Lưu ý:</strong> Đơn theo thùng sẽ lấy nguyên cả thùng. Không chia nhỏ sản phẩm.
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                /* ITEM ORDER DISPLAY */
+                                <table className="w-full text-sm text-left">
+                                    <thead className="bg-slate-100 font-medium">
+                                        <tr>
+                                            <th className="p-3">Sản Phẩm</th>
+                                            <th className="p-3 text-right">Yêu Cầu</th>
+                                            <th className="p-3 text-right text-slate-500">Tồn Có Sẵn</th>
+                                            {!editMode && order.status !== 'PENDING' && (
+                                                <>
+                                                    <th className="p-3 text-right">Đã Giữ</th>
+                                                    <th className="p-3 text-right">Đã Nhặt</th>
+                                                </>
+                                            )}
+                                            {editMode && <th className="p-3 text-right">Xóa</th>}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                        {(editMode ? editingItems : items).map((item, idx) => {
+                                            const avail = availableStock[item.product_id] || 0;
+                                            const isShortage = item.quantity > avail;
+                                            return (
+                                                <tr key={idx} className="border-t">
+                                                    <td className="p-3">
+                                                        <div className="font-bold">{item.products?.sku}</div>
+                                                        <div className="text-xs text-muted-foreground">{item.products?.name}</div>
                                                     </td>
-                                                )}
-                                            </tr>
-                                        )
-                                    })}
-                                </tbody>
-                            </table>
+                                                    <td className="p-3 text-right font-bold text-lg">
+                                                        {editMode ? (
+                                                            <Input
+                                                                type="number"
+                                                                className="w-20 text-right ml-auto h-8"
+                                                                value={item.quantity}
+                                                                onChange={e => updateEditItem(idx, 'quantity', parseInt(e.target.value) || 0)}
+                                                            />
+                                                        ) : item.quantity}
+                                                    </td>
+                                                    <td className={`p-3 text-right font-mono ${isShortage ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
+                                                        {avail}
+                                                    </td>
+                                                    {!editMode && order.status !== 'PENDING' && (
+                                                        <>
+                                                            <td className="p-3 text-right text-blue-600 font-bold">{item.allocated_quantity}</td>
+                                                            <td className="p-3 text-right text-green-600 font-bold">{item.picked_quantity}</td>
+                                                        </>
+                                                    )}
+                                                    {editMode && (
+                                                        <td className="p-3 text-right">
+                                                            <Button variant="ghost" size="sm" className="text-red-500 h-8 w-8 p-0" onClick={() => {
+                                                                const newItems = editingItems.filter((_, i) => i !== idx);
+                                                                setEditingItems(newItems);
+                                                            }}>x</Button>
+                                                        </td>
+                                                    )}
+                                                </tr>
+                                            )
+                                        })}
+                                    </tbody>
+                                </table>
+                            )}
                         </CardContent>
                     </Card>
 
