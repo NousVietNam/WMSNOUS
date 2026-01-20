@@ -21,9 +21,15 @@ export default function ConsolidatePage() {
         setLoading(true)
 
         // Count items in source
-        const { data: box } = await supabase.from('boxes').select('id').eq('code', sourceCode).single()
+        const { data: box } = await supabase.from('boxes').select('id, order_id').eq('code', sourceCode).single()
         if (!box) {
             alert("Không tìm thấy thùng này!")
+            setLoading(false)
+            return
+        }
+
+        if (box.order_id) {
+            alert("BOX NGUỒN ĐÃ BỊ KHÓA!\nThùng này đã được chọn vào đơn hàng. Không thể lấy hàng từ thùng này.")
             setLoading(false)
             return
         }
@@ -52,10 +58,16 @@ export default function ConsolidatePage() {
         setLoading(true)
 
         try {
-            const { data: source } = await supabase.from('boxes').select('id').eq('code', sourceCode).single()
-            const { data: dest } = await supabase.from('boxes').select('id').eq('code', destCode).single()
+            const { data: source } = await supabase.from('boxes').select('id, order_id').eq('code', sourceCode).single()
+            const { data: dest } = await supabase.from('boxes').select('id, order_id').eq('code', destCode).single()
 
             if (!source || !dest) throw new Error("Box/Dest missing")
+
+            if (dest.order_id) {
+                alert("BOX ĐÍCH ĐÃ BỊ KHÓA!\nThùng nhận này đã được chọn vào đơn hàng. Không thể gộp thêm hàng vào.")
+                setLoading(false)
+                return
+            }
 
             // Move Items
             const { error: moveError } = await supabase

@@ -36,12 +36,18 @@ export default function AuditPage() {
         try {
             const { data: box, error: boxError } = await supabase
                 .from('boxes')
-                .select('id')
+                .select('id, order_id')
                 .eq('code', boxCode)
                 .single()
 
             if (!box) {
                 alert("Không tìm thấy Box!")
+                setLoading(false)
+                return
+            }
+
+            if (box.order_id) {
+                alert("BOX ĐÃ BỊ KHÓA!\nThùng này đã được chọn vào đơn hàng. Không thể thực hiện kiểm kê.")
                 setLoading(false)
                 return
             }
