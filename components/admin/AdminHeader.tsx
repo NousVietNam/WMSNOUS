@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { LayoutDashboard, LogOut, Package, User, MapPin, Box, History, Printer, FileText, ArrowRightLeft } from "lucide-react"
+import { LayoutDashboard, LogOut, Package, User, MapPin, Box, History, Printer, FileText, ArrowRightLeft, Cloud } from "lucide-react"
 import Link from "next/link"
 
 export function AdminHeader() {
@@ -25,6 +25,7 @@ export function AdminHeader() {
         { href: "/admin/boxes", icon: Box, label: "Thùng" },
         { href: "/admin/transfers", icon: ArrowRightLeft, label: "Điều Chuyển" },
         { href: "/admin/outboxes", icon: Package, label: "Outbox" },
+        { href: "/admin/shipping", icon: Cloud, label: "Xuất Kho" },
         { href: "/admin/picking-jobs", icon: Package, label: "Jobs" },
         { href: "/admin/history", icon: History, label: "Lịch Sử" },
         { href: "/admin/bulk-print", icon: Printer, label: "In Lô" },
