@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 export async function POST(request: Request) {
@@ -77,12 +77,14 @@ export async function POST(request: Request) {
 
                 // A. Deduct
                 if (inv.quantity - take === 0) {
-                    await supabase.from('inventory_items').delete().eq('id', inv.id)
+                    const { error: delErr } = await supabase.from('inventory_items').delete().eq('id', inv.id)
+                    if (delErr) throw new Error(`Lỗi xoá tồn kho: ${delErr.message}`)
                 } else {
-                    await supabase.from('inventory_items').update({
+                    const { error: updErr } = await supabase.from('inventory_items').update({
                         quantity: inv.quantity - take,
                         allocated_quantity: Math.max(0, (inv.allocated_quantity || 0) - take)
                     }).eq('id', inv.id)
+                    if (updErr) throw new Error(`Lỗi cập nhật tồn kho: ${updErr.message}`)
                 }
 
                 // B. Add to Outbox
@@ -132,10 +134,14 @@ export async function POST(request: Request) {
                 transactionLog.push(...taskLogs)
 
                 // Mark Task Completed
-                await supabase.from('picking_tasks').update({
+                const { error: taskUpdErr } = await supabase.from('picking_tasks').update({
                     status: 'COMPLETED',
                     outbox_code: outbox.code
                 }).eq('id', taskId)
+
+                if (taskUpdErr) {
+                    throw new Error(`Lỗi cập nhật Task ${taskId}: ${taskUpdErr.message}`)
+                }
 
                 // Update Order Item
                 if (task.picking_jobs?.order_id) {

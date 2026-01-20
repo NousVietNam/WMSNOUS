@@ -253,6 +253,7 @@ export default function DoPickingPage() {
         isScanningRef.current = true
 
         try {
+            toast.loading("Đang kiểm tra...", { id: 'scan-check' })
             const res = await fetch('/api/picking/scan-outbox', {
                 method: 'POST',
                 body: JSON.stringify({ code, jobId: id })
@@ -273,6 +274,7 @@ export default function DoPickingPage() {
         } catch (e) {
             toast.error("Lỗi kết nối")
         } finally {
+            toast.dismiss('scan-check')
             setTimeout(() => {
                 isScanningRef.current = false
             }, 300)

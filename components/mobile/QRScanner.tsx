@@ -59,6 +59,8 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                     }
                 }
 
+                const lastScanRef = { current: 0 }
+
                 await scanner.start(
                     { facingMode: "environment" },
                     {
@@ -79,6 +81,10 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                         ]
                     },
                     (decodedText: string) => {
+                        const now = Date.now()
+                        if (now - lastScanRef.current < 1000) return // Lockout 1s
+                        lastScanRef.current = now
+
                         console.log("✅ QR Scanner detected code:", decodedText)
                         // Vibrate on successful scan (if supported)
                         if (navigator.vibrate) {
