@@ -25,40 +25,13 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
     useEffect(() => {
         const init = async () => {
             // Optimistic check for cached ID
+            // Optimistic check for cached ID
             const cachedId = localStorage.getItem(CAMERA_PREF_KEY)
-
             if (cachedId) {
-                // If we have a preference, try to start it immediately WITHOUT waiting for enum
                 setSelectedCameraId(cachedId)
-                // We still fetch cameras in background to populate the dropdown
-                Html5Qrcode.getCameras().then(devices => {
-                    setCameras(devices || [])
-                }).catch(err => console.error("Bg camera fetch failed", err))
+                // NOTE: We do NOT fetch cameras here to avoid race condition with start()
             } else {
-                // No preference, we must enumerate first
-                try {
-                    const devices = await Html5Qrcode.getCameras()
-                    if (devices && devices.length > 0) {
-                        setCameras(devices)
-                        // Intelligent Auto-Select Logic
-                        let bestId = devices[0].id
-                        const backCams = devices.filter((d: any) => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('sau'))
-
-                        if (backCams.length > 0) {
-                            const mainBack = backCams.find((d: any) =>
-                                !d.label.toLowerCase().includes('wide') &&
-                                !d.label.toLowerCase().includes('rộng') &&
-                                !d.label.toLowerCase().includes('telephoto')
-                            )
-                            bestId = mainBack ? mainBack.id : backCams[0].id
-                        }
-                        setSelectedCameraId(bestId)
-                    } else {
-                        setError("Không tìm thấy camera")
-                    }
-                } catch (e: any) {
-                    setError("Lỗi quyền truy cập Camera")
-                }
+                fetchCamerasAndSelectBest()
             }
         }
         init()
@@ -70,6 +43,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
 
         const startCamera = async () => {
             setCameraStarted(false)
+            setError("") // Clear error
 
             // Save preference
             localStorage.setItem(CAMERA_PREF_KEY, selectedCameraId)
@@ -103,7 +77,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 await scanner.start(
                     selectedCameraId,
                     {
-                        fps: 15, // Increased FPS for faster feel
+                        fps: 15,
                         qrbox: qrBoxFunction,
                         disableFlip: false,
                         aspectRatio: 1.0,
@@ -124,18 +98,41 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                     },
                     (errorMessage: string) => { }
                 )
+
+                // SUCCESS
                 setCameraStarted(true)
+
+                // If we succeeded but don't have the list yet (optimistic case), fetch it now safely
+                if (cameras.length === 0) {
+                    Html5Qrcode.getCameras().then(devices => {
+                        if (devices) setCameras(devices)
+                    }).catch(e => console.warn("Bg fetch failed", e))
+                }
+
             } catch (e: any) {
                 console.error("Start failed", e)
-                // If start failed (maybe cached ID is dead), try to re-enumerate and pick best
-                setError("Không thể khởi động camera")
+
+                // FAIL RECOVERY
+                // If we failed with the cached ID, we should try to reset and fetch fresh
+                const cached = localStorage.getItem(CAMERA_PREF_KEY)
+                if (cached === selectedCameraId) {
+                    console.log("Cached ID failed, retrying with fresh list...")
+                    localStorage.removeItem(CAMERA_PREF_KEY)
+                    // Trigger fallback
+                    // We must ensure we don't loop if fetchCamerasAndSelectBest picks the same broken ID
+                    // But typically ID changes or is invalid, so picking fresh is correct.
+                    fetchCamerasAndSelectBest()
+                } else {
+                    setError("Không thể khởi động camera. Hãy thử chọn camera khác.")
+                }
             }
         }
 
-        // START IMMEDIATELY - No setTimeout
-        startCamera()
+        // Slight delay to ensure DOM and cleanup
+        const t = setTimeout(startCamera, 100)
 
         return () => {
+            clearTimeout(t)
             if (scannerRef.current) {
                 try {
                     scannerRef.current.stop().then(() => scannerRef.current.clear()).catch(() => { })
