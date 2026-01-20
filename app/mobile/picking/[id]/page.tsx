@@ -441,7 +441,7 @@ export default function DoPickingPage() {
                             >
                                 <div className="flex-1">
                                     <div className={`font-bold text-lg leading-tight ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{sku}</div>
-                                    <div className="text-sm text-slate-500 line-clamp-1">{task.products.name}</div>
+                                    <div className="text-sm text-slate-500 line-clamp-1">{task.products?.name || 'Không rõ tên'}</div>
                                 </div>
                                 <div className="text-right min-w-[80px]">
                                     <div className="flex flex-col items-end">
