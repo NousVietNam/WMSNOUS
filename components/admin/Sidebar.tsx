@@ -20,6 +20,7 @@ export function Sidebar() {
         { href: "/admin/boxes", icon: Box, label: "Thùng Hàng" },
         { href: "/admin/transfers", icon: ArrowRightLeft, label: "Điều Chuyển" },
         { href: "/admin/outboxes", icon: Package, label: "Outbox" },
+        { href: "/admin/shipping", icon: Cloud, label: "Xuất Kho" },
         { href: "/admin/history", icon: History, label: "Lịch Sử" },
         { href: "/admin/bulk-print", icon: Printer, label: "In Lô" },
         { href: "/admin/destinations", icon: MapPin, label: "Đối Tác" },
