@@ -119,7 +119,8 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                         disableFlip: false,
                         aspectRatio: 1.0,
                         videoConstraints: {
-                            focusMode: "continuous", // vital for barcodes
+                            deviceId: { exact: selectedCameraId },
+                            focusMode: "continuous",
                             width: { min: 640, ideal: 1280, max: 1920 },
                             height: { min: 480, ideal: 720, max: 1080 },
                         },
