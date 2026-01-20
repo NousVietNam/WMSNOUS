@@ -107,6 +107,7 @@ export default function PickingJobsPage() {
                     type, 
                     status, 
                     created_at,
+                    user:users(name),
                     order:orders(code, customer_name),
                     transfer:transfer_orders(code, from_location:locations(code), destination:destinations(name))
                 `)
@@ -244,6 +245,7 @@ export default function PickingJobsPage() {
                             <th className="p-3 text-left">Mã Đơn / Phiếu</th>
                             <th className="p-3 text-left">Loại Job</th>
                             <th className="p-3 text-left">Thông Tin Nguồn/Đích</th>
+                            <th className="p-3 text-left">Nhân Viên</th>
                             <th className="p-3 text-center">Trạng Thái</th>
                             <th className="p-3 text-right">Ngày Tạo</th>
                             <th className="p-3 text-right">Hành Động</th>
@@ -251,9 +253,9 @@ export default function PickingJobsPage() {
                     </thead>
                     <tbody className="divide-y">
                         {loading ? (
-                            <tr><td colSpan={6} className="p-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></td></tr>
+                            <tr><td colSpan={7} className="p-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></td></tr>
                         ) : filteredJobs.length === 0 ? (
-                            <tr><td colSpan={6} className="p-8 text-center text-muted-foreground">Không tìm thấy job nào.</td></tr>
+                            <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Không tìm thấy job nào.</td></tr>
                         ) : (
                             filteredJobs.map(job => {
                                 const isTransfer = !!job.transfer
@@ -304,6 +306,9 @@ export default function PickingJobsPage() {
                                             )}
                                         </td>
                                         <td className="p-3 text-slate-600">{info}</td>
+                                        <td className="p-3 text-slate-600 text-sm">
+                                            {job.user?.name || '---'}
+                                        </td>
                                         <td className="p-3 text-center">{getStatusBadge(job.status)}</td>
                                         <td className="p-3 text-right text-slate-500 text-xs">
                                             {new Date(job.created_at).toLocaleString('vi-VN')}

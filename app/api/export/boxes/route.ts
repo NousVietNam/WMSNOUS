@@ -15,70 +15,29 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Phải chọn ít nhất 1 thùng' }, { status: 400 })
         }
 
-        // Fetch detailed data for selected outboxes via picking_tasks
-        const { data: tasks, error } = await supabase
-            .from('picking_tasks')
+        // Query inventory_items (actual content) in selected boxes
+        const { data: items, error } = await supabase
+            .from('inventory_items')
             .select(`
                 quantity,
+                box_id,
                 products (sku, name),
-                boxes!picking_tasks_box_id_fkey (code, id),
-                picking_jobs (id, orders (code, customer_name))
+                boxes!inventory_items_box_id_fkey (code)
             `)
-            .eq('status', 'COMPLETED')
-            .not('outbox_code', 'is', null)
+            .in('box_id', boxIds)
 
         if (error) throw error
 
-        // Get outbox codes from boxIds
-        const { data: outboxes } = await supabase
-            .from('boxes')
-            .select('id, code')
-            .in('id', boxIds)
-
-        const outboxMap = new Map(outboxes?.map(b => [b.id, b.code]) || [])
-
-        // Filter tasks by selected outboxes via outbox_code matching
-        const filteredTasks = tasks?.filter(t => {
-            // Find if this task's outbox_code matches any selected outbox
-            const matchingOutbox = outboxes?.find(ob => {
-                // Check via direct match if we stored outbox_code
-                // Assuming outbox_code is the code string
-                return t.outbox_code === ob.code ||
-                    // Or try to infer from picking_tasks join if available
-                    false // Need to adjust based on actual schema
-            })
-            return matchingOutbox
-        }) || []
-
-        // Actually, let's query by outbox_code directly since we have it
-        // Re-query with outbox codes
-        const outboxCodes = outboxes?.map(ob => ob.code) || []
-
-        const { data: tasksByOutbox } = await supabase
-            .from('picking_tasks')
-            .select(`
-                outbox_code,
-                quantity,
-                products (sku, name),
-                boxes!picking_tasks_box_id_fkey (code),
-                picking_jobs (id, orders (code, customer_name))
-            `)
-            .in('outbox_code', outboxCodes)
-            .eq('status', 'COMPLETED')
-
-        if (!tasksByOutbox || tasksByOutbox.length === 0) {
-            return NextResponse.json({ error: 'Không có dữ liệu để xuất' }, { status: 404 })
+        if (!items || items.length === 0) {
+            return NextResponse.json({ error: 'Các thùng đã chọn không chứa hàng' }, { status: 404 })
         }
 
         // Build Excel rows
-        const rows = tasksByOutbox.map((task: any) => ({
-            'Outbox': task.outbox_code,
-            'SKU': task.products?.sku || '',
-            'Tên sản phẩm': task.products?.name || '',
-            'Số lượng': task.quantity,
-            'Thùng nguồn': task.boxes?.code || '',
-            'Đơn hàng': task.picking_jobs?.orders?.code || '',
-            'Khách hàng': task.picking_jobs?.orders?.customer_name || ''
+        const rows = items.map((item: any) => ({
+            'Outbox': item.boxes?.code || '',
+            'SKU': item.products?.sku || '',
+            'Tên sản phẩm': item.products?.name || '',
+            'Số lượng': item.quantity
         }))
 
         // Create workbook

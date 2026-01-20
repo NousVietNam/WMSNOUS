@@ -61,14 +61,17 @@ export async function POST(req: Request) {
 
                     if (bItems) {
                         bItems.forEach(i => {
-                            itemsToInsert.push({
-                                order_id: order.id,
-                                product_id: i.product_id,
-                                quantity: i.quantity,
-                                picked_quantity: 0,
-                                box_id: box.id,
-                                is_box_line: true
-                            })
+                            // Only insert items with positive quantity
+                            if (i.quantity && i.quantity > 0) {
+                                itemsToInsert.push({
+                                    order_id: order.id,
+                                    product_id: i.product_id,
+                                    quantity: i.quantity,
+                                    picked_quantity: 0,
+                                    box_id: box.id,
+                                    is_box_line: true
+                                })
+                            }
                         })
                     }
                 }
