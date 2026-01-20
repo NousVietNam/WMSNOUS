@@ -66,7 +66,7 @@ export default function DoPickingPage() {
     const jobStats = (() => {
         const totalItems = allTasks.reduce((sum: number, t: any) => sum + t.quantity, 0)
         const pickedItems = allTasks.filter((t: any) => t.status === 'COMPLETED').reduce((sum: number, t: any) => sum + t.quantity, 0)
-        const uniqueSkus = new Set(allTasks.map((t: any) => t.products.sku)).size
+        const uniqueSkus = new Set(allTasks.map((t: any) => t.products?.sku).filter(Boolean)).size
         return { totalSku: uniqueSkus, totalItems, pickedItems }
     })()
 
@@ -182,7 +182,7 @@ export default function DoPickingPage() {
     }
 
     const getSkuProgress = (sku: string) => {
-        const matching = allTasks.filter(t => t.products.sku === sku)
+        const matching = allTasks.filter(t => t.products?.sku === sku)
         const total = matching.reduce((sum, t) => sum + t.quantity, 0)
         const picked = matching.filter(t => t.status === 'COMPLETED').reduce((sum, t) => sum + t.quantity, 0)
         return { picked, total }
@@ -224,22 +224,12 @@ export default function DoPickingPage() {
 
             // AUTO PICK LOGIC for BOX Type
             if (transferType === 'BOX') {
-                if (!activeOutbox) {
-                    alert("⚠️ Vui lòng quét Outbox trước khi xác nhận thùng!")
-                    setScannerMode('OUTBOX')
-                    setShowScanner(true)
-                    return
-                }
-
                 // Confirm all pending tasks in this box
                 const tasksToPick = activeGroup.tasks.filter(t => t.status !== 'COMPLETED')
                 if (tasksToPick.length > 0) {
-                    const confirm = window.confirm(`Bạn có muốn xác nhận lấy toàn bộ ${tasksToPick.length} mã trong thùng ${activeGroup.boxCode}?`)
+                    const confirm = window.confirm(`Bạn có muốn xác nhận lấy toàn bộ thùng ${activeGroup.boxCode}? Thùng sẽ được chuyển ra cửa xuất.`)
                     if (confirm) {
                         handleConfirmBox(tasksToPick.map(t => t.id))
-                        // for (const task of tasksToPick) {
-                        //    await handleConfirmPick(task)
-                        // }
                         toast.success(`Đã lấy xong thùng ${activeGroup.boxCode}`)
                         // Auto close box after short delay
                         setTimeout(() => setActiveBoxId(null), 1000)
@@ -312,7 +302,7 @@ export default function DoPickingPage() {
 
     // Batch Confirm Box
     const handleConfirmBox = async (taskIds: string[]) => {
-        if (!activeOutbox) {
+        if (transferType !== 'BOX' && !activeOutbox) {
             toast.error("Vui lòng chọn Outbox trước!")
             return
         }
@@ -320,23 +310,31 @@ export default function DoPickingPage() {
 
         setIsConfirmingBox(true)
         try {
-            // Get fresh userId right before API call
             const { data: { user } } = await supabase.auth.getUser()
             const currentUserId = user?.id || null
 
-            console.log('Confirming with userId:', currentUserId) // Debug log
+            let res;
+            if (transferType === 'BOX') {
+                // Whole Box Pick -> Move Box to GATE-OUT
+                res = await fetch('/api/picking/confirm-box', {
+                    method: 'POST',
+                    body: JSON.stringify({ boxId: activeBoxId, jobId: id, userId: currentUserId })
+                })
+            } else {
+                // Item Pick -> Move Items to Outbox
+                res = await fetch('/api/picking/confirm-batch', {
+                    method: 'POST',
+                    body: JSON.stringify({ taskIds, outboxId: activeOutbox?.id, userId: currentUserId })
+                })
+            }
 
-            const res = await fetch('/api/picking/confirm-batch', {
-                method: 'POST',
-                body: JSON.stringify({ taskIds, outboxId: activeOutbox.id, userId: currentUserId })
-            })
             const json = await res.json()
             if (!json.success) {
                 toast.error(json.error || "Lỗi xác nhận")
                 return
             }
 
-            toast.success(`Đã xong thùng! (SL: ${json.processed})`)
+            toast.success(transferType === 'BOX' ? `Đã chuyển thùng ra cửa xuất!` : `Đã xong thùng! (SL: ${json.processed})`)
 
             // Sync local state
             setAllTasks(prev => prev.map(t => taskIds.includes(t.id) ? { ...t, status: 'COMPLETED' } : t))
@@ -395,7 +393,7 @@ export default function DoPickingPage() {
                     </div>
                 </div>
 
-                {!activeOutbox && (
+                {!activeOutbox && transferType !== 'BOX' && (
                     <div className="bg-orange-50 p-3 rounded border border-orange-200 flex items-center justify-between">
                         <div className="text-xs text-orange-800 font-bold flex items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg> Chọn thùng đóng gói!
@@ -429,7 +427,7 @@ export default function DoPickingPage() {
                     {activeGroup.tasks.map(task => {
                         const isDone = task.status === 'COMPLETED'
                         const isSelected = tempSelectedTaskIds.has(task.id)
-                        const sku = task.products.sku
+                        const sku = task.products?.sku || 'UNKNOWN'
                         // const { picked, total } = getSkuProgress(sku)
 
                         return (
@@ -513,19 +511,21 @@ export default function DoPickingPage() {
         <div className="min-h-screen bg-slate-100 flex flex-col pb-6">
             <MobileHeader title={`JOB-${typeof id === 'string' ? id.slice(0, 8).toUpperCase() : id}`} backLink="/mobile/picking" />
 
-            <div className={`p-3 px-4 flex items-center justify-between text-sm ${activeOutbox ? 'bg-pink-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
-                <div className="flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
-                    {activeOutbox ? (
-                        <span>Outbox: <b>{activeOutbox.code}</b> <span className="opacity-80 ml-1">({Number(activeOutbox.count || 0)} items)</span></span>
-                    ) : (
-                        <span>Chưa chọn Outbox</span>
-                    )}
+            {transferType !== 'BOX' && (
+                <div className={`p-3 px-4 flex items-center justify-between text-sm ${activeOutbox ? 'bg-pink-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
+                    <div className="flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
+                        {activeOutbox ? (
+                            <span>Outbox: <b>{activeOutbox.code}</b> <span className="opacity-80 ml-1">({Number(activeOutbox.count || 0)} items)</span></span>
+                        ) : (
+                            <span>Chưa chọn Outbox</span>
+                        )}
+                    </div>
+                    <button className="h-7 px-3 rounded text-xs font-bold bg-white text-slate-800 shadow-sm" onClick={() => { setScannerMode('OUTBOX'); setShowScanner(true) }}>
+                        {activeOutbox ? "Đổi" : "Quét"}
+                    </button>
                 </div>
-                <button className="h-7 px-3 rounded text-xs font-bold bg-white text-slate-800 shadow-sm" onClick={() => { setScannerMode('OUTBOX'); setShowScanner(true) }}>
-                    {activeOutbox ? "Đổi" : "Quét"}
-                </button>
-            </div>
+            )}
 
             {!activeBoxId && (
                 <div className="bg-white p-4 border-b space-y-3 shadow-sm">

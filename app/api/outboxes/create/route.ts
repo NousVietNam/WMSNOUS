@@ -62,14 +62,19 @@ export async function POST(request: Request) {
             }, { status: 409 })
         }
 
+        // 1. Get GATE-OUT location ID
+        const { data: locData } = await supabase
+            .from('locations')
+            .select('id')
+            .eq('code', 'GATE-OUT')
+            .single()
+
         // Insert
-        // We assume 'location_id' is optional for Outboxes (mobile/temporary)
-        // or we might need a "Packing Area" location default.
-        // For now, leave location_id null or undefined.
         const payload = codesToCreate.map(code => ({
             code,
-            type: 'OUTBOX', // Ensure schema upgrade ran!
-            status: 'OPEN'
+            type: 'OUTBOX',
+            status: 'OPEN',
+            location_id: locData?.id || null
         }))
 
         const { error: insertError } = await supabase

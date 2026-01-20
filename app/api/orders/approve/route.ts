@@ -77,6 +77,15 @@ export async function POST(request: Request) {
                     if (txError) throw txError;
                 }
             }
+
+            // Fix: If BOX order, ensure boxes are LOCKED
+            if (order.type === 'BOX' && order.boxes && order.boxes.length > 0) {
+                const boxIds = order.boxes.map((b: any) => b.id);
+                await supabaseAdmin
+                    .from('boxes')
+                    .update({ status: 'LOCKED' })
+                    .in('id', boxIds);
+            }
         }
 
         // 2. Update Approval Status

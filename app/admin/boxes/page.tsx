@@ -17,7 +17,7 @@ import { saveAs } from 'file-saver'
 interface Box {
     id: string
     code: string
-    status: 'OPEN' | 'CLOSED' | 'FULL'
+    status: 'OPEN' | 'CLOSED' | 'FULL' | 'LOCKED' | 'SHIPPED'
     location_id: string | null
     created_at: string
     locations?: { code: string }
@@ -600,7 +600,10 @@ export default function BoxesPage() {
                                             <td className="p-3 text-xs text-slate-500">{new Date(box.created_at).toLocaleDateString('vi-VN')}</td>
                                             <td className="p-3 text-xs text-slate-500">{(box as any).updated_at ? new Date((box as any).updated_at).toLocaleDateString('vi-VN') : '-'}</td>
                                             <td className="p-3">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${box.status === 'OPEN' ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${box.status === 'OPEN' ? 'bg-green-50 text-green-600 border-green-200' :
+                                                    box.status === 'LOCKED' ? 'bg-orange-100 text-orange-700 border-orange-200' :
+                                                        'bg-slate-50 text-slate-500 border-slate-200'
+                                                    }`}>
                                                     {box.status}
                                                 </span>
                                             </td>

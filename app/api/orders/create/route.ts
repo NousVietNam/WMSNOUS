@@ -34,10 +34,13 @@ export async function POST(req: Request) {
         if (type === 'BOX' && boxes && boxes.length > 0) {
             const boxIds = boxes.map((b: any) => b.id)
 
-            // A. Update Boxes: Link to Order
+            // A. Update Boxes: Link to Order and set status to LOCKED
             const { error: linkError } = await supabaseAdmin
                 .from('boxes')
-                .update({ order_id: order.id })
+                .update({
+                    order_id: order.id,
+                    status: 'LOCKED'
+                })
                 .in('id', boxIds)
 
             if (linkError) throw linkError
