@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
-import { Plus, Printer, RefreshCw, Trash2, Box, Download } from "lucide-react"
+import { Plus, Printer, RefreshCw, Trash2, Box, Download, Eye } from "lucide-react"
+import { OutboxDetailDialog } from "./outbox-detail-dialog"
 import QRCode from "react-qr-code"
 import * as XLSX from 'xlsx'
 import { useReactToPrint } from "react-to-print"
@@ -163,6 +164,9 @@ export default function OutboxPage() {
         }
     }
 
+    // Detail Dialog State
+    const [detailCode, setDetailCode] = useState<string | null>(null)
+
     // Print State
     const [printBox, setPrintBox] = useState<any | null>(null) // For Modal Preview
     const [printQueue, setPrintQueue] = useState<any[]>([]) // For Actual Print Job
@@ -254,11 +258,12 @@ export default function OutboxPage() {
                             {outboxes.map(box => (
                                 <tr key={box.id} className="hover:bg-slate-50">
                                     <td className="p-3 text-center"><input type="checkbox" checked={selectedIds.has(box.id)} onChange={() => toggleSelect(box.id)} className="w-4 h-4" /></td>
-                                    <td className="p-3 font-bold text-blue-700 cursor-pointer" onClick={() => setPrintBox(box)}>{box.code}</td>
+                                    <td className="p-3 font-bold text-blue-700 cursor-pointer hover:underline" onClick={() => setDetailCode(box.code)}>{box.code}</td>
                                     <td className="p-3">{box.orders?.code || '-'}</td>
                                     <td className="p-3 text-center">{box.inventory_items?.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0) || 0}</td>
                                     <td className="p-3 text-center">{box.status}</td>
                                     <td className="p-3 text-right flex justify-end gap-2">
+                                        <Button size="sm" variant="ghost" onClick={() => setDetailCode(box.code)}><Eye className="h-4 w-4 text-slate-500" /></Button>
                                         <Button size="sm" variant="outline" onClick={() => setPrintBox(box)}><Printer className="h-4 w-4" /></Button>
                                         <Button size="sm" variant="ghost" className="text-red-500" onClick={() => handleDelete(box.id, box.inventory_items?.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0) || 0)}><Trash2 className="h-4 w-4" /></Button>
                                     </td>
@@ -318,6 +323,12 @@ export default function OutboxPage() {
                     ))}
                 </div>
             </div>
+            {/* DETAIL MODAL */}
+            <OutboxDetailDialog
+                open={!!detailCode}
+                onOpenChange={v => !v && setDetailCode(null)}
+                outboxCode={detailCode}
+            />
         </div>
     )
 }
