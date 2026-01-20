@@ -90,12 +90,11 @@ export async function POST(request: Request) {
             }
         }
 
-        // 2. Update Status
+        // 2. Update Approval Status
         const { error } = await supabase
             .from('orders')
             .update({
                 is_approved: isApproved,
-                status: isApproved ? 'APPROVED' : 'PENDING', // Sync status
                 approved_at: isApproved ? new Date().toISOString() : null,
                 approved_by: isApproved ? userId : null
             })
