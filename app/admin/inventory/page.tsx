@@ -42,6 +42,7 @@ export default function InventoryPage() {
     const [page, setPage] = useState(0)
     const [total, setTotal] = useState(0)
 
+
     // New State
     const [viewImage, setViewImage] = useState<string | null>(null)
     const [approvedDemand, setApprovedDemand] = useState<Record<string, number>>({})
@@ -276,6 +277,31 @@ export default function InventoryPage() {
         setMonths(uniqueMonths.sort((a, b) => Number(a) - Number(b)))
     }
 
+    // New State for View Data
+    const [viewDataMap, setViewDataMap] = useState<Record<string, any>>({})
+
+    const fetchAvailabilityView = async (productIds: string[]) => {
+        if (productIds.length === 0) return
+
+        const { data } = await supabase
+            .from('view_product_availability')
+            .select('*')
+            .in('product_id', productIds)
+
+        if (data) {
+            const map: Record<string, any> = {}
+            data.forEach((row: any) => {
+                // Sanitize BigInts to Numbers to prevent React crash
+                map[row.product_id] = {
+                    ...row,
+                    soft_booked_orders: Number(row.soft_booked_orders || 0),
+                    soft_booked_transfers: Number(row.soft_booked_transfers || 0)
+                }
+            })
+            setViewDataMap(prev => ({ ...prev, ...map }))
+        }
+    }
+
     const fetchInventory = async () => {
         setLoading(true)
 
@@ -287,10 +313,9 @@ export default function InventoryPage() {
                 boxes (code, locations (code)),
                 locations (code)
             `, { count: 'exact' })
-            .gt('quantity', 0) // Filter out 0 quantity items
+            .gt('quantity', 0)
 
-        // SERVER-SIDE FILTERS
-        // Apply filters to the query before pagination to ensure correct results across all pages
+        // SERVER-SIDE FILTERS (Keep existing logic)
         if (filterWarehouse !== "all") query = query.eq('warehouse_id', filterWarehouse)
         if (filterBrand !== "all") query = query.eq('products.brand', filterBrand)
         if (filterTarget !== "all") query = query.eq('products.target_audience', filterTarget)
@@ -299,26 +324,12 @@ export default function InventoryPage() {
         if (filterMonth !== "all") query = query.eq('products.launch_month', filterMonth)
         if (filterBox !== "all") query = query.eq('boxes.code', filterBox)
 
-        // Location filter is complex (cross-table OR), handled client-side or we skip optimization for it
-        // For strict server-side, we would need a more complex query or View. 
-        // For now, filters work server-side for all except Location.
-        // const start = page * ITEMS_PER_PAGE
-        // const end = start + ITEMS_PER_PAGE - 1
-
-        // GLOBAL SEARCH LOGIC:
-        // If searching, we skip server-side pagination to search across the entire dataset in-memory.
-        // This is necessary because Supabase PostgREST cross-table OR search is limited.
         const isGlobalSearch = searchTerm.length > 0;
-
         if (!isGlobalSearch) {
             const from = page * ITEMS_PER_PAGE
             const to = from + ITEMS_PER_PAGE - 1
             query = query.range(from, to)
         }
-
-        // If global search, we might want to limit to prevent crash if DB is massive, 
-        // but for <10k items, fetching all is faster than complex queries.
-        // Let's rely on standard order.
 
         const { data, count, error } = await query.order('created_at', { ascending: false })
 
@@ -328,9 +339,6 @@ export default function InventoryPage() {
             let inventoryItems = data as any || []
 
             if (isGlobalSearch) {
-                // Client-side Filter for Search Term
-                // We do this here (and not just relies on filteredItems) because 
-                // we want 'items' state to ONLY contain matches, effectively "replacing" the page content.
                 const s = searchTerm.toLowerCase()
                 inventoryItems = inventoryItems.filter((item: any) => (
                     item.products?.name?.toLowerCase().includes(s) ||
@@ -339,8 +347,6 @@ export default function InventoryPage() {
                     item.locations?.code?.toLowerCase().includes(s) ||
                     item.products?.barcode?.toLowerCase().includes(s)
                 ))
-
-                // Update total to match the SEARCH RESULT count, not DB total
                 setTotal(inventoryItems.length)
             } else {
                 setTotal(count || 0)
@@ -348,40 +354,10 @@ export default function InventoryPage() {
 
             setItems(inventoryItems)
 
-            // Approved Demand for Current Page Items
-            const productIds = Array.from(new Set(inventoryItems.map((i: any) => i.products?.id).filter(Boolean)))
+            // Fetch View Data for these items
+            const productIds = Array.from(new Set(inventoryItems.map((i: any) => i.products?.id).filter(Boolean))) as string[]
             if (productIds.length > 0) {
-                const demandMap: Record<string, number> = {}
-
-                // 1. Orders
-                const { data: demandRows } = await supabase
-                    .from('order_items')
-                    .select('product_id, quantity, orders!inner(status, is_approved)')
-                    .in('product_id', productIds)
-                    .eq('orders.is_approved', true)
-                    .neq('orders.status', 'SHIPPED')
-                    .neq('orders.status', 'COMPLETED')
-
-                demandRows?.forEach((row: any) => {
-                    const pid = row.product_id
-                    demandMap[pid] = (demandMap[pid] || 0) + row.quantity
-                })
-
-                // 2. Transfers
-                const { data: transferRows } = await supabase
-                    .from('transfer_order_items')
-                    .select('product_id, quantity, transfer_orders!inner(status)')
-                    .in('product_id', productIds)
-                    .eq('transfer_orders.status', 'approved')
-
-                transferRows?.forEach((row: any) => {
-                    const pid = row.product_id
-                    demandMap[pid] = (demandMap[pid] || 0) + row.quantity
-                })
-
-                setApprovedDemand(demandMap)
-            } else {
-                setApprovedDemand({})
+                await fetchAvailabilityView(productIds)
             }
         }
         setLoading(false)
@@ -526,7 +502,14 @@ export default function InventoryPage() {
                 available: 0
             })
         }
+
+        setCalculatingTotals(false)
     }
+
+    // (Totals logic remains for global dashboard header, can be updated later to use View agg if needed)
+    // For now we focus on the Table/Summary View integration.
+
+    // ... (filters logic) ...
 
     // Client-side filtering for display (duplicates server paging logic matching? 
     // Actually `items` is paginated by server. 
@@ -559,43 +542,80 @@ export default function InventoryPage() {
         return true
     })
 
-    // Summary View Aggregation
+    // Summary View Aggregation (Updated to use View Data)
     const summaryItems = (() => {
-        if (viewMode !== 'SUMMARY') return []
-        const map: Record<string, any> = {}
+        try {
+            if (viewMode !== 'SUMMARY') return []
 
-        filteredItems.forEach(item => {
-            if (!item.products?.sku) return
-            const sku = item.products.sku
-            if (!map[sku]) {
-                map[sku] = {
-                    ...item.products,
-                    totalQty: 0,
-                    totalAllocated: 0,
-                    locations: new Set(),
-                    items: [] // Keep track of individual items for drill-down
+            const map: Record<string, any> = {}
+
+            filteredItems.forEach(item => {
+                if (!item.products?.sku) return
+                const sku = item.products.sku
+                if (!map[sku]) {
+                    const viewInfo = item.products.id ? viewDataMap[item.products.id] : null
+                    map[sku] = {
+                        ...item.products,
+                        totalQty: 0,
+                        totalAllocated: 0,
+
+                        // Use View Data if available for Soft Allocation
+                        softOrders: viewInfo ? (viewInfo.soft_booked_orders || 0) : 0,
+                        softTransfers: viewInfo ? (viewInfo.soft_booked_transfers || 0) : 0,
+
+                        locations: new Set(),
+                        items: []
+                    }
                 }
-            }
-            map[sku].totalQty += item.quantity
-            map[sku].totalAllocated += (item.allocated_quantity || 0)
+                // We still sum "totalQty" and "totalAllocated" from the filtered items 
+                // because "Summary" view might be showing a SUBSET (filtered by warehouse).
+                // The VIEW data is GLOBAL.
+                // CAUTION: The User might want GLOBAL availability or FILTERED availability.
+                // Usually "Available" is Global for Selling.
+                // Let's rely on the View for "Available" column logic if possible, 
+                // OR stick to manual sum for Qty but View for Soft?
+                // "Soft Allocation" (Orders) is usually Global (not assigned to warehouse yet).
+                // So View is correct for Soft.
 
-            const locCode = item.boxes?.locations?.code || item.locations?.code
-            if (locCode) map[sku].locations.add(locCode)
+                map[sku].totalQty += item.quantity
+                map[sku].totalAllocated += (item.allocated_quantity || 0)
 
-            map[sku].items.push(item)
-        })
+                const locCode = item.boxes?.locations?.code || item.locations?.code
+                if (locCode) map[sku].locations.add(locCode)
 
-        return Object.values(map).map(i => {
-            // Calculate total approved for this SKU (sum of approved demand for this product ID)
-            // Since map key is SKU, and i is product props, i.id is product_id.
-            const approved = i.id ? (approvedDemand[i.id] || 0) : 0
+                map[sku].items.push(item)
+            })
 
-            return {
-                ...i,
-                locationStr: Array.from(i.locations).sort().join(', '),
-                available: Math.max(0, i.totalQty - i.totalAllocated - approved)
-            }
-        })
+            return Object.values(map).map(i => {
+                // Real Available Calculation
+                // If we are viewing specific warehouse, Qty is local.
+                // But Demand is Global.
+                // Available = Local Qty - Local Hard - Global Soft (Risk of negative?).
+                // Usually Available is calculated Globally.
+                // Let's display: Local Qty, Local Hard, Global Soft Orders, Global Soft Transfers.
+
+                return {
+                    ...i,
+                    locationStr: Array.from(i.locations).sort().join(', '),
+                    available: Math.max(0, i.totalQty - i.totalAllocated - i.softOrders - i.softTransfers)
+                }
+            })
+        } catch (e) {
+            console.error("Summary Calc Error:", e)
+            return []
+        }
+    })()
+
+    // Calculate totals for Summary mode (from summaryItems)
+    const summaryTotals = (() => {
+        if (viewMode !== 'SUMMARY' || summaryItems.length === 0) return { softOrders: 0, softTransfers: 0, totalQty: 0, totalAllocated: 0, available: 0 }
+        return summaryItems.reduce((acc, item) => ({
+            softOrders: acc.softOrders + (item.softOrders || 0),
+            softTransfers: acc.softTransfers + (item.softTransfers || 0),
+            totalQty: acc.totalQty + (item.totalQty || 0),
+            totalAllocated: acc.totalAllocated + (item.totalAllocated || 0),
+            available: acc.available + (item.available || 0)
+        }), { softOrders: 0, softTransfers: 0, totalQty: 0, totalAllocated: 0, available: 0 })
     })()
 
     const handleExport = async () => {
@@ -829,10 +849,13 @@ export default function InventoryPage() {
                                     <th className="p-3 w-[80px] text-center">Mùa</th>
                                     <th className="p-3 w-[70px] text-center">Tháng</th>
                                     <th className="p-3 w-[70px] text-center">Tổng Tồn</th>
+                                    <th className="p-3 w-[70px] text-center text-orange-600">Đang Lấy</th>
                                     {viewMode === 'SUMMARY' && (
-                                        <th className="p-3 w-[70px] text-center text-blue-600">Đang Giữ</th>
+                                        <>
+                                            <th className="p-3 w-[80px] text-center text-primary">Đơn Đặt Hàng</th>
+                                            <th className="p-3 w-[80px] text-center text-orange-500">Đơn Điều Chuyển</th>
+                                        </>
                                     )}
-                                    <th className="p-3 w-[70px] text-center text-orange-600">Hàng Giữ</th>
                                     <th className="p-3 w-[70px] text-center text-green-600">Khả Dụng</th>
                                     <th className="p-3 w-[110px]">Thùng</th>
                                     <th className="p-3 w-[110px]">Vị Trí</th>
@@ -844,90 +867,67 @@ export default function InventoryPage() {
                                     <td colSpan={2} className="p-3 text-left pl-4 text-slate-600 uppercase text-xs tracking-wider">
                                         Tổng tất cả:
                                     </td>
-                                    {/* Empty cells to align */}
+                                    {/* Empty cells to align with columns: Sản Phẩm, Thương Hiệu, Đối Tượng, Nhóm Hàng, Mùa, Tháng */}
                                     <td></td><td></td><td></td><td></td><td></td><td></td>
-
-                                    <td className="p-3 text-center text-slate-800 text-base">{calculatingTotals ? '...' : totals.quantity}</td>
+                                    <td className="p-3 text-center text-slate-800 text-base">
+                                        {viewMode === 'SUMMARY' ? summaryTotals.totalQty : (calculatingTotals ? '...' : totals.quantity)}
+                                    </td>
+                                    <td className="p-3 text-center text-orange-700 text-base">
+                                        {viewMode === 'SUMMARY' ? summaryTotals.totalAllocated : (calculatingTotals ? '...' : totals.allocated)}
+                                    </td>
                                     {viewMode === 'SUMMARY' && (
-                                        <td className="p-3 text-center text-blue-700 text-base">{calculatingTotals ? '...' : totals.approved}</td>
+                                        <>
+                                            <td className="p-3 text-center text-primary text-base font-bold">{summaryTotals.softOrders}</td>
+                                            <td className="p-3 text-center text-orange-500 text-base font-bold">{summaryTotals.softTransfers}</td>
+                                        </>
                                     )}
-                                    <td className="p-3 text-center text-orange-700 text-base">{calculatingTotals ? '...' : totals.allocated}</td>
-                                    <td className="p-3 text-center text-green-700 text-base">
-                                        {calculatingTotals ? '...' : (
-                                            viewMode === 'SUMMARY'
-                                                ? totals.available
-                                                : Math.max(0, totals.quantity - totals.allocated)
-                                        )}
+                                    <td className="p-3 text-center text-green-700 text-base bg-green-50 font-bold">
+                                        {viewMode === 'SUMMARY' ? summaryTotals.available : (calculatingTotals ? '...' : Math.max(0, totals.quantity - totals.allocated))}
                                     </td>
                                     <td colSpan={2}></td>
                                 </tr>
 
 
                                 {loading ? (
-                                    <tr><td colSpan={viewMode === 'SUMMARY' ? 14 : 13} className="p-8 text-center">Đang tải...</td></tr>
+                                    <tr><td colSpan={15} className="p-8 text-center">Đang tải...</td></tr>
                                 ) : viewMode === 'SUMMARY' ? (
-                                    // SUMMARY VIEW RENDER
-                                    summaryItems.map((item: any) => {
-                                        // Helper to get approved qty from previously calculated item
-                                        const approved = Math.max(0, item.totalQty - item.totalAllocated - item.available) // Reverse calc or just store it?
-                                        // ACTUALLY summaryItems map function didn't preserve 'approved' in the object properly if I didn't add it to the return type.
-                                        // Let's assume I need to recalc or I updated the map in previous step.
-                                        // In Step 3471 I updated the map to return available = totalQty - totalAllocated - approved.
-                                        // I did NOT add 'approved' property to the returned object explicitly, but I used it for calc.
-                                        // I should have added it.
-                                        // Let's fix the map function in a separate call if needed, OR just recalc here:
-                                        const approvedCalc = item.id ? (approvedDemand[item.id] || 0) : 0
-                                        return (
-                                            <tr key={item.sku} className="border-t hover:bg-slate-50 text-xs">
-                                                <td className="p-2">
-                                                    {item.barcode ? (
-                                                        <div className="bg-white p-1 rounded border border-slate-100 w-fit">
-                                                            <Barcode value={item.barcode} height={20} width={0.8} displayValue={false} margin={0} background="transparent" />
-                                                            <div className="text-[9px] text-center font-mono mt-0.5 text-slate-500">{item.barcode}</div>
-                                                        </div>
-                                                    ) : <span className="text-xs text-slate-400 italic">--</span>}
-                                                </td>
-                                                <td className="p-2">
-                                                    <button
-                                                        className="font-bold text-xs text-blue-600 hover:underline hover:text-blue-800 text-left"
-                                                        onClick={() => {
-                                                            if (item.image_url) setViewImage(item.image_url)
-                                                            else toast.error("Sản phẩm chưa có hình ảnh")
-                                                        }}
-                                                    >
-                                                        {item.sku}
-                                                    </button>
-                                                </td>
-                                                <td className="p-2">
-                                                    <div className="font-medium text-sm line-clamp-2 leading-relaxed" title={item.name}>
-                                                        {item.name}
-                                                    </div>
-                                                </td>
-                                                <td className="p-2 text-xs">{item.brand || '-'}</td>
-                                                <td className="p-2 text-xs">{item.target_audience || '-'}</td>
-                                                <td className="p-2 text-xs">{item.product_group || '-'}</td>
-                                                <td className="p-2 text-center text-xs">{item.season || '-'}</td>
-                                                <td className="p-2 text-center text-xs">{item.launch_month || '-'}</td>
-                                                <td className="p-2 text-center font-bold text-base text-slate-700">{item.totalQty}</td>
-                                                <td className="p-2 text-center font-bold text-base text-blue-600">{approvedCalc > 0 ? approvedCalc : '-'}</td>
-                                                <td className="p-2 text-center font-bold text-base text-orange-600">{item.totalAllocated > 0 ? item.totalAllocated : '-'}</td>
-                                                <td className="p-2 text-center font-bold text-base text-green-600">{item.available}</td>
-                                                <td className="p-2 text-center text-slate-400 italic">--</td>
-                                                <td className="p-2">
-                                                    {item.locationStr ? (
-                                                        <button
-                                                            onClick={() => showLocationDetails(item)}
-                                                            className="bg-purple-100 hover:bg-purple-200 text-purple-900 px-2 py-1 rounded text-xs font-semibold text-left line-clamp-2 max-w-[200px]"
-                                                        >
-                                                            {item.locationStr}
-                                                        </button>
-                                                    ) : <span className="text-slate-300">-</span>}
-                                                </td>
-                                            </tr>
-                                        )
-                                    })
+                                    summaryItems.map((item, idx) => (
+                                        <tr key={idx} className="border-b hover:bg-slate-50 transition-colors text-sm">
+                                            <td className="py-3 px-4">{item.barcode || '-'}</td>
+                                            <td className="py-3 px-4 font-mono text-slate-600">{item.sku}</td>
+                                            <td className="py-3 px-4 font-medium text-slate-800">{item.name}</td>
+                                            <td className="py-3 px-4">{item.brand || '-'}</td>
+                                            <td className="py-3 px-4">{item.target_audience || '-'}</td>
+                                            <td className="py-3 px-4">{item.product_group || '-'}</td>
+                                            <td className="py-3 px-4 text-center">{item.season || '-'}</td>
+                                            <td className="py-3 px-4 text-center">{item.launch_month || '-'}</td>
+
+                                            <td className="py-3 px-4 text-center font-bold text-slate-700">{item.totalQty}</td>
+                                            <td className="py-3 px-4 text-center font-bold text-slate-600" title="Đã cấp phát cứng">
+                                                {item.totalAllocated > 0 ? item.totalAllocated : '-'}
+                                            </td>
+                                            {/* New Cols: Soft Orders & Soft Transfers */}
+                                            <td className="py-3 px-4 text-center font-bold text-primary">
+                                                {item.softOrders > 0 ? item.softOrders : '-'}
+                                            </td>
+                                            <td className="py-3 px-4 text-center font-bold text-orange-600">
+                                                {item.softTransfers > 0 ? item.softTransfers : '-'}
+                                            </td>
+                                            <td className="py-3 px-4 text-center font-bold text-green-600 bg-green-50">
+                                                {item.available}
+                                            </td>
+
+                                            <td className="py-3 px-4 text-center text-slate-400">-</td>
+                                            <td className="py-3 px-4 text-sm text-slate-600 max-w-[150px] truncate" title={item.locationStr}>
+                                                {item.locationStr || 'Chưa xếp'}
+                                                <Button variant="ghost" size="sm" className="h-6 w-6 ml-1 p-0" onClick={() => showLocationDetails(item)}>
+                                                    <Search className="h-3 w-3" />
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))
                                 ) : filteredItems.length === 0 ? (
-                                    <tr><td colSpan={viewMode === 'SUMMARY' ? 14 : 13} className="p-8 text-center text-muted-foreground">Không tìm thấy.</td></tr>
+                                    <tr><td colSpan={15} className="p-8 text-center text-muted-foreground">Không tìm thấy.</td></tr>
                                 ) : (
                                     filteredItems.map(item => {
                                         const allocated = item.allocated_quantity || 0
@@ -970,7 +970,6 @@ export default function InventoryPage() {
                                                 <td className="p-2 text-center text-xs">{item.products?.season || '-'}</td>
                                                 <td className="p-2 text-center text-xs">{item.products?.launch_month || '-'}</td>
                                                 <td className="p-2 text-center font-bold text-base text-slate-700">{item.quantity}</td>
-                                                {/* No Approved Column in Detailed View */}
                                                 <td className="p-2 text-center font-bold text-base text-orange-600">
                                                     {allocated > 0 ? (
                                                         <button className="hover:underline hover:bg-orange-50 px-2 rounded" onClick={() => showAllocatedDetails(item)}>

@@ -1,14 +1,17 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { Search, Trash2, Package, Loader2, RefreshCw } from "lucide-react"
+import { Search, Trash2, Package, Loader2, RefreshCw, Upload, Download } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
+import * as XLSX from "xlsx"
+
+import { JobDetailDialog } from "./job-detail-dialog"
 
 export default function PickingJobsPage() {
     const [jobs, setJobs] = useState<any[]>([])
@@ -16,6 +19,79 @@ export default function PickingJobsPage() {
     const [filterStatus, setFilterStatus] = useState("ALL")
     const [searchTerm, setSearchTerm] = useState("")
     const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [uploading, setUploading] = useState(false)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    // Detail Dialog State
+    const [detailId, setDetailId] = useState<string | null>(null)
+    const [showDetail, setShowDetail] = useState(false)
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        setUploading(true)
+        try {
+            const data = await file.arrayBuffer()
+            const wb = XLSX.read(data)
+            const ws = wb.Sheets[wb.SheetNames[0]]
+            const rows = XLSX.utils.sheet_to_json<{ 'Box Code': string; SKU: string; Quantity: number }>(ws)
+
+            if (rows.length === 0) {
+                toast.error("File rỗng hoặc không đúng định dạng")
+                return
+            }
+
+            // Validate columns
+            const firstRow = rows[0]
+            if (!firstRow['Box Code'] || !firstRow['SKU'] || firstRow['Quantity'] === undefined) {
+                toast.error("File phải có các cột: 'Box Code', 'SKU', 'Quantity'")
+                return
+            }
+
+            // Map to API format
+            const items = rows.map(r => ({
+                boxCode: String(r['Box Code']).trim(),
+                sku: String(r['SKU']).trim(),
+                quantity: Number(r['Quantity'])
+            })).filter(i => i.boxCode && i.sku && i.quantity > 0)
+
+            if (items.length === 0) {
+                toast.error("Không có dòng hợp lệ để xử lý")
+                return
+            }
+
+            // Call API
+            const res = await fetch('/api/picking-jobs/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items })
+            })
+
+            const result = await res.json()
+            if (!res.ok) {
+                if (result.errors?.length > 0) {
+                    console.error("Upload errors:", result.errors)
+                    // Show first 3 errors
+                    const details = result.errors.slice(0, 3).join('. ') + (result.errors.length > 3 ? '...' : '')
+                    throw new Error(details)
+                }
+                throw new Error(result.error || 'Lỗi tạo job')
+            }
+
+            toast.success(`Đã tạo Picking Job với ${result.tasksCreated} task(s)`)
+            if (result.errors?.length > 0) {
+                toast.warning(`Cảnh báo: ${result.errors.length} dòng lỗi`)
+                console.log("Errors:", result.errors)
+            }
+            fetchJobs()
+        } catch (error: any) {
+            toast.error("Lỗi: " + error.message)
+        } finally {
+            setUploading(false)
+            if (fileInputRef.current) fileInputRef.current.value = ''
+        }
+    }
 
     useEffect(() => {
         fetchJobs()
@@ -102,6 +178,37 @@ export default function PickingJobsPage() {
                     <p className="text-sm text-muted-foreground">Theo dõi và quản lý công việc lấy hàng</p>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileUpload}
+                        accept=".csv,.xlsx,.xls"
+                        className="hidden"
+                    />
+                    <Button
+                        variant="default"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                    >
+                        {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+                        Upload Danh Sách
+                    </Button>
+                    <Button
+                        variant="outline"
+                        onClick={() => {
+                            const template = [
+                                ['Box Code', 'SKU', 'Quantity'],
+                                ['BOX-0001', 'ABC-123-XL', 2],
+                                ['BOX-0002', 'DEF-456-M', 1]
+                            ]
+                            const ws = XLSX.utils.aoa_to_sheet(template)
+                            const wb = XLSX.utils.book_new()
+                            XLSX.utils.book_append_sheet(wb, ws, 'Template')
+                            XLSX.writeFile(wb, 'picking_upload_template.xlsx')
+                        }}
+                    >
+                        <Download className="h-4 w-4 mr-2" /> Tải File Mẫu
+                    </Button>
                     <Button variant="outline" onClick={fetchJobs}><RefreshCw className="h-4 w-4 mr-2" /> Tải lại</Button>
                 </div>
             </div>
@@ -150,22 +257,41 @@ export default function PickingJobsPage() {
                         ) : (
                             filteredJobs.map(job => {
                                 const isTransfer = !!job.transfer
-                                const code = isTransfer ? job.transfer.code : job.order?.code
+                                const isManual = job.type === 'MANUAL_PICK'
+                                const code = isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : (isTransfer ? job.transfer.code : job.order?.code)
                                 const link = isTransfer ? `/admin/transfers/${job.transfer_order_id || ''}` : `/admin/orders/${job.order_id || ''}`
-                                const info = isTransfer
-                                    ? `${job.transfer.from_location?.code} ➔ ${job.transfer.destination?.name}`
-                                    : `Khách: ${job.order?.customer_name || 'N/A'}`
+                                const info = isManual
+                                    ? 'Upload thủ công'
+                                    : (isTransfer
+                                        ? `${job.transfer.from_location?.code || ''} ➔ ${job.transfer.destination?.name || ''}`
+                                        : `Khách: ${job.order?.customer_name || 'N/A'}`)
 
                                 return (
                                     <tr key={job.id} className="hover:bg-slate-50">
                                         <td className="p-3 font-medium">
                                             <div className="flex items-center gap-2">
-                                                <span className={`text-xs px-1.5 rounded border ${isTransfer ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                                                    {isTransfer ? 'TRANSFER' : 'ORDER'}
+                                                <span className={`text-xs px-1.5 rounded border ${isManual ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                    isTransfer ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                                                    }`}>
+                                                    {isManual ? 'THỦ CÔNG' : (isTransfer ? 'TRANSFER' : 'ORDER')}
                                                 </span>
-                                                <Link href={link} className="hover:underline text-blue-600">
-                                                    {code || '--'}
-                                                </Link>
+                                                {/* Make Code Clickable for Detail View */}
+                                                <button
+                                                    className="hover:underline text-blue-600 font-bold"
+                                                    onClick={() => {
+                                                        setDetailId(job.id)
+                                                        setShowDetail(true)
+                                                    }}
+                                                >
+                                                    {code}
+                                                </button>
+
+                                                {/* Optional: Link to Source for non-manual */}
+                                                {!isManual && (
+                                                    <Link href={link} className="text-xs text-slate-400 hover:text-slate-600 ml-1">
+                                                        [Source]
+                                                    </Link>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="p-3 font-mono text-xs">
@@ -201,6 +327,12 @@ export default function PickingJobsPage() {
                     </tbody>
                 </table>
             </div>
+
+            <JobDetailDialog
+                jobId={detailId}
+                open={showDetail}
+                onOpenChange={setShowDetail}
+            />
         </div>
     )
 }

@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
         // For Orders: YES (because they go back to PENDING/Open state)
         const shouldLogTransaction = !!job.order_id
 
-        if (job.type === 'ITEM_PICK' && job.tasks && job.tasks.length > 0) {
+        if ((job.type === 'ITEM_PICK' || job.type === 'MANUAL_PICK') && job.tasks && job.tasks.length > 0) {
             console.log(`[DeleteJob] Reverting allocation for ${job.tasks.length} tasks`)
 
             for (const task of job.tasks) {

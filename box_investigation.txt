@@ -1,0 +1,26 @@
+=== BOX INFO ===
+{
+  "id": "0db184a7-eaa2-435e-9bc9-609f64b53000",
+  "code": "BOX-TEST-0002",
+  "location_id": "9fc75f19-bd3f-47af-b239-ecaf826e27e8",
+  "status": "OPEN",
+  "created_at": "2026-01-16T19:16:24.129179+00:00",
+  "updated_at": "2026-01-19T01:59:53.985+00:00",
+  "type": "STORAGE",
+  "order_id": null
+}
+
+=== INVENTORY ITEMS IN THIS BOX ===
+Found 1 items:
+  NB2S25-TB2-M04-OW-0M: qty=1, product_id=fe9aa482-b6c8-40b5-bbec-a6c1f9d5031a
+
+=== MANUAL SQL VIEW DEBUG ===
+RPC Error: Could not find the function public.debug_transfer_view without parameters in the schema cache
+
+=== ALL INVENTORY WITH BOX_ID ===
+Found 5 items with box_id:
+  box_id=4a44b648-9b15-4d50-a874-709437a9aeef, NE2S25-SB2-M01-SW-9M: 4
+  box_id=4a44b648-9b15-4d50-a874-709437a9aeef, NE2S25-SB2-M01-SW-6M: 5
+  box_id=4a44b648-9b15-4d50-a874-709437a9aeef, NE2S25-SB2-M01-SW-3M: 5
+  box_id=4a44b648-9b15-4d50-a874-709437a9aeef, NE3S25-SC2-M03-SW-9M: 1
+  box_id=4a44b648-9b15-4d50-a874-709437a9aeef, NE2S25-OP1-F01-CM-0M: 3

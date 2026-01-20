@@ -1,0 +1,34 @@
+=== ALL TRANSFER ORDERS (Service Role) ===
+Total: 1
+{
+  "id": "0fcd2c22-9345-4d01-bb9f-ddc6f33a3e89",
+  "code": "TRFx346636",
+  "from_location_id": null,
+  "destination": null,
+  "status": "approved",
+  "created_by": "1d293568-af9e-470a-a814-14d00cba435b",
+  "approved_by": null,
+  "note": "a",
+  "created_at": "2026-01-19T15:59:19.708412+00:00",
+  "updated_at": "2026-01-19T15:59:27.454+00:00",
+  "destination_id": "7cab3bb9-c6f5-4017-8800-cf0f9d939e3f",
+  "hold_date": null,
+  "transfer_type": "BOX"
+}
+
+=== TRANSFER_ORDER_ITEMS (Service Role) ===
+Total: 1
+{
+  "id": "315c61e4-59e4-43bd-84af-8808346a000b",
+  "transfer_id": "0fcd2c22-9345-4d01-bb9f-ddc6f33a3e89",
+  "product_id": null,
+  "quantity": 1,
+  "created_at": "2026-01-19T15:59:19.874915+00:00",
+  "from_location_id": null,
+  "box_id": "0db184a7-eaa2-435e-9bc9-609f64b53000"
+}
+
+=== Checking transfer_orders.box_id ===
+Transfer TRFx346636: box_id=undefined, transfer_type=BOX
+
+=== Inventory in transferred boxes ===

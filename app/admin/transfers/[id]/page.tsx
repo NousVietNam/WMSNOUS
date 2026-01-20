@@ -167,7 +167,17 @@ export default function TransferDetailPage() {
         // Fetch picking jobs
         const { data: jobsData } = await supabase
             .from('picking_jobs')
-            .select('id, status, type, created_at')
+            .select(`
+                id, status, type, created_at,
+                picking_tasks (
+                    id, 
+                    quantity, 
+                    status, 
+                    products(sku),
+                    boxes(code), 
+                    locations(code)
+                )
+            `)
             .eq('transfer_order_id', transferId)
             .order('created_at', { ascending: false })
 
@@ -518,31 +528,68 @@ export default function TransferDetailPage() {
                         </div>
                         <div className="p-4 space-y-2">
                             {jobs.map(job => (
-                                <div key={job.id} className="flex items-center justify-between p-3 bg-slate-50 rounded">
-                                    <div className="flex items-center gap-3">
-                                        <Package className="h-5 w-5 text-slate-500" />
-                                        <div>
-                                            <p className="font-medium text-sm">{job.type}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {new Date(job.created_at).toLocaleString('vi-VN')}
-                                            </p>
+                                <div key={job.id} className="bg-slate-50 rounded mb-2">
+                                    <div className="flex items-center justify-between p-3">
+                                        <div className="flex items-center gap-3">
+                                            <Package className="h-5 w-5 text-slate-500" />
+                                            <div>
+                                                <p className="font-medium text-sm">{job.type}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {new Date(job.created_at).toLocaleString('vi-VN')}
+                                                </p>
+                                            </div>
                                         </div>
+                                        <span className={`px-2 py-1 rounded text-xs font-bold ${job.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                            job.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
+                                                'bg-yellow-100 text-yellow-700'
+                                            }`}>
+                                            {job.status}
+                                        </span>
                                     </div>
-                                    <span className={`px-2 py-1 rounded text-xs font-bold ${job.status === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                                        job.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
-                                            'bg-yellow-100 text-yellow-700'
-                                        }`}>
-                                        {job.status}
-                                    </span>
+
+                                    {/* Render Tasks */}
+                                    {job.picking_tasks && job.picking_tasks.length > 0 && (
+                                        <div className="px-3 pb-3">
+                                            <div className="bg-white border rounded text-xs">
+                                                <table className="w-full text-left">
+                                                    <thead className="bg-slate-50 font-medium text-slate-500">
+                                                        <tr>
+                                                            <th className="p-2">Sản phẩm / Thùng</th>
+                                                            <th className="p-2">Vị trí</th>
+                                                            <th className="p-2 text-right">SL</th>
+                                                            <th className="p-2">Trạng thái</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y">
+                                                        {job.picking_tasks.map((task: any) => (
+                                                            <tr key={task.id}>
+                                                                <td className="p-2 font-mono">
+                                                                    {task.boxes ? (
+                                                                        <span className="text-purple-600 font-bold">📦 {task.boxes.code}</span>
+                                                                    ) : (
+                                                                        task.products?.sku
+                                                                    )}
+                                                                </td>
+                                                                <td className="p-2">{task.locations?.code}</td>
+                                                                <td className="p-2 text-right font-bold">{task.quantity}</td>
+                                                                <td className="p-2 text-slate-500">{task.status}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
                     </div>
-                )}
-            </main>
+                )
+                }
+            </main >
 
             {/* Add Item Dialog */}
-            <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            < Dialog open={addOpen} onOpenChange={setAddOpen} >
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Thêm Sản Phẩm</DialogTitle>
@@ -594,10 +641,10 @@ export default function TransferDetailPage() {
                         <Button onClick={handleAddItem}>Thêm</Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
 
             {/* Config Allocate Dialog */}
-            <Dialog open={confirmAllocateOpen} onOpenChange={setConfirmAllocateOpen}>
+            < Dialog open={confirmAllocateOpen} onOpenChange={setConfirmAllocateOpen} >
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Xác nhận phân bổ</DialogTitle>
@@ -617,7 +664,7 @@ export default function TransferDetailPage() {
                         </Button>
                     </DialogFooter>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
             <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
@@ -666,6 +713,6 @@ export default function TransferDetailPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }

@@ -1,0 +1,37 @@
+=== ALL TRANSFER ORDERS ===
+No transfer orders found
+
+=== ALL TRANSFER_ORDER_ITEMS ===
+No transfer_order_items found
+
+=== VIEW_PRODUCT_AVAILABILITY SAMPLE ===
+{
+  "product_id": "00069ebb-6395-4905-a85f-dc3b81403873",
+  "sku": "P2W23M-SC3-01-PB-9M",
+  "name": "Bộ áo quần dài màu xanh có hình thêu trang trí 9M",
+  "total_quantity": 0,
+  "hard_allocated": 0,
+  "soft_booked_orders": 0,
+  "soft_booked_transfers": 0,
+  "available_quantity": 0
+}
+{
+  "product_id": "00072462-add9-42f2-bda4-55a40a29fa69",
+  "sku": "NP2W24-SM1-M01-PN-9M",
+  "name": "Bộ Bodysuit dài tay kèm mũ lông tai gấu 9M",
+  "total_quantity": 0,
+  "hard_allocated": 0,
+  "soft_booked_orders": 0,
+  "soft_booked_transfers": 0,
+  "available_quantity": 0
+}
+{
+  "product_id": "0008ab51-a50e-465f-a014-8b12695a12cd",
+  "sku": "NP3S25-SW8-M01-SB-M",
+  "name": "Mũ lưỡi trai trùm tai kẻ ghi trắng M",
+  "total_quantity": 0,
+  "hard_allocated": 0,
+  "soft_booked_orders": 0,
+  "soft_booked_transfers": 0,
+  "available_quantity": 0
+}

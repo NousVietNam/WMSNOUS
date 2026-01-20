@@ -50,22 +50,33 @@ export async function POST(req: Request) {
                 .in('box_id', boxIds)
 
             if (invItems) {
-                const productMap = new Map<string, number>()
-                invItems.forEach(item => {
-                    productMap.set(item.product_id, (productMap.get(item.product_id) || 0) + item.quantity)
-                })
+                // REVISION: Iterate Boxes First to keep box_id
+                const itemsToInsert: any[] = []
+                for (const box of boxes) {
+                    // Get items for THIS box
+                    const { data: bItems } = await supabaseAdmin
+                        .from('inventory_items')
+                        .select('product_id, quantity')
+                        .eq('box_id', box.id)
 
-                const orderItems = Array.from(productMap.entries()).map(([pid, qty]) => ({
-                    order_id: order.id,
-                    product_id: pid,
-                    quantity: qty,
-                    picked_quantity: 0
-                }))
+                    if (bItems) {
+                        bItems.forEach(i => {
+                            itemsToInsert.push({
+                                order_id: order.id,
+                                product_id: i.product_id,
+                                quantity: i.quantity,
+                                picked_quantity: 0,
+                                box_id: box.id,
+                                is_box_line: true
+                            })
+                        })
+                    }
+                }
 
-                if (orderItems.length > 0) {
+                if (itemsToInsert.length > 0) {
                     const { error: itemsError } = await supabaseAdmin
                         .from('order_items')
-                        .insert(orderItems)
+                        .insert(itemsToInsert)
                     if (itemsError) throw itemsError
                 }
             }

@@ -68,8 +68,12 @@ export default function PickingJobsPage() {
                                 <div className="p-4 border-b bg-white">
                                     <div className="flex justify-between items-start mb-1">
                                         <div>
-                                            <div className="font-bold text-lg text-indigo-700">{job.orders?.code}</div>
-                                            <div className="text-sm text-slate-500">{job.orders?.customer_name}</div>
+                                            <div className="font-bold text-lg text-indigo-700">
+                                                {job.orders?.code || (job.type === 'MANUAL_PICK' ? `JOB-${job.id.slice(0, 8)}` : '--')}
+                                            </div>
+                                            <div className="text-sm text-slate-500">
+                                                {job.orders?.customer_name || (job.type === 'MANUAL_PICK' ? 'Upload Thủ Công' : '')}
+                                            </div>
                                         </div>
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${job.status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
                                             }`}>
@@ -77,9 +81,11 @@ export default function PickingJobsPage() {
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-4 text-sm text-slate-600 mt-2">
-                                        <span className={`px-2 py-0.5 rounded text-xs font-bold border ${job.type === 'BOX_PICK' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                                        <span className={`px-2 py-0.5 rounded text-xs font-bold border ${job.type === 'BOX_PICK' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                                                job.type === 'MANUAL_PICK' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                    'bg-blue-50 text-blue-700 border-blue-200'
                                             }`}>
-                                            {job.type === 'BOX_PICK' ? 'LẤY THÙNG' : 'LẤY LẺ'}
+                                            {job.type === 'BOX_PICK' ? 'LẤY THÙNG' : job.type === 'MANUAL_PICK' ? 'THỦ CÔNG' : 'LẤY LẺ'}
                                         </span>
                                         <div className="flex items-center gap-1">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>

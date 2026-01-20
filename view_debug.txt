@@ -1,0 +1,22 @@
+=== VIEW FOR PRODUCT fe9aa482... ===
+{
+  "product_id": "fe9aa482-b6c8-40b5-bbec-a6c1f9d5031a",
+  "sku": "NB2S25-TB2-M04-OW-0M",
+  "name": "Set 2 bodysuit cộc áo trắng họa tiết phối xanh lá 0M",
+  "total_quantity": 2,
+  "hard_allocated": 1,
+  "soft_booked_orders": 0,
+  "soft_booked_transfers": 1,
+  "available_quantity": 0
+}
+
+=== MANUAL CALCULATION ===
+Transfer items with BOX type: 1
+  box_id=0db184a7-eaa2-435e-9bc9-609f64b53000, qty=1
+
+=== INVENTORY IN TRANSFERRED BOX ===
+Items in box 0db184a7-eaa2-435e-9bc9-609f64b53000:
+  product_id=fe9aa482-b6c8-40b5-bbec-a6c1f9d5031a, NB2S25-TB2-M04-OW-0M: 1
+
+=== EXPECTED soft_booked_transfers ===
+Should be: 1 (from box transfer for product fe9aa482...)

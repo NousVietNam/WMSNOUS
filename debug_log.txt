@@ -1,0 +1,6 @@
+🐞 Starting Deep Debug of Transfer Allocation...
+✅ Using Transfer: TRFx346636 (ID: 0fcd2c22-9345-4d01-bb9f-ddc6f33a3e89) Status: allocated
+📦 Transfer has 1 items.
+   - Product: undefined (ID: null), Qty Needed: 1
+🔎 Checking Inventory...
+Error fetching inventory: invalid input syntax for type uuid: "null"

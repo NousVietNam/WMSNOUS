@@ -453,7 +453,7 @@ export default function DoPickingPage() {
 
     return (
         <div className="min-h-screen bg-slate-100 flex flex-col pb-6">
-            <MobileHeader title={`Lệnh #${typeof id === 'string' ? id.slice(-4) : id}`} backLink="/mobile/picking" />
+            <MobileHeader title={`JOB-${typeof id === 'string' ? id.slice(0, 8).toUpperCase() : id}`} backLink="/mobile/picking" />
 
             <div className={`p-3 px-4 flex items-center justify-between text-sm ${activeOutbox ? 'bg-pink-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
                 <div className="flex items-center gap-2">
@@ -470,15 +470,31 @@ export default function DoPickingPage() {
             </div>
 
             {!activeBoxId && (
-                <div className="bg-white p-4 border-b space-y-2">
-                    <div className="flex justify-between items-center text-sm text-slate-600">
-                        <div className="flex items-center gap-2">
+                <div className="bg-white p-4 border-b space-y-3 shadow-sm">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Mã Job</span>
+                            <span className="font-mono font-bold text-slate-800">
+                                JOB-{typeof id === 'string' ? id.slice(0, 8).toUpperCase() : ''}
+                            </span>
+                        </div>
+                        <div className="flex flex-col text-right">
+                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Tổng Số Lượng</span>
+                            <span className="font-bold text-slate-800 text-lg">{jobStats.totalItems} <span className="text-xs font-normal text-slate-500">sp</span></span>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-sm pt-3 border-t">
+                        <div className="flex items-center gap-2 text-slate-600">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M9 12h6" /><path d="M9 16h6" /><path d="M9 8h6" /></svg>
                             <span>SKU: <b>{jobStats.totalSku}</b></span>
                         </div>
                         <div className="flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-green-600"><polyline points="20 6 9 17 4 12" /></svg>
-                            <span>Đã lấy: <b className="text-blue-600">{jobStats.pickedItems}</b>/{jobStats.totalItems}</span>
+                            <div className="text-right">
+                                <span className="text-xs text-slate-500 mr-2">Đã lấy:</span>
+                                <b className="text-blue-600 text-base">{jobStats.pickedItems}</b>
+                                <span className="text-slate-400">/{jobStats.totalItems}</span>
+                            </div>
                         </div>
                     </div>
                 </div>

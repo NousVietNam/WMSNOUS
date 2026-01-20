@@ -1,0 +1,18 @@
+=== ITEM WITH ALLOCATED_QUANTITY > 0 ===
+ID: 74c57a44-2eb7-434a-a718-77efe81b9870
+SKU: NB2S25-TB2-M04-OW-0M
+Name: Set 2 bodysuit cộc áo trắng họa tiết phối xanh lá 0M
+Qty: 1, Allocated: 1
+Box: BOX-TEST-0002, Location: N/A
+
+=== APPROVED TRANSFER ORDERS ===
+No approved transfer orders
+
+=== TRANSFER ORDER ITEMS (approved, not completed) ===
+Error: column transfer_orders_1.is_approved does not exist
+
+=== VIEW_PRODUCT_AVAILABILITY (with soft_booked > 0) ===
+Product fe9aa482-b6c8-40b5-bbec-a6c1f9d5031a: Orders=0, Transfers=1
+
+=== Checking if transfer_order_items has any records ===
+Total transfer_order_items records: 0
