@@ -104,7 +104,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
             }
         }
 
-        const timer = setTimeout(initScanner, 100)
+        const timer = setTimeout(initScanner, 10)
 
         return () => {
             clearTimeout(timer)
