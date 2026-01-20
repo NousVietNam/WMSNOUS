@@ -129,18 +129,16 @@ export default function DoPickingPage() {
     const fetchTasks = async () => {
         setLoading(true)
 
-        // 1. Get Job Info to know Type
+        // 1. Get Job Info to know Type (from Orders or Transfer Orders)
         const { data: jobInfo, error: jobError } = await supabase
             .from('picking_jobs')
-            .select('orders(transfer_type)')
+            .select('orders(transfer_type), transfer_orders(transfer_type)')
             .eq('id', id)
             .single()
 
-        if (jobInfo?.orders) {
-            // Supabase returns array for joined relation sometimes implies array if not strict
-            // @ts-ignore
-            const type = Array.isArray(jobInfo.orders) ? jobInfo.orders[0]?.transfer_type : jobInfo.orders?.transfer_type
-            if (type) setTransferType(type)
+        if (jobInfo) {
+            const type = jobInfo.orders?.transfer_type || jobInfo.transfer_orders?.transfer_type
+            if (type) setTransferType(type as 'BOX' | 'ITEM')
         }
 
         const { data: tasks, error } = await supabase
@@ -383,12 +381,25 @@ export default function DoPickingPage() {
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6 text-slate-600"><path d="m15 18-6-6 6-6" /></svg>
                     </button>
                     <div className="flex-1">
-                        <h2 className="text-xl font-bold flex items-center gap-2 text-blue-700">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
-                            {activeGroup.boxCode}
-                        </h2>
-                        <div className="text-sm font-medium text-slate-500 flex items-center gap-1">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg> {activeGroup.locationCode}
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-xl font-bold flex items-center gap-2 text-blue-700">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
+                                {activeGroup.boxCode}
+                            </h2>
+                            {transferType === 'BOX' && (
+                                <span className="bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                                    Lấy nguyên thùng
+                                </span>
+                            )}
+                        </div>
+                        <div className="text-sm font-medium text-slate-500 flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>
+                                {activeGroup.locationCode}
+                            </div>
+                            <div className="text-blue-600 font-bold">
+                                Tổng: {activeGroup.totalItems} món
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -469,13 +480,32 @@ export default function DoPickingPage() {
                     {(() => {
                         const pendingTasks = activeGroup.tasks.filter(t => t.status !== 'COMPLETED')
                         const selectedTasks = pendingTasks.filter(t => tempSelectedTaskIds.has(t.id))
-                        // const isAllSelected = pendingTasks.length > 0 && selectedTasks.length === pendingTasks.length
 
                         if (pendingTasks.length === 0) return (
-                            <div className="text-center text-green-600 font-bold bg-green-50 p-3 rounded">
+                            <div className="text-center text-green-600 font-bold bg-green-50 p-3 rounded border border-green-200">
                                 ✓ Thùng này đã xong
                             </div>
                         )
+
+                        if (transferType === 'BOX') {
+                            return (
+                                <button
+                                    onClick={() => {
+                                        const confirm = window.confirm(`Xác nhận lấy cả thùng ${activeGroup.boxCode} (${activeGroup.totalItems} món)?`)
+                                        if (confirm) handleConfirmBox(pendingTasks.map(t => t.id))
+                                    }}
+                                    disabled={isConfirmingBox}
+                                    className="w-full h-16 bg-blue-600 text-white font-black text-xl rounded-2xl shadow-xl active:scale-95 flex flex-col items-center justify-center border-b-4 border-blue-800"
+                                >
+                                    {isConfirmingBox ? "Đang xử lý..." : (
+                                        <>
+                                            <span>XÁC NHẬN LẤY CẢ THÙNG</span>
+                                            <span className="text-xs opacity-80">Tổng cộng {activeGroup.totalItems} món hàng</span>
+                                        </>
+                                    )}
+                                </button>
+                            )
+                        }
 
                         return (
                             <div className="space-y-3">
