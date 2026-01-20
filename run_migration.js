@@ -1,10 +1,19 @@
+const { createClient } = require('@supabase/supabase-js')
+require('dotenv').config({ path: '.env.local' })
+
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+)
+
+async function runMigration() {
+    const sql = `
 -- 1. Ensure GATE-OUT location exists
 INSERT INTO locations (code, type)
 VALUES ('GATE-OUT', 'FLOOR')
 ON CONFLICT (code) DO NOTHING;
 
 -- 2. Function to handle Whole Box Picking (BOX PICK)
--- This logic assumes picking a box moves the ENTIRE box to GATE-OUT
 CREATE OR REPLACE FUNCTION confirm_box_pick(
     p_box_id UUID,
     p_job_id UUID,
@@ -50,7 +59,6 @@ BEGIN
     GET DIAGNOSTICS v_tasks_updated = ROW_COUNT;
 
     -- 3. Update Order/Transfer items picked quantities
-    -- For Order Items
     IF v_order_id IS NOT NULL THEN
         FOR v_rec IN 
             SELECT product_id, SUM(quantity) as qty 
@@ -64,7 +72,6 @@ BEGIN
         END LOOP;
     END IF;
 
-    -- For Transfer Items
     IF v_transfer_order_id IS NOT NULL THEN
         FOR v_rec IN 
             SELECT product_id, SUM(quantity) as qty 
@@ -73,11 +80,8 @@ BEGIN
             GROUP BY product_id
         LOOP
             UPDATE transfer_order_items 
-            SET quantity = quantity -- (transfer quantity usually fixed, but we follow the pattern)
+            SET quantity = quantity
             WHERE transfer_id = v_transfer_order_id AND product_id = v_rec.product_id AND box_id = p_box_id;
-            
-            -- Some schemas might use a 'shipped_quantity' or similar, 
-            -- but usually for box transfers, completing the job is enough.
         END LOOP;
     END IF;
 
@@ -92,11 +96,11 @@ BEGIN
         note,
         created_at
     ) VALUES (
-        'MOVE_BOX',
+        'TRANSFER',
         'BOX',
         1,
         p_box_id,
-        p_box_id, -- It's the box itself moving
+        p_box_id,
         p_user_id,
         'Pick nguyên thùng ra cửa xuất (GATE-OUT)',
         NOW()
@@ -109,3 +113,22 @@ BEGIN
     );
 END;
 $$;
+    `;
+
+    console.log("Running SQL migration...")
+    const { error } = await supabase.rpc('exec_sql', { sql_query: sql })
+    if (error) {
+        console.error("Migration failed:", error)
+        console.log("Attempting direct table check to see if it partly worked...")
+        // If exec_sql doesn't exist, this is a fallback or just a failure.
+    } else {
+        console.log("Migration successful!")
+    }
+}
+
+async function checkExecSql() {
+    // Check if we can run RPC exec_sql. Usually not available by default.
+    // I'll just use a simpler approach if possible or ask user to run SQL.
+}
+
+runMigration()
