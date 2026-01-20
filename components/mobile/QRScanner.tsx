@@ -105,7 +105,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 await scanner.start(
                     selectedCameraId,
                     {
-                        fps: 15,
+                        fps: 20, // Boost FPS for smoothness
                         qrbox: qrBoxFunction,
                         disableFlip: false,
                         aspectRatio: 1.0,
@@ -113,8 +113,9 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                             deviceId: { exact: selectedCameraId },
                             // @ts-ignore
                             focusMode: "continuous",
-                            width: { min: 640, ideal: 1280, max: 1920 },
-                            height: { min: 480, ideal: 720, max: 1080 },
+                            // Use lower resolution for faster startup/processing
+                            width: { min: 480, ideal: 720, max: 1280 },
+                            height: { min: 480, ideal: 720, max: 1280 },
                         },
                         formatsToSupport: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
                     },
@@ -158,11 +159,11 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
             }
         }
 
-        // Slight delay to ensure DOM and cleanup
-        const t = setTimeout(startCamera, 100)
+        // START IMMEDIATELY - No artificial delay
+        startCamera()
 
         return () => {
-            clearTimeout(t)
+            // clearTimeout(t) // No timer anymore
             // Check BEFORE accessing properties
             if (scannerRef.current) {
                 try {
