@@ -63,6 +63,8 @@ BEGIN
             
             -- Deduct Source
             IF v_inv.quantity - v_take_qty = 0 THEN
+                -- Unlink any tasks referencing this inventory item to avoid FK violation
+                UPDATE picking_tasks SET inventory_item_id = NULL WHERE inventory_item_id = v_inv.id;
                 DELETE FROM inventory_items WHERE id = v_inv.id;
             ELSE
                 UPDATE inventory_items 
@@ -81,8 +83,8 @@ BEGIN
                 SET quantity = quantity + v_take_qty 
                 WHERE id = v_existing_out_item_id;
             ELSE
-                INSERT INTO inventory_items (box_id, product_id, quantity, expiry_date)
-                VALUES (p_outbox_id, v_task.product_id, v_take_qty, NOW());
+                INSERT INTO inventory_items (box_id, product_id, quantity)
+                VALUES (p_outbox_id, v_task.product_id, v_take_qty);
             END IF;
 
             -- Log Transaction entry (deferred insert)

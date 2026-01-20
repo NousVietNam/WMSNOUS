@@ -45,25 +45,25 @@ export function OutboxDetailDialog({ open, onOpenChange, outboxCode }: OutboxDet
 
     const fetchDetails = async () => {
         setLoading(true)
-        // Query COMPLETED picking tasks for this outbox
-        const { data, error } = await supabase
-            .from('picking_tasks')
-            .select(`
-                id,
-                quantity,
-                products (sku, name, image),
-                picking_jobs (id, type, orders (code, customer_name)),
-                boxes (code, location_code)
-            `)
-            .eq('outbox_code', outboxCode)
-            .eq('status', 'COMPLETED')
-            .order('created_at', { ascending: false })
+        try {
+            // Query picking_tasks - has all info we need
+            const { data, error } = await supabase
+                .from('picking_tasks')
+                .select(`
+                    id,
+                    quantity,
+                    products (sku, name),
+                    boxes!picking_tasks_box_id_fkey (code),
+                    picking_jobs (id, type, orders (code, customer_name))
+                `)
+                .eq('outbox_code', outboxCode)
+                .eq('status', 'COMPLETED')
 
-        if (error) {
-            console.error(error)
-        } else {
-            console.log("Details:", data)
+            if (error) throw error
             setItems(data as any)
+
+        } catch (e) {
+            console.error(e)
         }
         setLoading(false)
     }
@@ -109,9 +109,12 @@ export function OutboxDetailDialog({ open, onOpenChange, outboxCode }: OutboxDet
                                     <div className="text-xs text-slate-500 uppercase font-bold">Từ Job / Đơn Hàng</div>
                                     <div className="text-sm font-medium text-slate-800 mt-1 space-y-1">
                                         {/* List distinct jobs info */}
-                                        {Array.from(new Set(items.map(i => JSON.stringify(i.picking_jobs)))).map((jStr, idx) => {
+                                        {Array.from(new Set(items
+                                            .map(i => i.picking_jobs)
+                                            .filter(j => j != null) // Filter null/undefined
+                                            .map(j => JSON.stringify(j))
+                                        )).map((jStr, idx) => {
                                             const j = JSON.parse(jStr)
-                                            if (!j) return null
                                             return (
                                                 <div key={idx} className="flex items-center gap-2">
                                                     <FileText className="h-3 w-3 text-indigo-500" />
