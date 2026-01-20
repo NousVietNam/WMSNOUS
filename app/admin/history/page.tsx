@@ -318,7 +318,6 @@ export default function HistoryPage() {
                                 <th className="p-4 w-[120px]">Người Dùng</th>
                                 <th className="p-4 w-[100px]">Loại</th>
                                 <th className="p-4 w-[120px]">Mã SKU</th>
-                                <th className="p-4 w-[120px]">Mã Box</th>
                                 <th className="p-4">Tên Hàng / Nội Dung</th>
                                 <th className="p-4 w-[80px] text-center">SL</th>
                                 <th className="p-4">Thùng Đi (From Box)</th>
@@ -388,11 +387,6 @@ export default function HistoryPage() {
                                             <td className="p-4 font-mono font-bold text-slate-700">
                                                 {sku !== '-' ? sku : ''}
                                             </td>
-                                            {/* Box */}
-                                            <td className="p-4 font-mono font-bold text-blue-600">
-                                                {boxCode !== '-' ? `📦 ${boxCode}` : ''}
-                                            </td>
-                                            {/* Name */}
                                             <td className="p-4 text-slate-600">
                                                 {name}
                                             </td>

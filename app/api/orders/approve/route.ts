@@ -64,7 +64,6 @@ export async function POST(request: Request) {
                             quantity: item.quantity,
                             user_id: userId,
                             reference_id: order.id,
-                            box_id: item.box_id || null,
                             note: order.type === 'BOX'
                                 ? `Giữ hàng (Thùng) cho đơn: ${order.code} - ${order.customer_name}`
                                 : `Giữ hàng (Lẻ) cho đơn: ${order.code} - ${order.customer_name}`,
