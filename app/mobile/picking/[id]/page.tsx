@@ -49,6 +49,7 @@ export default function DoPickingPage() {
 
     // Data State
     const [loading, setLoading] = useState(true)
+    const [userId, setUserId] = useState<string | null>(null)
     const [allTasks, setAllTasks] = useState<any[]>([])
     const [activeBoxId, setActiveBoxId] = useState<string | null>(null)
     const [unlockedBoxes, setUnlockedBoxes] = useState<Set<string>>(new Set())
@@ -113,6 +114,11 @@ export default function DoPickingPage() {
     useEffect(() => {
         if (id) fetchTasks()
     }, [id])
+
+    // Get user session
+    useEffect(() => {
+        supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null))
+    }, [])
 
     // Focus hook not strictly needed for this refactor, removing complex focus logic for simplicity if not critical
     // or keeping simple ref
@@ -314,9 +320,15 @@ export default function DoPickingPage() {
 
         setIsConfirmingBox(true)
         try {
+            // Get fresh userId right before API call
+            const { data: { user } } = await supabase.auth.getUser()
+            const currentUserId = user?.id || null
+
+            console.log('Confirming with userId:', currentUserId) // Debug log
+
             const res = await fetch('/api/picking/confirm-batch', {
                 method: 'POST',
-                body: JSON.stringify({ taskIds, outboxId: activeOutbox.id })
+                body: JSON.stringify({ taskIds, outboxId: activeOutbox.id, userId: currentUserId })
             })
             const json = await res.json()
             if (!json.success) {

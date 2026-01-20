@@ -9,7 +9,7 @@ const supabase = createClient(
 
 export async function POST(request: Request) {
     try {
-        const { taskIds, outboxId } = await request.json()
+        const { taskIds, outboxId, userId } = await request.json()
 
         if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
             return NextResponse.json({ success: false, error: 'Phải chọn ít nhất 1 mã hàng' }, { status: 400 })
@@ -19,15 +19,12 @@ export async function POST(request: Request) {
         }
 
         // Call Optimized RPC
+        console.log('API received userId:', userId) // Debug log
+
         const { data, error } = await supabase.rpc('confirm_picking_batch', {
             p_task_ids: taskIds,
             p_outbox_id: outboxId,
-            p_user_id: (await supabase.auth.getUser()).data.user?.id || null
-            // Note: Service Role bypasses Auth, so we might need to pass User ID explicitly from client or infer. 
-            // Since we are using Service Role, getUser() might be empty.
-            // Let's rely on the client passing userId? Or just use a placeholder if Service Role?
-            // Actually, for now, let's just pass NULL if not found, or fix the params.
-            // Better: 'rpc' executes as the definer (if SECURITY DEFINER).
+            p_user_id: userId || null // Use userId from client
         })
 
         if (error) {
