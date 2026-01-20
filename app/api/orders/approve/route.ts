@@ -57,7 +57,6 @@ export async function POST(request: Request) {
                                     type: 'RESERVE',
                                     sku: inv.products?.sku || 'UNKNOWN',
                                     quantity: inv.quantity,
-                                    location_id: box.location_id,
                                     user_id: userId,
                                     reference_id: order.id,
                                     note: `Giữ hàng (Thùng) cho đơn: ${order.code} - ${order.customer_name}`,
