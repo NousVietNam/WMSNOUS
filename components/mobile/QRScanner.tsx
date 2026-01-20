@@ -21,10 +21,38 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
     const [selectedCameraId, setSelectedCameraId] = useState<string>("")
     const [camerasLoaded, setCamerasLoaded] = useState(false)
 
+    const fetchCamerasAndSelectBest = async () => {
+        try {
+            // @ts-ignore
+            const devices = await Html5Qrcode.getCameras()
+            if (devices && devices.length > 0) {
+                setCameras(devices)
+
+                // Intelligent Auto-Select
+                let bestId = devices[0].id
+                const backCams = devices.filter((d: any) => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('sau'))
+
+                if (backCams.length > 0) {
+                    const mainBack = backCams.find((d: any) =>
+                        !d.label.toLowerCase().includes('wide') &&
+                        !d.label.toLowerCase().includes('rộng') &&
+                        !d.label.toLowerCase().includes('telephoto')
+                    )
+                    bestId = mainBack ? mainBack.id : backCams[0].id
+                }
+                setSelectedCameraId(bestId)
+            } else {
+                setError("Không tìm thấy camera")
+            }
+        } catch (e) {
+            console.error("Fetch cameras failed", e)
+            setError("Lỗi quyền truy cập Camera")
+        }
+    }
+
     // 1. Initialize
     useEffect(() => {
         const init = async () => {
-            // Optimistic check for cached ID
             // Optimistic check for cached ID
             const cachedId = localStorage.getItem(CAMERA_PREF_KEY)
             if (cachedId) {
@@ -83,6 +111,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                         aspectRatio: 1.0,
                         videoConstraints: {
                             deviceId: { exact: selectedCameraId },
+                            // @ts-ignore
                             focusMode: "continuous",
                             width: { min: 640, ideal: 1280, max: 1920 },
                             height: { min: 480, ideal: 720, max: 1080 },
@@ -104,6 +133,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
 
                 // If we succeeded but don't have the list yet (optimistic case), fetch it now safely
                 if (cameras.length === 0) {
+                    // @ts-ignore
                     Html5Qrcode.getCameras().then(devices => {
                         if (devices) setCameras(devices)
                     }).catch(e => console.warn("Bg fetch failed", e))
@@ -133,9 +163,12 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
 
         return () => {
             clearTimeout(t)
+            // Check BEFORE accessing properties
             if (scannerRef.current) {
                 try {
-                    scannerRef.current.stop().then(() => scannerRef.current.clear()).catch(() => { })
+                    // Check again inside try to satisfy TS or just capture ref
+                    const scanner = scannerRef.current
+                    scanner.stop().then(() => scanner.clear()).catch(() => { })
                 } catch (e) { }
                 scannerRef.current = null
             }
