@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Html5Qrcode } from "html5-qrcode"
 
 interface ScannerProps {
@@ -66,7 +66,8 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
     }, [])
 
     // 2. Start/Restart Camera when ID changes
-    useEffect(() => {
+    // Use useLayoutEffect to start ASAP after DOM is ready, before paint if possible
+    useLayoutEffect(() => {
         if (!selectedCameraId) return
 
         const startCamera = async () => {
@@ -182,7 +183,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
     }
 
     return (
-        <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center p-4">
             <div className="bg-white p-4 rounded-xl w-full max-w-sm relative flex flex-col shadow-2xl">
                 <div className="flex justify-between items-center mb-2 shrink-0">
                     <h3 className="font-bold text-lg">Quét Mã {mode === "BARCODE" ? "Vạch" : "QR"}</h3>
