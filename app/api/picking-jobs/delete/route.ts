@@ -34,53 +34,39 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Không thể xóa công việc đã bắt đầu hoặc hoàn thành.' }, { status: 400 })
         }
 
-        // 2. Revert Inventory Allocation (Only for ITEM_PICK)
-        const transactions = []
+        // 2. Revert Inventory Allocation
+        // NOTE: Database Trigger 'tr_picking_allocation' handles the actual stock reversion on delete.
+        // We only need to log 'RELEASE' transactions for Audit if it's an Order.
 
-        // Determine if we should log RELEASE transaction
-        // For Transfers: NO (because they go back to APPROVED state which still Holds stock)
-        // For Orders: YES (because they go back to PENDING/Open state)
+        const transactions = []
         const shouldLogTransaction = !!job.order_id
 
-        if ((job.type === 'ITEM_PICK' || job.type === 'MANUAL_PICK') && job.tasks && job.tasks.length > 0) {
-            console.log(`[DeleteJob] Reverting allocation for ${job.tasks.length} tasks`)
+        if (shouldLogTransaction && job.type === 'ITEM_PICK' && job.tasks && job.tasks.length > 0) {
+            console.log(`[DeleteJob] Generating RELEASE logs for ${job.tasks.length} tasks`)
 
             for (const task of job.tasks) {
                 if (task.inventory_item_id && task.quantity > 0) {
-                    // a. Fetch current allocation
+                    // Fetch location for log
                     const { data: invItem } = await supabaseAdmin
                         .from('inventory_items')
-                        .select('id, allocated_quantity, product_id, location_id')
+                        .select('location_id')
                         .eq('id', task.inventory_item_id)
                         .single()
 
                     if (invItem) {
-                        // b. Decrease allocation
-                        const newAllocated = Math.max(0, (invItem.allocated_quantity || 0) - task.quantity)
-
-                        const { error: updateError } = await supabaseAdmin
-                            .from('inventory_items')
-                            .update({ allocated_quantity: newAllocated })
-                            .eq('id', invItem.id)
-
-                        if (updateError) {
-                            console.error(`[DeleteJob] Failed to revert inventory ${invItem.id}:`, updateError)
-                        } else if (shouldLogTransaction) {
-                            // c. Prepare RELEASE Transaction Log matches user request for Sales Orders
-                            transactions.push({
-                                type: 'RELEASE',
-                                sku: null,
-                                quantity: task.quantity,
-                                location_id: invItem.location_id,
-                                reference_id: job.id,
-                                note: `Hủy Picking Job: ${job.type}`,
-                                created_at: new Date().toISOString()
-                            })
-                        }
+                        transactions.push({
+                            type: 'RELEASE',
+                            sku: null, // Could fetch SKU if needed, or leave null as per prior logic
+                            quantity: task.quantity,
+                            location_id: invItem.location_id,
+                            reference_id: job.id,
+                            note: `Hủy Picking Job: ${job.type}`,
+                            created_at: new Date().toISOString()
+                        })
                     }
                 }
             }
-        } else if (job.type === 'BOX_PICK' && shouldLogTransaction) {
+        } else if (shouldLogTransaction && job.type === 'BOX_PICK') {
             transactions.push({
                 type: 'RELEASE',
                 quantity: 1,

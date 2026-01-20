@@ -42,9 +42,20 @@ export async function POST(req: NextRequest) {
 
         jobId = job.id
         const errors: string[] = []
+        const transactions: any[] = []
 
         // 2. Process each line
-        for (const line of items) {
+        items.forEach((line, index) => {
+            const rowNum = index + 2 // Header is 1
+            const { boxCode, sku, quantity } = line
+
+            // 2a. Lookup box ... (We need to await in loop, so forEach is bad for async. Use for loop)
+        })
+
+        // Re-write loop with index
+        for (let i = 0; i < items.length; i++) {
+            const line = items[i]
+            const rowNum = i + 2
             const { boxCode, sku, quantity } = line
 
             // 2a. Lookup box
@@ -55,12 +66,11 @@ export async function POST(req: NextRequest) {
                 .single()
 
             if (!box) {
-                errors.push(`Box not found: ${boxCode}`)
+                errors.push(`Dòng ${rowNum}: Không tìm thấy thùng '${boxCode}'`)
                 continue
             }
 
             // 2b. Validate Item
-            // First, lookup product by SKU to get ID
             const { data: product } = await supabaseAdmin
                 .from('products')
                 .select('id')
@@ -68,11 +78,11 @@ export async function POST(req: NextRequest) {
                 .single()
 
             if (!product) {
-                errors.push(`SKU not found: ${sku}`)
+                errors.push(`Dòng ${rowNum}: Không tìm thấy SKU '${sku}'`)
                 continue
             }
 
-            // Then check if this product exists in the box
+            // Check availability
             const { data: invItem } = await supabaseAdmin
                 .from('inventory_items')
                 .select('id, product_id, quantity, allocated_quantity')
@@ -81,14 +91,13 @@ export async function POST(req: NextRequest) {
                 .single()
 
             if (!invItem) {
-                errors.push(`Item not in box: ${sku} @ ${boxCode}`)
+                errors.push(`Dòng ${rowNum}: Sản phẩm '${sku}' không có trong thùng '${boxCode}'`)
                 continue
             }
 
-            // Check availability
             const available = invItem.quantity - (invItem.allocated_quantity || 0)
             if (quantity > available) {
-                errors.push(`Not enough stock: ${sku} @ ${boxCode} (need ${quantity}, have ${available})`)
+                errors.push(`Dòng ${rowNum}: Không đủ tồn kho '${sku}' tại '${boxCode}' (Cần ${quantity}, Có ${available})`)
                 continue
             }
 
@@ -103,46 +112,52 @@ export async function POST(req: NextRequest) {
                 status: 'PENDING'
             })
 
-            // Update allocated
-            await supabaseAdmin
-                .from('inventory_items')
-                .update({ allocated_quantity: (invItem.allocated_quantity || 0) + quantity })
-                .eq('id', invItem.id)
+            // Create transaction (Audit log for Reservation)
+            transactions.push({
+                type: 'RESERVE',
+                sku: sku,
+                quantity: quantity,
+                location_id: box.location_id || null,
+                // Note: 'location_id' might be null in DB if box not assigned? Usually assigned.
+                // But Typescript might complain if we don't handle undefined.
+                // box.location_id comes from select('location_id').
+                reference_id: jobId,
+                note: `Upload Picking Job (Allocated)`,
+                created_at: new Date().toISOString()
+            })
+
+            // REMOVED MANUAL ALLOC UPDATE
         }
 
         // 3. Insert tasks
         if (tasks.length === 0) {
-            // Delete job if no tasks
             await supabaseAdmin.from('picking_jobs').delete().eq('id', jobId)
-            return NextResponse.json({ success: false, error: 'No valid items to pick', errors }, { status: 400 })
+            return NextResponse.json({ success: false, error: 'Không có dòng nào hợp lệ', errors }, { status: 400 })
         }
 
-        console.log("Inserting tasks payload:", JSON.stringify(tasks, null, 2))
+        console.log("Inserting tasks payload:", tasks.length)
 
-        const { error: taskError } = await supabaseAdmin.from('picking_tasks').insert(tasks)
+        // Fix double job_id key if strictly typing, but JS obj handles it.
+        // Clean up task object
+        const cleanTasks = tasks.map(({ job_id, ...rest }) => ({ job_id: jobId, ...rest }))
+
+        const { error: taskError } = await supabaseAdmin.from('picking_tasks').insert(cleanTasks)
+
         if (taskError) {
             console.error("Task Insert Error:", taskError)
-            // Create rollback promises
-            const rollbacks = tasks.map(async (t) => {
-                // Fetch current alloc
-                const { data: inv } = await supabaseAdmin
-                    .from('inventory_items')
-                    .select('allocated_quantity')
-                    .eq('id', t.inventory_item_id)
-                    .single()
-
-                if (inv) {
-                    await supabaseAdmin
-                        .from('inventory_items')
-                        .update({ allocated_quantity: Math.max(0, (inv.allocated_quantity || 0) - t.quantity) })
-                        .eq('id', t.inventory_item_id)
-                }
-            })
-            await Promise.all(rollbacks)
-
-            // Rollback job
+            // NO MANUAL ROLLBACK NEEDED (Trigger won't fire/commit if insert fails)
+            // Just delete the empty job
             await supabaseAdmin.from('picking_jobs').delete().eq('id', jobId)
-            return NextResponse.json({ success: false, error: 'Failed to create tasks: ' + taskError.message }, { status: 500 })
+            return NextResponse.json({ success: false, error: 'Lỗi lưu database: ' + taskError.message }, { status: 500 })
+        }
+
+        // 4. Insert Transactions
+        if (transactions.length > 0) {
+            const { error: txError } = await supabaseAdmin.from('transactions').insert(transactions)
+            if (txError) {
+                console.error("Transaction Log Error:", txError)
+                // We don't fail the request if logging fails, but it's good to note.
+            }
         }
 
         return NextResponse.json({
@@ -154,49 +169,14 @@ export async function POST(req: NextRequest) {
 
     } catch (error: any) {
         console.error('Upload Error:', error)
-
-        // Try to rollback inventory if tasks were created in memory but failed somehow
-        // (Note: Since we are in catch block, we might rely on 'tasks' array if it's accessible)
-        // But main failure point is the task insertion block above.
-        // If error happened inside the loop, 'tasks' would contain processed items. 
-        // We should rollback them too.
-        // However, loop error usually continues or breaks? 
-        // My loop uses 'continue' on error, so it doesn't throw. 
-        // Only unexpected errors throw.
-        // Let's safe-guard rollback here too if jobId exists.
-
-        // Only rollback if we have tasks and job created
-        if (tasks.length > 0) {
-            const supabaseAdmin = createClient( // Re-initialize if not in scope or needed
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.SUPABASE_SERVICE_ROLE_KEY!,
-                { auth: { persistSession: false } }
-            )
-            const rollbacks = tasks.map(async (t) => {
-                const { data: inv } = await supabaseAdmin
-                    .from('inventory_items')
-                    .select('allocated_quantity')
-                    .eq('id', t.inventory_item_id)
-                    .single()
-                if (inv) {
-                    await supabaseAdmin
-                        .from('inventory_items')
-                        .update({ allocated_quantity: Math.max(0, (inv.allocated_quantity || 0) - t.quantity) })
-                        .eq('id', t.inventory_item_id)
-                }
-            })
-            await Promise.all(rollbacks)
-        }
-
         if (jobId) {
-            const supabaseAdmin = createClient( // Re-initialize if not in scope or needed
+            const supabaseAdmin = createClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
                 process.env.SUPABASE_SERVICE_ROLE_KEY!,
                 { auth: { persistSession: false } }
             )
             await supabaseAdmin.from('picking_jobs').delete().eq('id', jobId)
         }
-
         return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 }

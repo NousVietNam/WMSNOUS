@@ -50,7 +50,21 @@ export function JobDetailDialog({ jobId, open, onOpenChange }: JobDetailDialogPr
                 .order('id')
 
             if (taskError) throw taskError
-            setTasks(taskData || [])
+
+            // Sort: Location -> Box -> SKU
+            const sortedTasks = (taskData || []).sort((a: any, b: any) => {
+                const locA = a.boxes?.locations?.code || ''
+                const locB = b.boxes?.locations?.code || ''
+                if (locA !== locB) return locA.localeCompare(locB)
+
+                const boxA = a.boxes?.code || ''
+                const boxB = b.boxes?.code || ''
+                if (boxA !== boxB) return boxA.localeCompare(boxB, undefined, { numeric: true })
+
+                return (a.products?.sku || '').localeCompare(b.products?.sku || '')
+            })
+
+            setTasks(sortedTasks)
 
         } catch (error) {
             console.error(error)

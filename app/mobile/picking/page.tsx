@@ -24,7 +24,7 @@ export default function PickingJobsPage() {
             .select(`
                 *,
                 orders (code, customer_name),
-                picking_tasks (count),
+                view_picking_job_progress (total_tasks, completed_tasks, total_outboxes),
                 users (name)
             `)
             .in('status', ['OPEN', 'IN_PROGRESS'])
@@ -82,14 +82,18 @@ export default function PickingJobsPage() {
                                     </div>
                                     <div className="flex items-center gap-4 text-sm text-slate-600 mt-2">
                                         <span className={`px-2 py-0.5 rounded text-xs font-bold border ${job.type === 'BOX_PICK' ? 'bg-purple-50 text-purple-700 border-purple-200' :
-                                                job.type === 'MANUAL_PICK' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                    'bg-blue-50 text-blue-700 border-blue-200'
+                                            job.type === 'MANUAL_PICK' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                'bg-blue-50 text-blue-700 border-blue-200'
                                             }`}>
                                             {job.type === 'BOX_PICK' ? 'LẤY THÙNG' : job.type === 'MANUAL_PICK' ? 'THỦ CÔNG' : 'LẤY LẺ'}
                                         </span>
                                         <div className="flex items-center gap-1">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
-                                            {job.picking_tasks?.[0]?.count || 0} tasks
+                                            {job.view_picking_job_progress?.[0] ? (
+                                                <span className={job.view_picking_job_progress[0].completed_tasks === job.view_picking_job_progress[0].total_tasks ? 'text-green-600 font-bold' : ''}>
+                                                    {job.view_picking_job_progress[0].completed_tasks}/{job.view_picking_job_progress[0].total_tasks}
+                                                </span>
+                                            ) : '0'}
                                         </div>
                                         {job.user_id && (
                                             <div className="flex items-center gap-1 text-xs bg-slate-100 px-2 py-0.5 rounded">

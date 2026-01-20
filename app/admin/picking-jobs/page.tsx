@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { Search, Trash2, Package, Loader2, RefreshCw, Upload, Download } from "lucide-react"
+import { Search, Trash2, Package, Loader2, RefreshCw, Upload, Download, AlertTriangle, X } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 import * as XLSX from "xlsx"
@@ -26,11 +26,16 @@ export default function PickingJobsPage() {
     const [detailId, setDetailId] = useState<string | null>(null)
     const [showDetail, setShowDetail] = useState(false)
 
+    // Upload Error State
+    const [uploadErrors, setUploadErrors] = useState<string[]>([])
+    const [showErrorDialog, setShowErrorDialog] = useState(false)
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
 
         setUploading(true)
+        setUploadErrors([])
         try {
             const data = await file.arrayBuffer()
             const wb = XLSX.read(data)
@@ -39,13 +44,6 @@ export default function PickingJobsPage() {
 
             if (rows.length === 0) {
                 toast.error("File rỗng hoặc không đúng định dạng")
-                return
-            }
-
-            // Validate columns
-            const firstRow = rows[0]
-            if (!firstRow['Box Code'] || !firstRow['SKU'] || firstRow['Quantity'] === undefined) {
-                toast.error("File phải có các cột: 'Box Code', 'SKU', 'Quantity'")
                 return
             }
 
@@ -70,19 +68,21 @@ export default function PickingJobsPage() {
 
             const result = await res.json()
             if (!res.ok) {
+                // If API returns structured errors even on 400/500
                 if (result.errors?.length > 0) {
-                    console.error("Upload errors:", result.errors)
-                    // Show first 3 errors
-                    const details = result.errors.slice(0, 3).join('. ') + (result.errors.length > 3 ? '...' : '')
-                    throw new Error(details)
+                    setUploadErrors(result.errors)
+                    setShowErrorDialog(true)
+                } else {
+                    throw new Error(result.error || 'Lỗi tạo job')
                 }
-                throw new Error(result.error || 'Lỗi tạo job')
+                return
             }
 
             toast.success(`Đã tạo Picking Job với ${result.tasksCreated} task(s)`)
             if (result.errors?.length > 0) {
                 toast.warning(`Cảnh báo: ${result.errors.length} dòng lỗi`)
-                console.log("Errors:", result.errors)
+                setUploadErrors(result.errors)
+                setShowErrorDialog(true)
             }
             fetchJobs()
         } catch (error: any) {
@@ -333,6 +333,35 @@ export default function PickingJobsPage() {
                 open={showDetail}
                 onOpenChange={setShowDetail}
             />
+
+            {showErrorDialog && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[80vh] flex flex-col">
+                        <div className="p-4 border-b flex justify-between items-center">
+                            <h3 className="font-bold text-red-600 flex items-center gap-2">
+                                <AlertTriangle className="h-5 w-5" />
+                                Lỗi Upload ({uploadErrors.length})
+                            </h3>
+                            <button onClick={() => setShowErrorDialog(false)} className="text-slate-400 hover:text-slate-600">
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="p-4 overflow-y-auto flex-1 bg-slate-50">
+                            <ul className="space-y-2 text-sm font-mono text-slate-700">
+                                {uploadErrors.map((err, i) => (
+                                    <li key={i} className="bg-white p-2 border rounded border-red-100 flex gap-2">
+                                        <span className="text-red-500 font-bold">•</span>
+                                        {err}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                        <div className="p-4 border-t bg-slate-50 rounded-b-lg text-right">
+                            <Button onClick={() => setShowErrorDialog(false)}>Đóng</Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
