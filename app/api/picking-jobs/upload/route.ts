@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: false, error: 'Không có dòng nào hợp lệ', errors }, { status: 400 })
         }
 
-        console.log("Inserting tasks payload:", tasks.length)
+
 
         // Fix double job_id key if strictly typing, but JS obj handles it.
         // Clean up task object

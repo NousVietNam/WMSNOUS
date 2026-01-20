@@ -50,11 +50,10 @@ export async function POST(
 
         // 3. Handle BOX or ITEM type transfers differently
         if (transfer.transfer_type === 'BOX') {
-            console.log(`[Allocate] Processing BOX transfer ${transferId}`)
-            console.log(`[Allocate] Items count: ${items.length}`)
+
             // BOX transfer: Create BOX_PICK jobs (one job per unique box)
             const boxIds = [...new Set(items.map(i => i.box_id).filter(Boolean))]
-            console.log(`[Allocate] Found Box IDs:`, boxIds)
+
 
             if (boxIds.length === 0) {
                 console.warn('[Allocate] No Box IDs found in items despite transfer_type=BOX')
@@ -69,7 +68,7 @@ export async function POST(
                 created_at: new Date().toISOString()
             }))
 
-            console.log(`[Allocate] Creating ${boxJobs.length} jobs`)
+
 
             const { error: jobError } = await supabaseAdmin
                 .from('picking_jobs')

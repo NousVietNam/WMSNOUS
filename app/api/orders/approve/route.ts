@@ -49,9 +49,7 @@ export async function POST(request: Request) {
                 .eq('type', 'RESERVE')
                 .limit(1)
 
-            if (existingTx && existingTx.length > 0) {
-                console.log(`RESERVE transactions already exist for order ${order.code}, skipping creation`)
-            } else {
+            if (!existingTx || existingTx.length === 0) {
                 let transactions = [];
 
                 // SOURCE OF TRUTH: Use order_items which is a snapshot created at Order Creation time.

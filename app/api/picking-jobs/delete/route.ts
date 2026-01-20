@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
         const shouldLogTransaction = !!job.order_id
 
         if (shouldLogTransaction && job.type === 'ITEM_PICK' && job.tasks && job.tasks.length > 0) {
-            console.log(`[DeleteJob] Generating RELEASE logs for ${job.tasks.length} tasks`)
+
 
             for (const task of job.tasks) {
                 if (task.inventory_item_id && task.quantity > 0) {
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
                 .neq('id', jobId) // Exclude current job
                 .neq('status', 'CANCELLED')
 
-            console.log(`[DeleteJob] Transfer ${job.transfer_order_id} has ${count} other active jobs`)
+
 
             if (count === 0) {
                 // If this was the last job, revert to 'approved' (Ready to Allocate)
@@ -104,7 +104,6 @@ export async function POST(req: NextRequest) {
                     .eq('id', job.transfer_order_id)
 
                 if (updateError) console.error("Failed to revert transfer status:", updateError)
-                else console.log(`[DeleteJob] Reverted Transfer ${job.transfer_order_id} to 'approved'`)
             }
         } else if (job.order_id) {
             // Revert Sales Order

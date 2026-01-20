@@ -19,7 +19,7 @@ export async function POST(request: Request) {
         }
 
         // Call Optimized RPC
-        console.log('API received userId:', userId) // Debug log
+
 
         const { data, error } = await supabase.rpc('confirm_picking_batch', {
             p_task_ids: taskIds,

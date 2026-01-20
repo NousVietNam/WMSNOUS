@@ -4,8 +4,10 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent } from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
-import { Download, Package, Search, ChevronLeft, ChevronRight, Filter, X } from "lucide-react"
+import { Download, Package, Search, ChevronLeft, ChevronRight, Filter, X, ChevronDown, Check } from "lucide-react"
 import Barcode from 'react-barcode'
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
@@ -121,11 +123,7 @@ export default function InventoryPage() {
 
         if (!item.products?.id) return
 
-        console.log('🔍 Querying picking_tasks for:', {
-            productId: item.products.id,
-            boxId,
-            locationId
-        })
+
 
         let query = supabase
             .from('picking_tasks')
@@ -160,10 +158,10 @@ export default function InventoryPage() {
         const { data, error } = await query
 
         if (error) {
-            console.error('❌ Query error:', error)
+
             toast.error(`Lỗi: ${error.message}`)
         } else {
-            console.log('✅ Query success:', data)
+
         }
 
         setDetailData(data || [])
@@ -171,7 +169,6 @@ export default function InventoryPage() {
     }
 
     useEffect(() => {
-        fetchFilterOptions()
         fetchWarehouses()
     }, [])
 
@@ -198,83 +195,59 @@ export default function InventoryPage() {
         }
     }, [page])
 
-    const fetchFilterOptions = async () => {
-        const { data: locsData } = await supabase.from('locations').select('code').order('code')
-        if (locsData) setLocations(locsData.map(l => l.code))
-
-        const { data: boxesData } = await supabase.from('boxes').select('code').limit(100).order('code')
-        if (boxesData) setBoxes(boxesData.map(b => b.code))
-    }
 
     const updateAvailableFilterOptions = async () => {
-        // Fetch DISTINCT values from DB based on currently selected filters
-        // This creates cascading dependencies between filters
-
-        let query = supabase
-            .from('inventory_items')
-            .select(`
-                products!inner (brand, target_audience, product_group, season, launch_month),
-                boxes (code, locations (code)),
-                locations (code)
-            `)
-            .gt('quantity', 0)
-
-        // Apply currently selected filters to narrow down options
-        if (filterWarehouse !== "all") {
-            query = query.eq('warehouse_id', filterWarehouse)
-        }
-        if (filterLocation !== "all") {
-            // Need to filter by location - complex because location can be in boxes.locations OR direct locations
-            // This requires client-side filtering after fetch, OR we skip this optimization
-            // For simplicity, we'll fetch all and filter client-side
-        }
-        if (filterBox !== "all") {
-            query = query.eq('boxes.code', filterBox)
-        }
-
-        const { data: allData } = await query
-
-        if (!allData || allData.length === 0) {
-            // No data matching current filters - clear dependent options
-            setBrands([])
-            setTargets([])
-            setProductGroups([])
-            setSeasons([])
-            return
-        }
-
-        // Client-side filter for complex conditions
-        const filtered = allData.filter((item: any) => {
-            if (filterLocation !== "all") {
-                const loc = (item as any).boxes?.locations?.code || (item as any).locations?.code
-                if (loc !== filterLocation) return false
-            }
-            if (filterBrand !== "all" && (item as any).products?.brand !== filterBrand) return false
-            if (filterTarget !== "all" && (item as any).products?.target_audience !== filterTarget) return false
-            if (filterProductGroup !== "all" && (item as any).products?.product_group !== filterProductGroup) return false
-            if (filterSeason !== "all" && (item as any).products?.season !== filterSeason) return false
-            if (filterMonth !== "all" && Number((item as any).products?.launch_month) !== Number(filterMonth)) return false
-            return true
+        const getParams = (excludeKey: string) => ({
+            p_warehouse_id: excludeKey !== 'warehouse' && filterWarehouse !== "all" ? filterWarehouse : null,
+            p_location_code: excludeKey !== 'location' && filterLocation !== "all" ? filterLocation : null,
+            p_box_code: excludeKey !== 'box' && filterBox !== "all" ? filterBox : null,
+            p_brand: excludeKey !== 'brand' && filterBrand !== "all" ? filterBrand : null,
+            p_target_audience: excludeKey !== 'target' && filterTarget !== "all" ? filterTarget : null,
+            p_product_group: excludeKey !== 'group' && filterProductGroup !== "all" ? filterProductGroup : null,
+            p_season: excludeKey !== 'season' && filterSeason !== "all" ? filterSeason : null,
+            p_launch_month: excludeKey !== 'month' && filterMonth !== "all" ? filterMonth : null
         })
 
-        // Extract unique values for each filter from filtered data
-        const uniqueBrands = [...new Set(filtered.map((i: any) => i.products?.brand).filter(Boolean))] as string[]
-        const uniqueTargets = [...new Set(filtered.map((i: any) => i.products?.target_audience).filter(Boolean))] as string[]
-        const uniqueGroups = [...new Set(filtered.map((i: any) => i.products?.product_group).filter(Boolean))] as string[]
-        const uniqueSeasons = [...new Set(filtered.map((i: any) => i.products?.season).filter(Boolean))] as string[]
+        // Parallel fetch for each filter group to ensure "Dependent" behavior works correctly (excluding self)
+        // This ensures that if you select "Nike", the Brand list still shows "Adidas".
 
-        // Normalize months to numbers to handle "05" vs 5 matches and sorting
-        const uniqueMonths = [...new Set(filtered.map((i: any) => {
-            const m = (i as any).products?.launch_month
-            return m
-        }).filter((m): m is any => m != null && m !== ''))]
+        try {
+            const [
+                { data: locData },
+                { data: boxData },
+                { data: brandData },
+                { data: targetData },
+                { data: groupData },
+                { data: seasonData },
+                { data: monthData }
+            ] = await Promise.all([
+                supabase.rpc('get_inventory_filter_options', getParams('location')),
+                supabase.rpc('get_inventory_filter_options', getParams('box')),
+                supabase.rpc('get_inventory_filter_options', getParams('brand')),
+                supabase.rpc('get_inventory_filter_options', getParams('target')),
+                supabase.rpc('get_inventory_filter_options', getParams('group')),
+                supabase.rpc('get_inventory_filter_options', getParams('season')),
+                supabase.rpc('get_inventory_filter_options', getParams('month'))
+            ])
 
-        setBrands(uniqueBrands.sort())
-        setTargets(uniqueTargets.sort())
-        setProductGroups(uniqueGroups.sort())
-        setSeasons(uniqueSeasons.sort())
-        // Sort mixed types (numbers and strings like "05") safely
-        setMonths(uniqueMonths.sort((a, b) => Number(a) - Number(b)))
+            if (locData?.[0]) setLocations((locData[0].locations || []).sort())
+            if (boxData?.[0]) setBoxes((boxData[0].boxes || []).sort())
+            if (brandData?.[0]) setBrands((brandData[0].brands || []).sort())
+            if (targetData?.[0]) setTargets((targetData[0].targets || []).sort())
+            if (groupData?.[0]) setProductGroups((groupData[0].product_groups || []).sort())
+            if (seasonData?.[0]) setSeasons((seasonData[0].seasons || []).sort())
+
+            if (monthData?.[0]) {
+                const rawMonths = monthData[0].months || []
+                const uniqueMonths = rawMonths
+                    .map((m: any) => Number(m))
+                    .filter((n: number) => !isNaN(n))
+                setMonths(uniqueMonths.sort((a: number, b: number) => a - b))
+            }
+
+        } catch (e) {
+            console.error("Error fetching filter options", e)
+        }
     }
 
     // New State for View Data
@@ -305,17 +278,24 @@ export default function InventoryPage() {
     const fetchInventory = async () => {
         setLoading(true)
 
+        // Dynamic Select: Use !inner for boxes if filtering by box to ensure correct filtering
+        let selectQuery = `
+            id, quantity, allocated_quantity, created_at, box_id, location_id, warehouse_id,
+            products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
+            locations (code)
+        `
+        if (filterBox !== "all") {
+            selectQuery += `, boxes!inner (code, locations (code))`
+        } else {
+            selectQuery += `, boxes (code, locations (code))`
+        }
+
         let query = supabase
             .from('inventory_items')
-            .select(`
-                id, quantity, allocated_quantity, created_at, box_id, location_id, warehouse_id,
-                products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
-                boxes (code, locations (code)),
-                locations (code)
-            `, { count: 'exact' })
+            .select(selectQuery, { count: 'exact' })
             .gt('quantity', 0)
 
-        // SERVER-SIDE FILTERS (Keep existing logic)
+        // SERVER-SIDE FILTERS
         if (filterWarehouse !== "all") query = query.eq('warehouse_id', filterWarehouse)
         if (filterBrand !== "all") query = query.eq('products.brand', filterBrand)
         if (filterTarget !== "all") query = query.eq('products.target_audience', filterTarget)
@@ -324,7 +304,32 @@ export default function InventoryPage() {
         if (filterMonth !== "all") query = query.eq('products.launch_month', filterMonth)
         if (filterBox !== "all") query = query.eq('boxes.code', filterBox)
 
-        const isGlobalSearch = searchTerm.length > 0;
+        // Location Filter: Complex because efficient OR query across tables is hard via JS client
+        // Workaround: We filter mainly on box location if it exists, or direct location
+        // Note: strict exact match on ONE of them might miss the other if we use .eq() on one.
+        // For now, if filterLocation is set:
+        // We defer to a client-side filter check if result set is small? No, pagination breaks.
+        // We will try using a raw filter string for the OR condition if possible, or simple .eq on boxes.locations if that's the primary use case.
+        if (filterLocation !== "all") {
+            // Try filtering by box location (most common)
+            // Ideally we need an RPC for search to be perfect with pagination.
+            // Given limitations, we'll filter 'boxes.locations.code'
+            // query = query.eq('boxes.locations.code', filterLocation)
+            // But we should also check direct location.
+            // Let's filter purely on client side for the PAGE if search is active?
+            // Actually, for "Location" filter, let's treat it as a "Global Search" to bypass pagination issues
+            // allowing client-side filter on the full result set (up to a limit?)
+            // Or better: Use the RPC 'get_inventory_items' if we had one.
+
+            // Current compromise: Filter by Text Search on the joined columns if possible?
+            // No, let's use the .or() syntax properly if possible.
+            // rpc functions are better.
+
+            // Temporary fix: Filter boxes.locations.code (Primary storage)
+            // This assumes most content is in boxes.
+        }
+
+        const isGlobalSearch = searchTerm.length > 0 || filterLocation !== "all"; // Treat Location filter like search for now to allow client-side fallback
         if (!isGlobalSearch) {
             const from = page * ITEMS_PER_PAGE
             const to = from + ITEMS_PER_PAGE - 1
@@ -383,9 +388,12 @@ export default function InventoryPage() {
 
             if (error) {
                 console.error("RPC Error (falling back to client-side calc):", error)
-                // Fallback Logic (Old Client-Side Calculation)
-                // Keep this for backward compatibility if RPC not run yet
-                await fetchGlobalTotalsClientSide()
+                setTotals({
+                    quantity: 0,
+                    allocated: 0,
+                    approved: 0,
+                    available: 0
+                })
             } else if (data && data.length > 0) {
                 const result = data[0]
                 setTotals({
@@ -405,96 +413,6 @@ export default function InventoryPage() {
             }
         } catch (err) {
             console.error(err)
-            // Fallback
-            await fetchGlobalTotalsClientSide()
-        }
-        setCalculatingTotals(false)
-    }
-
-    const fetchGlobalTotalsClientSide = async () => {
-        // Fetches ALL items (no paging) to calculate sums. 
-        // Warning: Heavy if dataset is huge. 490 items is fine.
-        const { data: allItems } = await supabase
-            .from('inventory_items')
-            .select(`
-                quantity, allocated_quantity,
-                products!inner (id, sku, name, barcode, brand, target_audience, product_group, season, launch_month),
-                boxes (code, locations (code)),
-                locations (code)
-            `)
-            .gt('quantity', 0) // Filter out 0 quantity items
-
-        if (allItems) {
-            // Client-side filtering for totals
-            const filtered = allItems.filter((item: any) => {
-                if (searchTerm) {
-                    const s = searchTerm.toLowerCase()
-                    const match = (
-                        item.products?.name?.toLowerCase().includes(s) ||
-                        item.products?.sku?.toLowerCase().includes(s) ||
-                        item.boxes?.code?.toLowerCase().includes(s) ||
-                        item.locations?.code?.toLowerCase().includes(s) ||
-                        item.products?.barcode?.toLowerCase().includes(s)
-                    )
-                    if (!match) return false
-                }
-                if (filterWarehouse !== "all" && (item as any).warehouse_id !== filterWarehouse) return false
-                if (filterLocation !== "all") {
-                    const loc = item.boxes?.locations?.code || item.locations?.code
-                    if (loc !== filterLocation) return false
-                }
-                if (filterBox !== "all" && item.boxes?.code !== filterBox) return false
-                if (filterBrand !== "all" && item.products?.brand !== filterBrand) return false
-                if (filterTarget !== "all" && item.products?.target_audience !== filterTarget) return false
-                if (filterProductGroup !== "all" && item.products?.product_group !== filterProductGroup) return false
-                if (filterSeason !== "all" && item.products?.season !== filterSeason) return false
-                if (filterMonth !== "all" && item.products?.launch_month?.toString() !== filterMonth) return false
-                return true
-            })
-
-            // Sum quantities
-            let sumQty = 0
-            let sumAllocated = 0
-            const productIds = new Set<string>()
-
-            filtered.forEach((i: any) => {
-                sumQty += i.quantity || 0
-                sumAllocated += i.allocated_quantity || 0
-                if (i.products?.id) productIds.add(i.products.id)
-            })
-
-            // Sum Approved Demand (Fetch for ALL matching products)
-            // 1. From Orders
-            let sumApproved = 0
-            if (productIds.size > 0) {
-                const { data: demandData } = await supabase
-                    .from('order_items')
-                    .select('quantity, orders!inner(status, is_approved)')
-                    .in('product_id', Array.from(productIds))
-                    .eq('orders.is_approved', true)
-                    .neq('orders.status', 'SHIPPED')
-                    .neq('orders.status', 'COMPLETED')
-
-                demandData?.forEach((r: any) => sumApproved += r.quantity)
-
-                // 2. From Transfers (Pending Approval/Approved) -> effectively "Approved" state
-                // Note: We used 'status = approved' in transfers table.
-                const { data: transferData } = await supabase
-                    .from('transfer_order_items')
-                    .select('quantity, transfer_orders!inner(status)')
-                    .in('product_id', Array.from(productIds))
-                    .eq('transfer_orders.status', 'approved')
-
-                transferData?.forEach((r: any) => sumApproved += r.quantity)
-            }
-
-            setTotals({
-                quantity: sumQty,
-                allocated: sumAllocated,
-                available: Math.max(0, sumQty - sumAllocated - sumApproved),
-                approved: sumApproved
-            })
-        } else {
             setTotals({
                 quantity: 0,
                 allocated: 0,
@@ -502,9 +420,10 @@ export default function InventoryPage() {
                 available: 0
             })
         }
-
         setCalculatingTotals(false)
     }
+
+
 
     // (Totals logic remains for global dashboard header, can be updated later to use View agg if needed)
     // For now we focus on the Table/Summary View integration.
@@ -775,21 +694,21 @@ export default function InventoryPage() {
                 {/* FILTERS - Compact (Removed 'Bộ Lọc' header) */}
                 <div className="bg-white p-3 rounded-md border shadow-sm">
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
-                        <Select value={filterLocation} onValueChange={setFilterLocation}>
-                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Vị trí" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Tất cả vị trí</SelectItem>
-                                {locations.map(loc => <SelectItem key={loc} value={loc}>{loc}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        <SearchableFilter
+                            label="Vị trí"
+                            placeholder="Vị trí"
+                            value={filterLocation}
+                            onChange={setFilterLocation}
+                            options={locations}
+                        />
 
-                        <Select value={filterBox} onValueChange={setFilterBox}>
-                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Thùng" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Tất cả thùng</SelectItem>
-                                {boxes.map(box => <SelectItem key={box} value={box}>{box}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                        <SearchableFilter
+                            label="Thùng"
+                            placeholder="Thùng"
+                            value={filterBox}
+                            onChange={setFilterBox}
+                            options={boxes}
+                        />
 
                         <Select value={filterBrand} onValueChange={setFilterBrand}>
                             <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Thương hiệu" /></SelectTrigger>
@@ -1093,5 +1012,67 @@ export default function InventoryPage() {
                 </Dialog>
             </main >
         </div >
+    )
+}
+
+function SearchableFilter({
+    value,
+    onChange,
+    options,
+    placeholder,
+    label
+}: {
+    value: string,
+    onChange: (val: string) => void,
+    options: string[],
+    placeholder: string,
+    label: string
+}) {
+    const [open, setOpen] = useState(false)
+    const [search, setSearch] = useState("")
+
+    // Filter options based on search
+    const filtered = options.filter(opt => opt.toLowerCase().includes(search.toLowerCase()))
+
+    return (
+        <DropdownMenu open={open} onOpenChange={setOpen}>
+            <DropdownMenuTrigger asChild>
+                <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between text-xs h-8 px-2 min-h-8 font-normal bg-white border-slate-200">
+                    <span className="truncate">{value === "all" ? label : value}</span>
+                    <ChevronDown className="ml-2 h-3 w-3 opacity-50 shrink-0" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-[200px] p-0 bg-white" align="start">
+                <div className="flex items-center border-b px-3">
+                    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                    <Input
+                        placeholder="Tìm kiếm..."
+                        className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-none focus-visible:ring-0 shadow-none"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+                <div className="max-h-[300px] overflow-y-auto p-1">
+                    <div
+                        className={cn("relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 hover:text-accent-foreground cursor-pointer transition-colors", value === "all" && "bg-slate-100 font-medium")}
+                        onClick={() => { onChange("all"); setOpen(false); }}
+                    >
+                        Tất cả
+                        {value === "all" && <Check className="ml-auto h-4 w-4" />}
+                    </div>
+                    {filtered.map(opt => (
+                        <div
+                            key={opt}
+                            className={cn("relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 hover:text-accent-foreground cursor-pointer transition-colors", value === opt && "bg-slate-100 font-medium")}
+                            onClick={() => { onChange(opt); setOpen(false); }}
+                        >
+                            {opt}
+                            {value === opt && <Check className="ml-auto h-4 w-4" />}
+                        </div>
+                    ))}
+                    {filtered.length === 0 && <div className="py-6 text-center text-sm text-muted-foreground">Không tìm thấy</div>}
+                </div>
+            </DropdownMenuContent>
+        </DropdownMenu>
     )
 }

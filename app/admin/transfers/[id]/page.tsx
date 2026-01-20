@@ -60,6 +60,7 @@ interface PickingJob {
     status: string
     type: string
     created_at: string
+    picking_tasks?: any[]
 }
 
 export default function TransferDetailPage() {
@@ -289,9 +290,7 @@ export default function TransferDetailPage() {
 
     const executeApprove = async () => {
         setApproveDialogOpen(false)
-        console.log("Approved Confirmed via Dialog")
 
-        console.log("Confirmed. Sending Request...")
         setLoading(true)
         try {
             const res = await fetch('/api/transfers/approve', {
@@ -303,9 +302,7 @@ export default function TransferDetailPage() {
                 })
             })
 
-            console.log("Response Status:", res.status)
-            const json = await res.json()
-            console.log("Response JSON:", json)
+
 
             if (!res.ok) throw new Error(json.error || 'Approve failed')
 
@@ -322,7 +319,7 @@ export default function TransferDetailPage() {
     const confirmApprove = async () => {
         setApproveDialogOpen(false)
         setLoading(true)
-        console.log("Starting approval process...")
+        setLoading(true)
 
         try {
             // 1. Calculate items with SKU
@@ -366,6 +363,7 @@ export default function TransferDetailPage() {
 
     const canEdit = transfer.status === 'pending'
     const canApprove = transfer.status === 'pending' && items.length > 0
+    // @ts-ignore
     const canAllocate = (transfer.status === 'pending' || transfer.status === 'approved') && items.length > 0 && transfer.status !== 'allocated'
 
     return (

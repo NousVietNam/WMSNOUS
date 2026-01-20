@@ -212,9 +212,9 @@ function PutAwayContent() {
             .eq('box_id', data.id)
             .gt('quantity', 0)
 
-        console.log('📦 Existing items raw data:', JSON.stringify(currentInv, null, 2))
+
         if (invError) {
-            console.error('❌ Error fetching existing items:', invError)
+
             alert(`Lỗi khi tải hàng có sẵn: ${invError.message}`)
         }
 
@@ -255,7 +255,7 @@ function PutAwayContent() {
             product = fetched
         }
 
-        console.log('🔍 Product being added:', product)
+
 
         if (!product) {
             playErrorSound()
@@ -291,7 +291,7 @@ function PutAwayContent() {
             return
         }
 
-        console.log('✅ Adding product to list:', { id: product.id, sku: product.sku, name: product.name })
+
 
         // Update preview just in case
         setScannedProduct({ id: product.id, name: product.name, sku: product.sku, barcode: product.barcode })
@@ -331,21 +331,21 @@ function PutAwayContent() {
 
     // Step 3: Save All
     const handleSaveBox = async () => {
-        console.log('🔵 handleSaveBox STARTED', { itemsCount: items.length, items, session: session?.user?.id })
+
 
         if (items.length === 0) {
-            console.log('❌ Exiting: No items')
+
             return
         }
 
         const confirmResult = confirm("Xác nhận lưu các mặt hàng này vào thùng?")
-        console.log('🤔 Confirm result:', confirmResult)
+
         if (!confirmResult) {
-            console.log('❌ User cancelled')
+
             return
         }
 
-        console.log('✅ Proceeding with save...')
+
         setLoading(true)
 
         try {
@@ -375,12 +375,7 @@ function PutAwayContent() {
             }))
 
 
-            console.log('📝 Inserting transactions:', {
-                count: transactions.length,
-                user_id: session?.user?.id,
-                user_email: session?.user?.email,
-                sample: transactions[0]
-            })
+
 
             const { data: txData, error: txError } = await supabase.from('transactions').insert(transactions).select()
 
@@ -390,7 +385,7 @@ function PutAwayContent() {
                 throw txError
             }
 
-            console.log('✅ Transactions saved:', txData?.length || 0)
+
 
 
             // Show Recap

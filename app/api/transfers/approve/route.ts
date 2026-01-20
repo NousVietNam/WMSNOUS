@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
         }
 
         // 4. Update Order Status
-        const { error: updateError, data: updatedOrder } = await supabaseAdmin
+        const { error: updateError } = await supabaseAdmin
             .from('transfer_orders')
             .update({
                 status: 'approved',
@@ -153,9 +153,9 @@ export async function POST(req: NextRequest) {
                 updated_at: new Date().toISOString()
             })
             .eq('id', transferId)
-            .select()
 
-        console.log("Update Status Result:", { success: !updateError, error: updateError, data: updatedOrder })
+
+
 
         if (updateError) throw updateError
 

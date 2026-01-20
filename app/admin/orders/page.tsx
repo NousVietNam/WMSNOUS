@@ -250,22 +250,7 @@ export default function OrdersPage() {
                         <Button variant="outline" onClick={handleDownloadTemplate}>
                             <Download className="mr-2 h-4 w-4" /> Tải Mẫu
                         </Button>
-                        <Button
-                            variant="secondary"
-                            onClick={async () => {
-                                if (!confirm("Tạo bộ dữ liệu test (9 đơn: 3 Đủ, 3 Thiếu, 3 Hết)?")) return;
-                                const res = await fetch('/api/seed-orders', { method: 'POST' });
-                                const data = await res.json();
-                                if (data.success) {
-                                    alert(data.message);
-                                    fetchOrders();
-                                } else {
-                                    alert("Lỗi: " + data.error);
-                                }
-                            }}
-                        >
-                            ⚡ Tạo Bộ Đơn Test
-                        </Button>
+
                     </div>
 
                     {/* Assign Dialog */}
