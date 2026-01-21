@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase"
 import { AlertCircle, FileText, Plus, Upload, Eye, ShieldCheck, Download, Trash2 } from "lucide-react"
 import Link from "next/link"
 import Papa from "papaparse"
+import { toast } from "sonner"
 
 export default function OrdersPage() {
     const [orders, setOrders] = useState<any[]>([])
@@ -115,8 +116,34 @@ export default function OrdersPage() {
         if (json.success) {
             // alert("Đã xóa đơn hàng thành công")
             fetchOrders()
+            toast.success("Đã xóa đơn hàng thành công")
         } else {
             alert("Lỗi xóa đơn: " + json.error)
+        }
+    }
+
+    const handleShip = async (order: any) => {
+        if (!confirm(`Xác nhận XUẤT HÀNG cho đơn ${order.code}?`)) return
+
+        setLoading(true)
+        try {
+            const res = await fetch('/api/orders/ship', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderId: order.id })
+            })
+            const json = await res.json()
+
+            if (json.success) {
+                toast.success(json.message)
+                fetchOrders()
+            } else {
+                alert("Lỗi xuất hàng: " + json.error)
+            }
+        } catch (e: any) {
+            alert("Lỗi kết nối: " + e.message)
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -362,6 +389,17 @@ export default function OrdersPage() {
                                                 <Eye className="h-4 w-4 mr-1" /> Chi tiết
                                             </Button>
                                         </Link>
+                                        {/* SHIP BUTTON */}
+                                        {order.status === 'PACKED' && (
+                                            <Button
+                                                size="sm"
+                                                className="bg-slate-800 hover:bg-slate-900 text-white"
+                                                onClick={() => handleShip(order)}
+                                                title="Xuất Hàng (Tạo phiếu xuất & Trừ kho)"
+                                            >
+                                                <Upload className="h-4 w-4 mr-1" /> Xuất Hàng
+                                            </Button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}

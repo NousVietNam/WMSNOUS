@@ -45,18 +45,17 @@ export async function POST(req: NextRequest) {
         const transactions: any[] = []
 
         // 2. Process each line
-        items.forEach((line, index) => {
-            const rowNum = index + 2 // Header is 1
-            const { boxCode, sku, quantity } = line
-
-            // 2a. Lookup box ... (We need to await in loop, so forEach is bad for async. Use for loop)
-        })
-
-        // Re-write loop with index
         for (let i = 0; i < items.length; i++) {
             const line = items[i]
             const rowNum = i + 2
-            const { boxCode, sku, quantity } = line
+            const boxCode = line.boxCode?.trim()
+            const sku = line.sku?.trim()
+            const quantity = line.quantity
+
+            if (!boxCode || !sku) {
+                errors.push(`Dòng ${rowNum}: Thiếu mã thùng hoặc SKU`)
+                continue
+            }
 
             // 2a. Lookup box
             const { data: box } = await supabaseAdmin
@@ -83,48 +82,61 @@ export async function POST(req: NextRequest) {
             }
 
             // Check availability
-            const { data: invItem } = await supabaseAdmin
+            const { data: invItems } = await supabaseAdmin
                 .from('inventory_items')
-                .select('id, product_id, quantity, allocated_quantity')
+                .select('id, product_id, quantity, allocated_quantity, created_at')
                 .eq('box_id', box.id)
                 .eq('product_id', product.id)
-                .single()
+                .order('created_at', { ascending: true }) // FIFO preference
 
-            if (!invItem) {
+            if (!invItems || invItems.length === 0) {
                 errors.push(`Dòng ${rowNum}: Sản phẩm '${sku}' không có trong thùng '${boxCode}'`)
                 continue
             }
 
-            const available = invItem.quantity - (invItem.allocated_quantity || 0)
-            if (quantity > available) {
-                errors.push(`Dòng ${rowNum}: Không đủ tồn kho '${sku}' tại '${boxCode}' (Cần ${quantity}, Có ${available})`)
+            // Calculate total available
+            const totalAvailable = invItems.reduce((sum, item) => sum + (item.quantity - (item.allocated_quantity || 0)), 0)
+
+            if (quantity > totalAvailable) {
+                errors.push(`Dòng ${rowNum}: Không đủ tồn kho '${sku}' tại '${boxCode}' (Cần ${quantity}, Có ${totalAvailable})`)
                 continue
             }
 
-            // Create task
-            tasks.push({
-                job_id: jobId,
-                product_id: product.id,
-                box_id: box.id,
-                location_id: box.location_id,
-                inventory_item_id: invItem.id,
-                quantity: quantity,
-                status: 'PENDING'
-            })
+            // Distribute quantity across inventory items
+            let remaining = quantity
 
-            // Create transaction (Audit log for Reservation)
-            transactions.push({
-                type: 'RESERVE',
-                sku: sku,
-                quantity: quantity,
-                location_id: box.location_id || null,
-                // Note: 'location_id' might be null in DB if box not assigned? Usually assigned.
-                // But Typescript might complain if we don't handle undefined.
-                // box.location_id comes from select('location_id').
-                reference_id: jobId,
-                note: `Upload Picking Job (Allocated)`,
-                created_at: new Date().toISOString()
-            })
+            for (const invItem of invItems) {
+                if (remaining <= 0) break
+
+                const available = invItem.quantity - (invItem.allocated_quantity || 0)
+                if (available <= 0) continue
+
+                const take = Math.min(remaining, available)
+
+                // Create task for this portion
+                tasks.push({
+                    job_id: jobId,
+                    product_id: product.id,
+                    box_id: box.id,
+                    location_id: box.location_id,
+                    inventory_item_id: invItem.id,
+                    quantity: take,
+                    status: 'PENDING'
+                })
+
+                // Create transaction
+                transactions.push({
+                    type: 'RESERVE',
+                    sku: sku,
+                    quantity: take,
+                    location_id: box.location_id || null,
+                    reference_id: jobId,
+                    note: `Upload Picking Job (Allocated)`,
+                    created_at: new Date().toISOString()
+                })
+
+                remaining -= take
+            }
 
             // REMOVED MANUAL ALLOC UPDATE
         }

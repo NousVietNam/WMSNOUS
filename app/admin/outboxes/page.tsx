@@ -29,7 +29,12 @@ export default function OutboxPage() {
 
     // Filters
     const [searchCode, setSearchCode] = useState("")
-    const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0])
+    const [fromDate, setFromDate] = useState(() => {
+        const d = new Date()
+        d.setDate(d.getDate() - 30)
+        return d.toISOString().split('T')[0]
+    })
+    const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0])
     const [filterOrder, setFilterOrder] = useState("")
 
     // Selection
@@ -49,14 +54,11 @@ export default function OutboxPage() {
             .from('boxes')
             .select('*, orders (code), inventory_items (quantity)')
             .eq('type', 'OUTBOX')
-            .order('code', { ascending: true })
+            .order('created_at', { ascending: false }) // Sort by new
+            .gte('created_at', fromDate + 'T00:00:00')
+            .lte('created_at', toDate + 'T23:59:59')
 
         if (searchCode) query = query.ilike('code', `%${searchCode}%`)
-        if (filterDate) {
-            const [y, m, d] = filterDate.split('-')
-            const dateStr = `${d}${m}${y.slice(-2)}`
-            query = query.ilike('code', `%${dateStr}%`)
-        }
 
         const { data, error } = await query
         if (error) alert(error.message)
@@ -68,7 +70,7 @@ export default function OutboxPage() {
         setLoading(false)
     }
 
-    useEffect(() => { fetchOutboxes() }, [filterDate])
+    useEffect(() => { fetchOutboxes() }, [fromDate, toDate])
 
     const handleCreate = async () => {
         try {
@@ -236,8 +238,16 @@ export default function OutboxPage() {
 
                 {/* Filter UI */}
                 <div className="bg-white p-4 rounded-lg border flex flex-col md:flex-row gap-4 items-end">
-                    <Input type="date" value={filterDate} onChange={e => setFilterDate(e.target.value)} className="w-[150px]" />
+                    <div className="flex gap-2 items-center">
+                        <Label>Từ:</Label>
+                        <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="w-[140px]" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                        <Label>Đến:</Label>
+                        <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} className="w-[140px]" />
+                    </div>
                     <Input placeholder="Mã thùng..." value={searchCode} onChange={e => setSearchCode(e.target.value)} className="flex-1" />
+                    <Input placeholder="Mã đơn hàng..." value={filterOrder} onChange={e => setFilterOrder(e.target.value)} className="w-[200px]" />
                     <Button onClick={fetchOutboxes}><RefreshCw className="h-4 w-4" /></Button>
                 </div>
 

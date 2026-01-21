@@ -12,15 +12,75 @@ export default function ShipPage() {
     const router = useRouter()
     const [code, setCode] = useState("")
     const [loading, setLoading] = useState(false)
+
+    // Modes: 'INPUT' | 'SINGLE_BOX' | 'ORDER_VERIFY'
+    const [mode, setMode] = useState<'INPUT' | 'SINGLE_BOX' | 'ORDER_VERIFY'>('INPUT')
+
+    // Single Box Data
     const [boxInfo, setBoxInfo] = useState<any>(null)
+
+    // Order Data
+    const [orderInfo, setOrderInfo] = useState<any>(null)
+    const [linkedBoxes, setLinkedBoxes] = useState<any[]>([])
+    const [verifiedBoxIds, setVerifiedBoxIds] = useState<Set<string>>(new Set())
+
     const [verifying, setVerifying] = useState(false)
 
     const handleScan = async (scannedCode: string) => {
         if (!scannedCode) return
+        const cleanCode = scannedCode.toUpperCase().trim()
+
+        // If in Verify Mode, only handle Box Scans
+        if (mode === 'ORDER_VERIFY') {
+            const box = linkedBoxes.find(b => b.code === cleanCode)
+            if (box) {
+                setVerifiedBoxIds(prev => {
+                    const next = new Set(prev)
+                    next.add(box.id)
+                    return next
+                })
+                toast.success("Đã kiểm tra thùng: " + cleanCode)
+                setCode("") // Clear input for next scan
+            } else {
+                toast.error(`Thùng ${cleanCode} không thuộc đơn hàng này!`)
+            }
+            return
+        }
+
         setVerifying(true)
         setBoxInfo(null)
+        setOrderInfo(null)
+
         try {
-            // Find box and its linked order/transfer
+            // 1. Try Find Order
+            const { data: order } = await supabase
+                .from('orders')
+                .select('id, code, customer_name, status')
+                .eq('code', cleanCode)
+                .single()
+
+            if (order) {
+                // Found Order -> Switch to Verify Mode
+                const { data: boxes } = await supabase
+                    .from('boxes')
+                    .select('id, code, type, status, location_id')
+                    .eq('order_id', order.id)
+
+                if (!boxes || boxes.length === 0) {
+                    toast.error("Đơn hàng này chưa có thùng nào được đóng gói!")
+                    return
+                }
+
+                setOrderInfo(order)
+                setLinkedBoxes(boxes)
+                setVerifiedBoxIds(new Set())
+                setMode('ORDER_VERIFY')
+                setCode("") // Clear for box scanning
+                toast.success(`Đã quét Đơn hàng ${order.code}. Hãy quét các thùng để kiểm tra.`)
+                return
+            }
+
+            // 2. Try Find Box (Legacy)
             const { data: box, error } = await supabase
                 .from('boxes')
                 .select(`
@@ -29,11 +89,11 @@ export default function ShipPage() {
                     transfer_orders (id, code, destinations (name), status),
                     inventory_items!inventory_items_box_id_fkey (count)
                 `)
-                .eq('code', scannedCode.toUpperCase())
+                .eq('code', cleanCode)
                 .single()
 
             if (error || !box) {
-                toast.error("Không tìm thấy mã thùng này")
+                toast.error("Không tìm thấy mã (Đơn hàng hoặc Thùng)")
                 return
             }
 
@@ -44,11 +104,10 @@ export default function ShipPage() {
                 return
             }
 
-            setBoxInfo({
-                ...box,
-                itemCount
-            })
-            setCode(scannedCode.toUpperCase())
+            setBoxInfo({ ...box, itemCount })
+            setMode('SINGLE_BOX')
+            setCode(cleanCode)
+
         } catch (e) {
             toast.error("Lỗi kiểm tra mã")
         } finally {
@@ -57,29 +116,57 @@ export default function ShipPage() {
     }
 
     const handleConfirmShip = async () => {
-        if (!boxInfo) return
-
         setLoading(true)
         try {
-            const res = await fetch('/api/ship', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: boxInfo.code })
-            })
-            const json = await res.json()
+            if (mode === 'ORDER_VERIFY') {
+                if (verifiedBoxIds.size < linkedBoxes.length) {
+                    if (!window.confirm(`Mới kiểm tra ${verifiedBoxIds.size}/${linkedBoxes.length} thùng. Bạn có chắc chắn muốn xuất không?`)) {
+                        setLoading(false)
+                        return
+                    }
+                }
 
-            if (json.success) {
-                toast.success(`Đã xuất kho thành công thùng ${boxInfo.code}!`)
-                setCode("")
-                setBoxInfo(null)
-            } else {
-                toast.error("Lỗi: " + json.error)
+                const res = await fetch('/api/orders/ship', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId: orderInfo.id })
+                })
+                const json = await res.json()
+                if (json.success) {
+                    toast.success(json.message)
+                    reset()
+                } else {
+                    toast.error(json.error)
+                }
+
+            } else if (mode === 'SINGLE_BOX') {
+                const res = await fetch('/api/ship', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: boxInfo.code })
+                })
+                const json = await res.json()
+                if (json.success) {
+                    toast.success(`Đã xuất kho thành công thùng ${boxInfo.code}!`)
+                    reset()
+                } else {
+                    toast.error("Lỗi: " + json.error)
+                }
             }
         } catch (e) {
             toast.error("Lỗi kết nối máy chủ")
         } finally {
             setLoading(false)
         }
+    }
+
+    const reset = () => {
+        setMode('INPUT')
+        setBoxInfo(null)
+        setOrderInfo(null)
+        setLinkedBoxes([])
+        setVerifiedBoxIds(new Set())
+        setCode("")
     }
 
     const linkedDoc = boxInfo?.orders || boxInfo?.transfer_orders
@@ -94,27 +181,83 @@ export default function ShipPage() {
                 <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 space-y-4">
                     <div className="flex items-center gap-3 text-slate-800 mb-2">
                         <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
-                            <Package className="h-6 w-6" />
+                            {mode === 'ORDER_VERIFY' ? <CheckCircle2 className="h-6 w-6" /> : <Package className="h-6 w-6" />}
                         </div>
-                        <div className="font-bold text-lg">Quét Thùng Xuất Hàng</div>
+                        <div className="font-bold text-lg">
+                            {mode === 'ORDER_VERIFY' ? 'Kiểm Tra Thùng' : 'Quét Mã (Đơn/Thùng)'}
+                        </div>
                     </div>
 
                     <MobileScannerInput
                         autoFocus
-                        placeholder="Quét mã Thùng (BOX hoặc OUT)"
+                        placeholder={mode === 'ORDER_VERIFY' ? "Quét thùng..." : "Quét mã Đơn hoặc Mã Thùng"}
                         value={code}
                         onChange={(val) => {
                             setCode(val)
-                            if (val.length >= 8) handleScan(val)
+                            // Auto submit rules
+                            if (mode === 'ORDER_VERIFY') {
+                                // Box codes usually long? Or standard?
+                                // Let's rely on Enter or sufficient length
+                                if (val.length >= 8) handleScan(val)
+                            } else {
+                                if (val.length >= 6) handleScan(val)
+                            }
                         }}
                         onEnter={() => handleScan(code)}
-                        className="h-16 text-xl text-center font-black uppercase tracking-widest border-2 border-indigo-100 focus:border-indigo-500 rounded-xl"
+                        className={`h-16 text-xl text-center font-black uppercase tracking-widest border-2 rounded-xl focus:border-indigo-500 ${mode === 'ORDER_VERIFY' ? 'border-green-200 bg-green-50 text-green-800' : 'border-indigo-100'}`}
                     />
 
-                    {verifying && <div className="text-center text-sm text-slate-400 animate-pulse font-bold italic">Đang kiểm tra mã...</div>}
+                    {verifying && <div className="text-center text-sm text-slate-400 animate-pulse font-bold italic">Đang kiểm tra...</div>}
                 </div>
 
-                {boxInfo && (
+                {/* ORDER VERIFY VIEW */}
+                {mode === 'ORDER_VERIFY' && orderInfo && (
+                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 space-y-4">
+                        <div className="bg-white rounded-2xl p-4 shadow-sm border border-indigo-100">
+                            <div className="text-xs font-bold text-slate-400 uppercase">Đơn hàng</div>
+                            <div className="text-2xl font-black text-indigo-700">{orderInfo.code}</div>
+                            <div className="text-sm font-bold text-slate-600 truncate">{orderInfo.customer_name}</div>
+
+                            <div className="mt-4 flex justify-between items-center bg-slate-50 p-3 rounded-xl">
+                                <span className="text-sm font-bold text-slate-500">Tiến độ</span>
+                                <span className={`text-lg font-black ${verifiedBoxIds.size === linkedBoxes.length ? 'text-green-600' : 'text-orange-500'}`}>
+                                    {verifiedBoxIds.size} / {linkedBoxes.length} thùng
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            {linkedBoxes.map(box => {
+                                const isVerified = verifiedBoxIds.has(box.id)
+                                return (
+                                    <div key={box.id} className={`p-4 rounded-xl border-2 flex justify-between items-center transition-all ${isVerified ? 'bg-green-50 border-green-500' : 'bg-white border-slate-100'}`}>
+                                        <div>
+                                            <div className={`font-black text-lg ${isVerified ? 'text-green-700' : 'text-slate-700'}`}>{box.code}</div>
+                                            <div className="text-[10px] uppercase font-bold text-slate-400">{box.type}</div>
+                                        </div>
+                                        {isVerified ? <CheckCircle2 className="h-6 w-6 text-green-600" /> : <div className="h-6 w-6 rounded-full border-2 border-slate-200" />}
+                                    </div>
+                                )
+                            })}
+                        </div>
+
+                        <button
+                            onClick={handleConfirmShip}
+                            disabled={loading}
+                            className={`w-full h-16 text-white font-black text-xl rounded-xl shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 border-b-4 mt-4
+                                ${verifiedBoxIds.size === linkedBoxes.length ? 'bg-indigo-600 border-indigo-800' : 'bg-slate-600 border-slate-800 opacity-90'}`}
+                        >
+                            <Truck className="h-6 w-6" />
+                            {loading ? 'ĐANG XỬ LÝ...' : verifiedBoxIds.size < linkedBoxes.length ? 'XUẤT (THIẾU KIỂM TRA)' : 'XÁC NHẬN XUẤT KHO'}
+                        </button>
+
+                        <button onClick={reset} className="w-full py-3 text-slate-400 font-bold text-sm">Hủy bỏ / Quét lại</button>
+                    </div>
+                )}
+
+
+                {/* SINGLE BOX VIEW (Legacy) */}
+                {mode === 'SINGLE_BOX' && boxInfo && (
                     <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
                         <div className="bg-white rounded-2xl shadow-lg border-2 border-green-500 overflow-hidden">
                             <div className="bg-green-500 p-4 text-white flex justify-between items-center">
@@ -155,17 +298,11 @@ export default function ShipPage() {
                                 >
                                     {loading ? 'ĐANG XỬ LÝ...' : <>BỐC LÊN XE & XUẤT KHO</>}
                                 </button>
+                                <button onClick={reset} className="w-full py-3 text-slate-400 font-bold text-sm">Quét mã khác</button>
                             </div>
                         </div>
                     </div>
                 )}
-
-                <div className="bg-amber-50 p-4 rounded-xl text-xs text-amber-800 border border-amber-100 flex gap-3 shadow-sm">
-                    <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
-                    <div>
-                        <b>Lưu ý dành cho nhân viên:</b> Chỉ xuất hàng khi đã chuẩn bị đầy đủ chứng từ và xe tải đã sẵn sàng bốc dỡ. Hành động này sẽ trừ tồn kho của hệ thống.
-                    </div>
-                </div>
             </div>
         </div>
     )

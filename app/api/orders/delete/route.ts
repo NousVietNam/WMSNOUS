@@ -35,7 +35,7 @@ export async function POST(req: Request) {
         // Set order_id = NULL for boxes linked to this order
         const { error: boxError } = await supabaseAdmin
             .from('boxes')
-            .update({ order_id: null })
+            .update({ order_id: null, status: 'STORAGE' })
             .eq('order_id', orderId)
 
         if (boxError) throw boxError
