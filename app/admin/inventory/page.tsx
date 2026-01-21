@@ -789,10 +789,10 @@ export default function InventoryPage() {
                                     {/* Empty cells to align with columns: Sản Phẩm, Thương Hiệu, Đối Tượng, Nhóm Hàng, Mùa, Tháng */}
                                     <td></td><td></td><td></td><td></td><td></td><td></td>
                                     <td className="p-3 text-center text-slate-800 text-base">
-                                        {viewMode === 'SUMMARY' ? summaryTotals.totalQty : (calculatingTotals ? '...' : totals.quantity)}
+                                        {calculatingTotals ? '...' : totals.quantity}
                                     </td>
                                     <td className="p-3 text-center text-orange-700 text-base">
-                                        {viewMode === 'SUMMARY' ? summaryTotals.totalAllocated : (calculatingTotals ? '...' : totals.allocated)}
+                                        {calculatingTotals ? '...' : totals.allocated}
                                     </td>
                                     {viewMode === 'SUMMARY' && (
                                         <>
@@ -801,7 +801,7 @@ export default function InventoryPage() {
                                         </>
                                     )}
                                     <td className="p-3 text-center text-green-700 text-base bg-green-50 font-bold">
-                                        {viewMode === 'SUMMARY' ? summaryTotals.available : (calculatingTotals ? '...' : Math.max(0, totals.quantity - totals.allocated))}
+                                        {calculatingTotals ? '...' : totals.available}
                                     </td>
                                     <td colSpan={2}></td>
                                 </tr>
