@@ -6,8 +6,9 @@ import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { format } from "date-fns"
 import { vi } from "date-fns/locale"
-import { ArrowLeft, Package, Truck, CheckCircle, AlertCircle, Loader2 } from "lucide-react"
+import { ArrowLeft, Package, Truck, CheckCircle, AlertCircle, Loader2, FileText, Download, Pencil, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
+import * as XLSX from 'xlsx'
 
 type OutboundOrder = {
     id: string
@@ -15,12 +16,9 @@ type OutboundOrder = {
     type: 'SALE' | 'TRANSFER' | 'INTERNAL' | 'GIFT'
     transfer_type: 'ITEM' | 'BOX'
     status: string
-
-    // Approval
     is_approved: boolean
     source: string
     approved_at: string | null
-
     subtotal: number
     discount_type: string | null
     discount_value: number
@@ -83,6 +81,126 @@ export default function OutboundDetailPage() {
         setLoading(false)
     }
 
+    // Export Excel
+    const handleExportExcel = () => {
+        if (!order) return
+
+        const data = items.map(item => ({
+            'SKU': item.products?.sku || '',
+            'Tên Sản Phẩm': item.products?.name || '',
+            'SL Đặt': item.quantity,
+            'SL Đã Lấy': item.picked_quantity,
+            'Đơn Giá': item.unit_price,
+            'Thành Tiền': item.line_total,
+            'Thùng': item.boxes?.code || ''
+        }))
+
+        const ws = XLSX.utils.json_to_sheet(data)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, 'Chi Tiết Đơn')
+
+        XLSX.writeFile(wb, `${order.code}_chitiet.xlsx`)
+        toast.success('Đã xuất file Excel!')
+    }
+
+    // Export PDF (Simple printable HTML)
+    const handleExportPDF = () => {
+        if (!order) return
+
+        const destName = order.type === 'SALE' ? order.customers?.name : order.destinations?.name
+        const printContent = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <title>Phiếu Xuất Kho - ${order.code}</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+                    h1 { text-align: center; margin-bottom: 10px; }
+                    .header { display: flex; justify-content: space-between; margin-bottom: 20px; padding: 20px; background: #f5f5f5; border-radius: 8px; }
+                    .info { margin-bottom: 20px; }
+                    .info-row { display: flex; margin-bottom: 8px; }
+                    .info-label { width: 120px; font-weight: bold; color: #666; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                    th, td { border: 1px solid #ddd; padding: 12px 8px; text-align: left; }
+                    th { background: #f0f0f0; font-weight: bold; }
+                    .right { text-align: right; }
+                    .center { text-align: center; }
+                    .total-row { font-weight: bold; background: #f9f9f9; }
+                    .footer { margin-top: 40px; display: flex; justify-content: space-between; }
+                    .signature { width: 200px; text-align: center; }
+                    .signature-line { border-top: 1px solid #000; margin-top: 60px; padding-top: 8px; }
+                    @media print { body { padding: 20px; } }
+                </style>
+            </head>
+            <body>
+                <h1>PHIẾU XUẤT KHO</h1>
+                <p style="text-align: center; color: #666; margin-bottom: 30px;">Mã: <strong>${order.code}</strong></p>
+                
+                <div class="info">
+                    <div class="info-row"><div class="info-label">Loại đơn:</div><div>${order.type}</div></div>
+                    <div class="info-row"><div class="info-label">Đích đến:</div><div>${destName || 'N/A'}</div></div>
+                    <div class="info-row"><div class="info-label">Ngày tạo:</div><div>${format(new Date(order.created_at), 'dd/MM/yyyy HH:mm')}</div></div>
+                    ${order.shipped_at ? `<div class="info-row"><div class="info-label">Ngày xuất:</div><div>${format(new Date(order.shipped_at), 'dd/MM/yyyy HH:mm')}</div></div>` : ''}
+                    ${order.note ? `<div class="info-row"><div class="info-label">Ghi chú:</div><div>${order.note}</div></div>` : ''}
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>STT</th>
+                            <th>SKU</th>
+                            <th>Tên Sản Phẩm</th>
+                            <th class="center">SL</th>
+                            <th class="right">Đơn Giá</th>
+                            <th class="right">Thành Tiền</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${items.map((item, idx) => `
+                            <tr>
+                                <td class="center">${idx + 1}</td>
+                                <td>${item.products?.sku || ''}</td>
+                                <td>${item.products?.name || ''}</td>
+                                <td class="center">${item.quantity}</td>
+                                <td class="right">${new Intl.NumberFormat('vi-VN').format(item.unit_price)}đ</td>
+                                <td class="right">${new Intl.NumberFormat('vi-VN').format(item.line_total)}đ</td>
+                            </tr>
+                        `).join('')}
+                        <tr class="total-row">
+                            <td colspan="3" class="right">Tổng cộng:</td>
+                            <td class="center">${items.reduce((sum, i) => sum + i.quantity, 0)}</td>
+                            <td></td>
+                            <td class="right">${new Intl.NumberFormat('vi-VN').format(order.total)}đ</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="footer">
+                    <div class="signature">
+                        <div>Người giao</div>
+                        <div class="signature-line">(Ký, ghi rõ họ tên)</div>
+                    </div>
+                    <div class="signature">
+                        <div>Người nhận</div>
+                        <div class="signature-line">(Ký, ghi rõ họ tên)</div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `
+
+        const printWindow = window.open('', '_blank')
+        if (printWindow) {
+            printWindow.document.write(printContent)
+            printWindow.document.close()
+            printWindow.focus()
+            setTimeout(() => printWindow.print(), 250)
+        }
+        toast.success('Đã mở phiếu xuất kho!')
+    }
+
+    // Action Handlers
     const handleApprove = async () => {
         setActionLoading('approve')
         try {
@@ -92,7 +210,7 @@ export default function OutboundDetailPage() {
             })
             const data = await res.json()
             if (data.success) {
-                toast.success("Đã duyệt đơn hàng! (Đã trừ tồn kho dự kiến)")
+                toast.success("Đã duyệt đơn hàng!")
                 fetchOrder()
             } else {
                 if (data.missing) {
@@ -144,6 +262,30 @@ export default function OutboundDetailPage() {
                 fetchOrder()
             } else {
                 toast.error(data.error || "Lỗi phân bổ")
+            }
+        } catch (e) {
+            toast.error("Lỗi kết nối")
+        } finally {
+            setActionLoading(null)
+        }
+    }
+
+    // NEW: Deallocate
+    const handleDeallocate = async () => {
+        if (!confirm("Hủy phân bổ? Tồn kho sẽ được trả lại.")) return
+
+        setActionLoading('deallocate')
+        try {
+            const res = await fetch('/api/outbound/deallocate', {
+                method: 'POST',
+                body: JSON.stringify({ orderId: id })
+            })
+            const data = await res.json()
+            if (data.success) {
+                toast.success("Đã hủy phân bổ!")
+                fetchOrder()
+            } else {
+                toast.error(data.error || "Lỗi hủy phân bổ")
             }
         } catch (e) {
             toast.error("Lỗi kết nối")
@@ -204,7 +346,14 @@ export default function OutboundDetailPage() {
             'PACKED': 'bg-blue-100 text-blue-700',
             'SHIPPED': 'bg-green-100 text-green-700',
         }
-        return <span className={`px-3 py-1 text-sm font-medium rounded ${styles[status] || 'bg-gray-100'}`}>{status}</span>
+        const labels: Record<string, string> = {
+            'PENDING': 'Chờ Xử Lý',
+            'ALLOCATED': 'Đã Phân Bổ',
+            'PICKING': 'Đang Soạn',
+            'PACKED': 'Đã Đóng Gói',
+            'SHIPPED': 'Đã Xuất',
+        }
+        return <span className={`px-3 py-1 text-sm font-medium rounded ${styles[status] || 'bg-gray-100'}`}>{labels[status] || status}</span>
     }
 
     if (loading) {
@@ -219,13 +368,12 @@ export default function OutboundDetailPage() {
     const isPending = order.status === 'PENDING'
     const canApprove = isPending && !order.is_approved
     const canUnapprove = isPending && order.is_approved
-
-    // Can Allocate only if Approved
     const canAllocate = isPending && order.is_approved
-
+    const canDeallocate = order.status === 'ALLOCATED'
     const canCreateJob = order.status === 'ALLOCATED'
     const canShip = ['ALLOCATED', 'PICKING', 'PACKED'].includes(order.status)
     const isShipped = order.status === 'SHIPPED'
+    const canEdit = isPending && !order.is_approved
 
     return (
         <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -251,6 +399,35 @@ export default function OutboundDetailPage() {
                         </span>
                     </div>
                 </div>
+
+                {/* Export Buttons */}
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleExportExcel}
+                        className="h-9 px-3 border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm"
+                        title="Xuất Excel"
+                    >
+                        <Download className="h-4 w-4" />
+                        Excel
+                    </button>
+                    <button
+                        onClick={handleExportPDF}
+                        className="h-9 px-3 border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm"
+                        title="In phiếu xuất kho"
+                    >
+                        <FileText className="h-4 w-4" />
+                        PDF
+                    </button>
+                    {canEdit && (
+                        <Link
+                            href={`/admin/outbound/${id}/edit`}
+                            className="h-9 px-3 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg flex items-center gap-2 hover:bg-blue-100 text-sm"
+                        >
+                            <Pencil className="h-4 w-4" />
+                            Sửa
+                        </Link>
+                    )}
+                </div>
             </div>
 
             {/* Info Cards */}
@@ -274,6 +451,14 @@ export default function OutboundDetailPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Note */}
+            {order.note && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="text-xs text-yellow-700 uppercase mb-1 font-medium">Ghi chú</div>
+                    <div className="text-sm text-yellow-800">{order.note}</div>
+                </div>
+            )}
 
             {/* Items */}
             <div className="bg-white rounded-lg border overflow-hidden">
@@ -377,6 +562,16 @@ export default function OutboundDetailPage() {
                                 Phân Bổ Tồn Kho
                             </button>
                         )}
+                        {canDeallocate && (
+                            <button
+                                onClick={handleDeallocate}
+                                disabled={actionLoading === 'deallocate'}
+                                className="h-12 px-6 bg-white border border-orange-200 text-orange-600 font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-orange-50 disabled:opacity-50"
+                            >
+                                {actionLoading === 'deallocate' ? <Loader2 className="h-5 w-5 animate-spin" /> : <RotateCcw className="h-5 w-5" />}
+                                Hủy Phân Bổ
+                            </button>
+                        )}
                         {canCreateJob && (
                             <button
                                 onClick={handleCreateJob}
@@ -400,7 +595,6 @@ export default function OutboundDetailPage() {
                     </div>
                 </div>
             )}
-
 
             {isShipped && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
