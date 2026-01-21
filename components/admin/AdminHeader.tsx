@@ -28,6 +28,7 @@ export function AdminHeader() {
         { href: "/admin/picking-jobs", icon: Package, label: "Jobs" },
         { href: "/admin/history", icon: History, label: "Lịch Sử" },
         { href: "/admin/bulk-print", icon: Printer, label: "In Lô" },
+        { href: "/admin/customers", icon: User, label: "Khách Hàng" },
         { href: "/admin/destinations", icon: MapPin, label: "Đối Tác" },
         { href: "/admin/users", icon: User, label: "Users" },
     ]
