@@ -115,7 +115,7 @@ export default function BoxesPage() {
                 *, 
                 locations(code), 
                 inventory_items(quantity),
-                outbound_order_box_items(id, outbound_orders(id, code, status))
+                outbound_orders(id, code, status)
             `)
             .eq('type', 'STORAGE')
             .order('created_at', { ascending: false })
@@ -123,14 +123,15 @@ export default function BoxesPage() {
 
         if (!error && data) {
             const mapped = data.map((b: any) => {
-                // Find active holding order (not SHIPPED)
-                const activeHolding = b.outbound_order_box_items?.find(
-                    (obi: any) => obi.outbound_orders && obi.outbound_orders.status !== 'SHIPPED'
-                )
+                // Check direct holding order
+                const activeHolding = (b.outbound_orders && b.outbound_orders.status !== 'SHIPPED')
+                    ? b.outbound_orders
+                    : null
+
                 return {
                     ...b,
                     item_count: b.inventory_items?.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0) || 0,
-                    holding_order: activeHolding?.outbound_orders || null
+                    holding_order: activeHolding
                 }
             })
             setBoxes(mapped)

@@ -52,7 +52,7 @@ export default function OutboxPage() {
         setLoading(true)
         let query = supabase
             .from('boxes')
-            .select('*, orders (code), inventory_items (quantity)')
+            .select('*, outbound_orders (code), inventory_items (quantity)')
             .eq('type', 'OUTBOX')
             .order('created_at', { ascending: false }) // Sort by new
             .gte('created_at', fromDate + 'T00:00:00')
@@ -64,7 +64,7 @@ export default function OutboxPage() {
         if (error) alert(error.message)
         else {
             let result = data || []
-            if (filterOrder) result = result.filter(b => b.orders?.code?.toLowerCase().includes(filterOrder.toLowerCase()))
+            if (filterOrder) result = result.filter(b => b.outbound_orders?.code?.toLowerCase().includes(filterOrder.toLowerCase()))
             setOutboxes(result)
         }
         setLoading(false)
@@ -269,7 +269,7 @@ export default function OutboxPage() {
                                 <tr key={box.id} className="hover:bg-slate-50">
                                     <td className="p-3 text-center"><input type="checkbox" checked={selectedIds.has(box.id)} onChange={() => toggleSelect(box.id)} className="w-4 h-4" /></td>
                                     <td className="p-3 font-bold text-blue-700 cursor-pointer hover:underline" onClick={() => setDetailCode(box.code)}>{box.code}</td>
-                                    <td className="p-3">{box.orders?.code || '-'}</td>
+                                    <td className="p-3">{box.outbound_orders?.code || '-'}</td>
                                     <td className="p-3 text-center">{box.inventory_items?.reduce((acc: number, item: any) => acc + (item.quantity || 0), 0) || 0}</td>
                                     <td className="p-3 text-center">{box.status}</td>
                                     <td className="p-3 text-right flex justify-end gap-2">

@@ -83,7 +83,7 @@ export default function OutboundDetailPage() {
 
         const { data: itemsData } = await supabase
             .from('outbound_order_items')
-            .select(`*, products (id, sku, name, barcode), boxes (id, code)`)
+            .select(`*, products (id, sku, name, barcode), boxes:from_box_id (id, code)`)
             .eq('order_id', id)
 
         setOrder(orderData)

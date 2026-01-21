@@ -86,18 +86,26 @@ BEGIN
          RETURN jsonb_build_object('success', false, 'error', 'Đơn hàng đã được duyệt rồi');
     END IF;
 
-    -- Check availability for each item
-    FOR v_item IN SELECT * FROM outbound_order_items WHERE order_id = p_order_id LOOP
+    -- Check availability for grouped items
+    FOR v_item IN 
+        SELECT 
+            product_id, 
+            SUM(quantity) as quantity,
+            (SELECT sku FROM products WHERE id = product_id) as sku
+        FROM outbound_order_items 
+        WHERE order_id = p_order_id 
+        GROUP BY product_id 
+    LOOP
         -- Get current availability
         SELECT available_quantity INTO v_available
         FROM view_product_availability 
         WHERE product_id = v_item.product_id;
         
-        -- If requested > available, add to missing list
+        -- If total requested > available, add to missing list
         IF COALESCE(v_available, 0) < v_item.quantity THEN
              v_missing := v_missing || jsonb_build_object(
                 'product_id', v_item.product_id,
-                'sku', (SELECT sku FROM products WHERE id = v_item.product_id),
+                'sku', v_item.sku,
                 'requested', v_item.quantity,
                 'available', COALESCE(v_available, 0)
              );

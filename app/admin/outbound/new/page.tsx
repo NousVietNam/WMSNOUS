@@ -122,6 +122,7 @@ export default function NewOutboundPage() {
             .from('boxes')
             .select('id, code, location:locations(code), inventory_items(id, product_id, quantity, products!inner(sku, name, price, barcode))')
             .in('id', boxIds)
+            .gt('inventory_items.quantity', 0)
 
         if (data) {
             setSelectedBoxes(data.map(box => ({
@@ -205,6 +206,7 @@ export default function NewOutboundPage() {
                 )
             `)
             .eq('status', 'OPEN')
+            .gt('inventory_items.quantity', 0)
             .limit(10)
 
         query = query.ilike('code', `%${term}%`)
@@ -231,7 +233,7 @@ export default function NewOutboundPage() {
             toast.error('Thùng đã được chọn')
             return
         }
-        setSelectedBoxes([...selectedBoxes, {
+        const boxData = {
             box_id: box.id,
             box_code: box.code,
             items: box.inventory_items?.map(i => ({
@@ -242,6 +244,18 @@ export default function NewOutboundPage() {
                 quantity: i.quantity,
                 unit_price: (i.products as any)?.price || 0
             })) || []
+        }
+
+        const filteredItems = boxData.items.filter(i => i.quantity > 0)
+
+        if (filteredItems.length === 0) {
+            toast.error('Thùng này không có sản phẩm khả dụng')
+            return
+        }
+
+        setSelectedBoxes([...selectedBoxes, {
+            ...boxData,
+            items: filteredItems
         }])
         setBoxSearch('')
         setBoxResults([])
@@ -354,13 +368,23 @@ export default function NewOutboundPage() {
                     picked_quantity: 0
                 }))
             } else {
-                // Box mode - expand box items
+                // Box mode - expand box items and merge duplicates within same box
                 for (const box of selectedBoxes) {
+                    const mergedItems: Record<string, any> = {}
+
                     for (const item of box.items) {
+                        if (mergedItems[item.product_id]) {
+                            mergedItems[item.product_id].quantity += item.quantity
+                        } else {
+                            mergedItems[item.product_id] = { ...item }
+                        }
+                    }
+
+                    for (const item of Object.values(mergedItems)) {
                         itemsToInsert.push({
                             order_id: newOrder.id,
                             product_id: item.product_id,
-                            box_id: box.box_id,
+                            from_box_id: box.box_id,
                             quantity: item.quantity,
                             unit_price: item.unit_price || 0,
                             line_total: item.quantity * (item.unit_price || 0),

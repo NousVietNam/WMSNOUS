@@ -135,7 +135,7 @@ export default function EditOutboundPage() {
         // Fetch Items
         const { data: orderItems } = await supabase
             .from('outbound_order_items')
-            .select(`*, products (id, sku, name, barcode, price), boxes (id, code)`)
+            .select(`*, products (id, sku, name, barcode, price), boxes:from_box_id (id, code)`)
             .eq('order_id', id)
 
         if (orderItems) {
@@ -158,7 +158,7 @@ export default function EditOutboundPage() {
                 // Group items by box_id
                 const groups: Record<string, SelectedBox> = {}
                 orderItems.forEach(i => {
-                    const boxId = i.box_id
+                    const boxId = i.from_box_id
                     if (!boxId) return // Should not happen for box mode
 
                     if (!groups[boxId]) {
@@ -244,6 +244,7 @@ export default function EditOutboundPage() {
                 )
             `)
             .eq('status', 'OPEN')
+            .gt('inventory_items.quantity', 0)
             .limit(10)
 
         query = query.ilike('code', `%${term}%`)
@@ -270,7 +271,7 @@ export default function EditOutboundPage() {
             toast.error('Thùng đã được chọn')
             return
         }
-        setSelectedBoxes([...selectedBoxes, {
+        const boxData = {
             box_id: box.id,
             box_code: box.code,
             items: box.inventory_items?.map(i => ({
@@ -281,6 +282,18 @@ export default function EditOutboundPage() {
                 quantity: i.quantity,
                 unit_price: (i.products as any)?.price || 0
             })) || []
+        }
+
+        const filteredItems = boxData.items.filter(i => i.quantity > 0)
+
+        if (filteredItems.length === 0) {
+            toast.error('Thùng này không có sản phẩm khả dụng')
+            return
+        }
+
+        setSelectedBoxes([...selectedBoxes, {
+            ...boxData,
+            items: filteredItems
         }])
         setBoxSearch('')
         setBoxResults([])
@@ -376,11 +389,21 @@ export default function EditOutboundPage() {
                 }))
             } else {
                 for (const box of selectedBoxes) {
+                    const mergedItems: Record<string, any> = {}
+
                     for (const item of box.items) {
+                        if (mergedItems[item.product_id]) {
+                            mergedItems[item.product_id].quantity += item.quantity
+                        } else {
+                            mergedItems[item.product_id] = { ...item }
+                        }
+                    }
+
+                    for (const item of Object.values(mergedItems)) {
                         itemsToInsert.push({
                             order_id: id,
                             product_id: item.product_id,
-                            box_id: box.box_id,
+                            from_box_id: box.box_id,
                             quantity: item.quantity,
                             unit_price: item.unit_price || 0,
                             line_total: item.quantity * (item.unit_price || 0),

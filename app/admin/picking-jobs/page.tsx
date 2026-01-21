@@ -108,8 +108,8 @@ export default function PickingJobsPage() {
                     status, 
                     created_at,
                     user:users(name),
-                    order:orders(code, customer_name),
-                    transfer:transfer_orders(code, from_location:locations(code), destination:destinations(name))
+                    outbound_order:outbound_orders(code, customer_name),
+                    transfer:outbound_orders!outbound_order_id(code, destination:destinations(name))
                 `)
                 .order('created_at', { ascending: false })
 
@@ -149,10 +149,16 @@ export default function PickingJobsPage() {
     const filteredJobs = jobs.filter(job => {
         const matchStatus = filterStatus === 'ALL' || job.status === filterStatus
 
-        const code = job.transfer?.code || job.order?.code || ''
-        const extra = job.order?.customer_name || job.transfer?.destination?.name || ''
+        // Consolidated logic since picking_jobs links to ONE outbound_orders
+        // But for clarity in UI, we check both order/transfer which actually point to same relation
+        // In unified schema: picking_jobs -> outbound_orders
+        const orderCode = job.outbound_order?.code || ''
+        const customerName = job.outbound_order?.customer_name || ''
+        // For transfer, destination logic might need careful check if not fetched via outbound_orders relation
+        // Assuming outbound_orders has destination_id -> destination(name) relation if we updated query
+
         const search = searchTerm.toLowerCase()
-        const matchSearch = code.toLowerCase().includes(search) || extra.toLowerCase().includes(search)
+        const matchSearch = orderCode.toLowerCase().includes(search) || customerName.toLowerCase().includes(search)
 
         return matchStatus && matchSearch
     })
@@ -259,15 +265,13 @@ export default function PickingJobsPage() {
                             <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Không tìm thấy job nào.</td></tr>
                         ) : (
                             filteredJobs.map(job => {
-                                const isTransfer = !!job.transfer
+                                const order = job.outbound_order
                                 const isManual = job.type === 'MANUAL_PICK'
-                                const code = isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : (isTransfer ? job.transfer.code : job.order?.code)
-                                const link = isTransfer ? `/admin/transfers/${job.transfer_order_id || ''}` : `/admin/orders/${job.order_id || ''}`
+                                const code = isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : (order?.code || 'N/A')
+                                const link = `/admin/outbound/${job.outbound_order_id || ''}` // Unified link
                                 const info = isManual
                                     ? 'Upload thủ công'
-                                    : (isTransfer
-                                        ? `${job.transfer.from_location?.code || ''} ➔ ${job.transfer.destination?.name || ''}`
-                                        : `Khách: ${job.order?.customer_name || 'N/A'}`)
+                                    : (order?.customer_name || 'N/A') // Simplify for now, can add destination logic if fetched
 
                                 return (
                                     <tr key={job.id} className="hover:bg-slate-50">
