@@ -23,6 +23,7 @@ interface Box {
     locations?: { code: string }
     inventory_items?: { quantity: number }[]
     item_count?: number
+    holding_order?: { id: string; code: string; status: string } | null
 }
 
 export default function BoxesPage() {
@@ -110,16 +111,28 @@ export default function BoxesPage() {
         setLoading(true)
         const { data, error } = await supabase
             .from('boxes')
-            .select('*, locations(code), inventory_items(quantity)')
-            .eq('type', 'STORAGE') // Filter STORAGE only
+            .select(`
+                *, 
+                locations(code), 
+                inventory_items(quantity),
+                outbound_order_box_items(id, outbound_orders(id, code, status))
+            `)
+            .eq('type', 'STORAGE')
             .order('created_at', { ascending: false })
             .limit(2000)
 
         if (!error && data) {
-            const mapped = data.map((b: any) => ({
-                ...b,
-                item_count: b.inventory_items?.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0) || 0
-            }))
+            const mapped = data.map((b: any) => {
+                // Find active holding order (not SHIPPED)
+                const activeHolding = b.outbound_order_box_items?.find(
+                    (obi: any) => obi.outbound_orders && obi.outbound_orders.status !== 'SHIPPED'
+                )
+                return {
+                    ...b,
+                    item_count: b.inventory_items?.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0) || 0,
+                    holding_order: activeHolding?.outbound_orders || null
+                }
+            })
             setBoxes(mapped)
         }
         setLoading(false)
@@ -582,6 +595,7 @@ export default function BoxesPage() {
                                         <th className="p-3 border-b">Mã Thùng</th>
                                         <th className="p-3 border-b">Vị Trí</th>
                                         <th className="p-3 border-b">Số Lượng</th>
+                                        <th className="p-3 border-b">Giữ Bởi Đơn</th>
                                         <th className="p-3 border-b">Ngày Tạo</th>
                                         <th className="p-3 border-b">Cập Nhật</th>
                                         <th className="p-3 border-b">Trạng Thái</th>
@@ -597,6 +611,15 @@ export default function BoxesPage() {
                                             <td className="p-3 font-bold text-primary group-hover:underline">{box.code}</td>
                                             <td className="p-3">{box.locations?.code || <span className="text-slate-300">-</span>}</td>
                                             <td className="p-3 font-bold">{box.item_count}</td>
+                                            <td className="p-3" onClick={e => e.stopPropagation()}>
+                                                {box.holding_order ? (
+                                                    <a href={`/admin/outbound/${box.holding_order.id}`} className="text-xs font-bold text-blue-600 hover:underline">
+                                                        {box.holding_order.code}
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-slate-300">-</span>
+                                                )}
+                                            </td>
                                             <td className="p-3 text-xs text-slate-500">{new Date(box.created_at).toLocaleDateString('vi-VN')}</td>
                                             <td className="p-3 text-xs text-slate-500">{(box as any).updated_at ? new Date((box as any).updated_at).toLocaleDateString('vi-VN') : '-'}</td>
                                             <td className="p-3">

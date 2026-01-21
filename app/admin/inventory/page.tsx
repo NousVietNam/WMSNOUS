@@ -47,14 +47,16 @@ export default function InventoryPage() {
 
     // New State
     const [viewImage, setViewImage] = useState<string | null>(null)
-    const [approvedDemand, setApprovedDemand] = useState<Record<string, number>>({})
 
     // Global Totals State
     const [totals, setTotals] = useState({
         quantity: 0,
         allocated: 0,
         available: 0,
-        approved: 0
+        approved_sale: 0,
+        approved_gift: 0,
+        approved_internal: 0,
+        approved_transfer: 0
     })
     const [calculatingTotals, setCalculatingTotals] = useState(false)
 
@@ -177,11 +179,11 @@ export default function InventoryPage() {
         if (page !== 0) setPage(0)
         else fetchInventory()
 
-        // Calculate global totals whenever filters change
+        // Calculate global totals whenever filters change or viewMode changes
         fetchGlobalTotals()
 
         updateAvailableFilterOptions()
-    }, [searchTerm, filterWarehouse, filterLocation, filterBox, filterBrand, filterTarget, filterProductGroup, filterSeason, filterMonth])
+    }, [searchTerm, filterWarehouse, filterLocation, filterBox, filterBrand, filterTarget, filterProductGroup, filterSeason, filterMonth, viewMode])
 
     const fetchWarehouses = async () => {
         const { data } = await supabase.from('warehouses').select('id, name, code').order('name')
@@ -267,8 +269,10 @@ export default function InventoryPage() {
                 // Sanitize BigInts to Numbers to prevent React crash
                 map[row.product_id] = {
                     ...row,
-                    soft_booked_orders: Number(row.soft_booked_orders || 0),
-                    soft_booked_transfers: Number(row.soft_booked_transfers || 0)
+                    soft_booked_sale: Number(row.soft_booked_sale || 0),
+                    soft_booked_gift: Number(row.soft_booked_gift || 0),
+                    soft_booked_internal: Number(row.soft_booked_internal || 0),
+                    soft_booked_transfer: Number(row.soft_booked_transfer || 0)
                 }
             })
             setViewDataMap(prev => ({ ...prev, ...map }))
@@ -396,11 +400,20 @@ export default function InventoryPage() {
                 })
             } else if (data && data.length > 0) {
                 const result = data[0]
+
+                // Use pre-calculated values from database
+                // Detail Tab: available_detail = Total - Hard
+                // Summary Tab: available_summary = Total - Hard - Soft
                 setTotals({
                     quantity: result.total_quantity || 0,
                     allocated: result.total_allocated || 0,
-                    approved: result.total_approved || 0,
-                    available: Math.max(0, (result.total_quantity || 0) - (result.total_allocated || 0) - (result.total_approved || 0))
+                    approved_sale: result.total_approved_sale || 0,
+                    approved_gift: result.total_approved_gift || 0,
+                    approved_internal: result.total_approved_internal || 0,
+                    approved_transfer: result.total_approved_transfer || 0,
+                    available: viewMode === 'DETAILED'
+                        ? (result.available_detail || 0)
+                        : (result.available_summary || 0)
                 })
             } else {
                 // If RPC returns no data (e.g., no items match filters), set totals to zero
@@ -479,8 +492,10 @@ export default function InventoryPage() {
                         totalAllocated: 0,
 
                         // Use View Data if available for Soft Allocation
-                        softOrders: viewInfo ? (viewInfo.soft_booked_orders || 0) : 0,
-                        softTransfers: viewInfo ? (viewInfo.soft_booked_transfers || 0) : 0,
+                        softSale: viewInfo ? (viewInfo.soft_booked_sale || 0) : 0,
+                        softGift: viewInfo ? (viewInfo.soft_booked_gift || 0) : 0,
+                        softInternal: viewInfo ? (viewInfo.soft_booked_internal || 0) : 0,
+                        softTransfer: viewInfo ? (viewInfo.soft_booked_transfer || 0) : 0,
 
                         locations: new Set(),
                         items: []
@@ -516,7 +531,7 @@ export default function InventoryPage() {
                 return {
                     ...i,
                     locationStr: Array.from(i.locations).sort().join(', '),
-                    available: Math.max(0, i.totalQty - i.totalAllocated - i.softOrders - i.softTransfers)
+                    available: Math.max(0, i.totalQty - i.totalAllocated - i.softSale - i.softGift - i.softInternal - i.softTransfer)
                 }
             })
         } catch (e) {
@@ -527,14 +542,16 @@ export default function InventoryPage() {
 
     // Calculate totals for Summary mode (from summaryItems)
     const summaryTotals = (() => {
-        if (viewMode !== 'SUMMARY' || summaryItems.length === 0) return { softOrders: 0, softTransfers: 0, totalQty: 0, totalAllocated: 0, available: 0 }
+        if (viewMode !== 'SUMMARY' || summaryItems.length === 0) return { softSale: 0, softGift: 0, softInternal: 0, softTransfer: 0, totalQty: 0, totalAllocated: 0, available: 0 }
         return summaryItems.reduce((acc, item) => ({
-            softOrders: acc.softOrders + (item.softOrders || 0),
-            softTransfers: acc.softTransfers + (item.softTransfers || 0),
+            softSale: acc.softSale + (item.softSale || 0),
+            softGift: acc.softGift + (item.softGift || 0),
+            softInternal: acc.softInternal + (item.softInternal || 0),
+            softTransfer: acc.softTransfer + (item.softTransfer || 0),
             totalQty: acc.totalQty + (item.totalQty || 0),
             totalAllocated: acc.totalAllocated + (item.totalAllocated || 0),
             available: acc.available + (item.available || 0)
-        }), { softOrders: 0, softTransfers: 0, totalQty: 0, totalAllocated: 0, available: 0 })
+        }), { softSale: 0, softGift: 0, softInternal: 0, softTransfer: 0, totalQty: 0, totalAllocated: 0, available: 0 })
     })()
 
     const handleExport = async () => {
@@ -771,8 +788,10 @@ export default function InventoryPage() {
                                     <th className="p-3 w-[70px] text-center text-orange-600">Đang Lấy</th>
                                     {viewMode === 'SUMMARY' && (
                                         <>
-                                            <th className="p-3 w-[80px] text-center text-primary">Đơn Đặt Hàng</th>
-                                            <th className="p-3 w-[80px] text-center text-orange-500">Đơn Điều Chuyển</th>
+                                            <th className="p-3 w-[70px] text-center text-blue-600">Đơn Bán</th>
+                                            <th className="p-3 w-[70px] text-center text-pink-600">Đơn Quà</th>
+                                            <th className="p-3 w-[70px] text-center text-purple-600">Nội Bộ</th>
+                                            <th className="p-3 w-[70px] text-center text-orange-500">Điều Chuyển</th>
                                         </>
                                     )}
                                     <th className="p-3 w-[70px] text-center text-green-600">Khả Dụng</th>
@@ -796,8 +815,10 @@ export default function InventoryPage() {
                                     </td>
                                     {viewMode === 'SUMMARY' && (
                                         <>
-                                            <td className="p-3 text-center text-primary text-base font-bold">{summaryTotals.softOrders}</td>
-                                            <td className="p-3 text-center text-orange-500 text-base font-bold">{summaryTotals.softTransfers}</td>
+                                            <td className="p-3 text-center text-blue-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_sale}</td>
+                                            <td className="p-3 text-center text-pink-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_gift}</td>
+                                            <td className="p-3 text-center text-purple-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_internal}</td>
+                                            <td className="p-3 text-center text-orange-500 text-base font-bold">{calculatingTotals ? '...' : totals.approved_transfer}</td>
                                         </>
                                     )}
                                     <td className="p-3 text-center text-green-700 text-base bg-green-50 font-bold">
@@ -808,7 +829,7 @@ export default function InventoryPage() {
 
 
                                 {loading ? (
-                                    <tr><td colSpan={15} className="p-8 text-center">Đang tải...</td></tr>
+                                    <tr><td colSpan={viewMode === 'SUMMARY' ? 17 : 13} className="p-8 text-center text-slate-400">Đang tải dữ liệu...</td></tr>
                                 ) : viewMode === 'SUMMARY' ? (
                                     summaryItems.map((item, idx) => (
                                         <tr key={idx} className="border-b hover:bg-slate-50 transition-colors text-sm">
@@ -825,12 +846,18 @@ export default function InventoryPage() {
                                             <td className="py-3 px-4 text-center font-bold text-slate-600" title="Đã cấp phát cứng">
                                                 {item.totalAllocated > 0 ? item.totalAllocated : '-'}
                                             </td>
-                                            {/* New Cols: Soft Orders & Soft Transfers */}
-                                            <td className="py-3 px-4 text-center font-bold text-primary">
-                                                {item.softOrders > 0 ? item.softOrders : '-'}
+                                            {/* Soft Allocation Categories */}
+                                            <td className="py-3 px-4 text-center font-bold text-blue-600">
+                                                {item.softSale > 0 ? item.softSale : '-'}
+                                            </td>
+                                            <td className="py-3 px-4 text-center font-bold text-pink-600">
+                                                {item.softGift > 0 ? item.softGift : '-'}
+                                            </td>
+                                            <td className="py-3 px-4 text-center font-bold text-purple-600">
+                                                {item.softInternal > 0 ? item.softInternal : '-'}
                                             </td>
                                             <td className="py-3 px-4 text-center font-bold text-orange-600">
-                                                {item.softTransfers > 0 ? item.softTransfers : '-'}
+                                                {item.softTransfer > 0 ? item.softTransfer : '-'}
                                             </td>
                                             <td className="py-3 px-4 text-center font-bold text-green-600 bg-green-50">
                                                 {item.available}
@@ -846,12 +873,11 @@ export default function InventoryPage() {
                                         </tr>
                                     ))
                                 ) : filteredItems.length === 0 ? (
-                                    <tr><td colSpan={15} className="p-8 text-center text-muted-foreground">Không tìm thấy.</td></tr>
+                                    <tr><td colSpan={viewMode === 'SUMMARY' ? 17 : 13} className="p-8 text-center text-muted-foreground italic tracking-wide">Không tìm thấy sản phẩm nào khớp với bộ lọc.</td></tr>
                                 ) : (
                                     filteredItems.map(item => {
                                         const allocated = item.allocated_quantity || 0
-                                        const approved = item.products?.id ? (approvedDemand[item.products.id] || 0) : 0
-                                        const available = Math.max(0, item.quantity - allocated - approved)
+                                        const available = Math.max(0, item.quantity - allocated)
 
                                         return (
                                             <tr key={item.id} className="border-t hover:bg-slate-50 text-xs">

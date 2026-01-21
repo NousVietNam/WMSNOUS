@@ -132,21 +132,24 @@ export default function DoPickingPage() {
         // 1. Get Job Info to know Type
         const { data: jobInfo, error: jobError } = await supabase
             .from('picking_jobs')
-            .select('type, orders(transfer_type), transfer_orders(transfer_type)')
+            .select(`
+                type, 
+                outbound_orders (
+                    transfer_type
+                )
+            `)
             .eq('id', id)
             .single()
 
         if (jobInfo) {
-            // Priority: Explicit Job Type > Order Type > Transfer Type
+            // Priority: Explicit Job Type > Order Type
             let type: string | undefined = undefined;
 
             if (jobInfo.type === 'BOX_PICK') type = 'BOX';
             else if (jobInfo.type === 'ITEM_PICK') type = 'ITEM';
             else {
-                // Handle potential array response from Supabase joins
-                const order = Array.isArray(jobInfo.orders) ? jobInfo.orders[0] : jobInfo.orders;
-                const transfer = Array.isArray(jobInfo.transfer_orders) ? jobInfo.transfer_orders[0] : jobInfo.transfer_orders;
-                type = order?.transfer_type || transfer?.transfer_type;
+                const order = Array.isArray(jobInfo.outbound_orders) ? jobInfo.outbound_orders[0] : jobInfo.outbound_orders;
+                type = order?.transfer_type;
             }
 
             if (type) setTransferType(type as 'BOX' | 'ITEM')

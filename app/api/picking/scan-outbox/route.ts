@@ -15,13 +15,13 @@ export async function POST(request: Request) {
         // 1. Get Job & Order Info
         const { data: job, error: jobError } = await supabase
             .from('picking_jobs')
-            .select('order_id')
+            .select('outbound_order_id')
             .eq('id', jobId)
             .single()
 
         if (jobError || !job) return NextResponse.json({ success: false, error: 'Job not found' }, { status: 404 })
 
-        const orderId = job.order_id
+        const orderId = job.outbound_order_id
 
         // 2. Validate Box
         const { data: box, error: boxError } = await supabase
@@ -35,17 +35,17 @@ export async function POST(request: Request) {
         if (box.type !== 'OUTBOX') return NextResponse.json({ success: false, error: 'Đây không phải là thùng đóng gói (Outbox)' }, { status: 400 })
 
         // 3. Check Assignment
-        if (box.order_id && box.order_id !== orderId) {
+        if (box.outbound_order_id && box.outbound_order_id !== orderId) {
             return NextResponse.json({ success: false, error: 'Thùng này đang được dùng cho đơn hàng khác! Hãy chọn thùng khác.' }, { status: 409 })
         }
 
         // 4. Assign if needed
-        if (!box.order_id) {
-            await supabase.from('boxes').update({ order_id: orderId }).eq('id', box.id)
+        if (!box.outbound_order_id) {
+            await supabase.from('boxes').update({ outbound_order_id: orderId }).eq('id', box.id)
         }
 
         // 5. Update Order Status -> PICKING (if not already)
-        await supabase.from('orders').update({ status: 'PICKING' }).eq('id', orderId).eq('status', 'ALLOCATED')
+        await supabase.from('outbound_orders').update({ status: 'PICKING' }).eq('id', orderId).eq('status', 'ALLOCATED')
 
         return NextResponse.json({
             success: true,

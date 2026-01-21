@@ -29,6 +29,8 @@ export default function BoxDetailPage() {
     const [destinationBoxCode, setDestinationBoxCode] = useState("")
     const [transferring, setTransferring] = useState(false)
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+    const [holdingOrder, setHoldingOrder] = useState<any>(null)
+    const [holdingSince, setHoldingSince] = useState<string | null>(null)
 
     useEffect(() => {
         fetchBox()
@@ -66,6 +68,26 @@ export default function BoxDetailPage() {
             .eq('box_id', boxData.id)
 
         if (itemData) setItems(itemData)
+
+        // Fetch outbound order holding this box (if any)
+        const { data: holdingData } = await supabase
+            .from('outbound_order_box_items')
+            .select(`
+                id, created_at,
+                outbound_orders!inner (id, code, status, type, created_at)
+            `)
+            .eq('box_id', boxData.id)
+            .not('outbound_orders.status', 'eq', 'SHIPPED')
+            .limit(1)
+            .maybeSingle()
+
+        if (holdingData) {
+            setHoldingOrder(holdingData.outbound_orders)
+            setHoldingSince(holdingData.created_at)
+        } else {
+            setHoldingOrder(null)
+            setHoldingSince(null)
+        }
 
         // Clear selection
         setSelectedItems(new Set())
@@ -178,6 +200,22 @@ export default function BoxDetailPage() {
                                 <div className="text-sm font-medium text-muted-foreground">Ngày Tạo</div>
                                 <div>{new Date(box.created_at).toLocaleString('vi-VN')}</div>
                             </div>
+                            {holdingOrder && (
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                                    <div className="text-sm font-medium text-orange-800 mb-1">Đang Giữ Bởi Đơn</div>
+                                    <a href={`/admin/outbound/${holdingOrder.id}`} className="font-bold text-blue-600 hover:underline">
+                                        {holdingOrder.code}
+                                    </a>
+                                    <div className="text-xs text-orange-600 mt-1">
+                                        Loại: {holdingOrder.type} | Trạng thái: {holdingOrder.status}
+                                    </div>
+                                    {holdingSince && (
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Từ: {new Date(holdingSince).toLocaleString('vi-VN')}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <Button variant="outline" className="w-full" onClick={() => window.print()}>
                                 <Printer className="mr-2 h-4 w-4" /> Print Label
                             </Button>

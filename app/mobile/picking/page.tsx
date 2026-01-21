@@ -23,8 +23,13 @@ export default function PickingJobsPage() {
             .from('picking_jobs')
             .select(`
                 *,
-                orders (code, customer_name),
-                view_picking_job_progress (total_tasks, completed_tasks, total_outboxes),
+                outbound_orders!inner (
+                    code, 
+                    type,
+                    customers (name),
+                    destinations (name)
+                ),
+                view_picking_job_progress (total_tasks, completed_tasks),
                 users (name)
             `)
             .in('status', ['OPEN', 'IN_PROGRESS'])
@@ -41,10 +46,10 @@ export default function PickingJobsPage() {
             .from('picking_jobs')
             .update({
                 status: 'IN_PROGRESS',
-                user_id: session.user.id
+                assigned_to: session.user.id
             })
             .eq('id', jobId)
-            .is('user_id', null)
+            .is('assigned_to', null)
 
         if (error) console.error(error)
     }
@@ -69,10 +74,10 @@ export default function PickingJobsPage() {
                                     <div className="flex justify-between items-start mb-1">
                                         <div>
                                             <div className="font-bold text-lg text-indigo-700">
-                                                {job.orders?.code || (job.type === 'MANUAL_PICK' ? `JOB-${job.id.slice(0, 8)}` : '--')}
+                                                {job.outbound_orders?.code || `JOB-${job.id.slice(0, 8)}`}
                                             </div>
                                             <div className="text-sm text-slate-500">
-                                                {job.orders?.customer_name || (job.type === 'MANUAL_PICK' ? 'Upload Thủ Công' : '')}
+                                                {job.outbound_orders?.customers?.name || job.outbound_orders?.destinations?.name || (job.type === 'MANUAL_PICK' ? 'Upload Thủ Công' : '')}
                                             </div>
                                         </div>
                                         <span className={`px-2 py-1 rounded text-xs font-bold ${job.status === 'OPEN' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
@@ -95,7 +100,7 @@ export default function PickingJobsPage() {
                                                 </span>
                                             ) : '0'}
                                         </div>
-                                        {job.user_id && (
+                                        {job.assigned_to && (
                                             <div className="flex items-center gap-1 text-xs bg-slate-100 px-2 py-0.5 rounded">
                                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
                                                 Đã nhận
@@ -104,7 +109,7 @@ export default function PickingJobsPage() {
                                     </div>
                                 </div>
                                 <div className="p-2 bg-slate-50">
-                                    {job.user_id && job.user_id !== session?.user?.id ? (
+                                    {job.assigned_to && job.assigned_to !== session?.user?.id ? (
                                         <button className="w-full h-10 bg-slate-300 text-slate-500 rounded font-medium cursor-not-allowed flex items-center justify-center gap-2">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg> Đã nhận bởi {job.users?.name || 'người khác'}
                                         </button>

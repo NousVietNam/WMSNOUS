@@ -1,0 +1,1 @@
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS default_discount DECIMAL(5, 2) DEFAULT 0;
