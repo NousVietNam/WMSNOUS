@@ -129,15 +129,26 @@ export default function DoPickingPage() {
     const fetchTasks = async () => {
         setLoading(true)
 
-        // 1. Get Job Info to know Type (from Orders or Transfer Orders)
+        // 1. Get Job Info to know Type
         const { data: jobInfo, error: jobError } = await supabase
             .from('picking_jobs')
-            .select('orders(transfer_type), transfer_orders(transfer_type)')
+            .select('type, orders(transfer_type), transfer_orders(transfer_type)')
             .eq('id', id)
             .single()
 
         if (jobInfo) {
-            const type = jobInfo.orders?.transfer_type || jobInfo.transfer_orders?.transfer_type
+            // Priority: Explicit Job Type > Order Type > Transfer Type
+            let type: string | undefined = undefined;
+
+            if (jobInfo.type === 'BOX_PICK') type = 'BOX';
+            else if (jobInfo.type === 'ITEM_PICK') type = 'ITEM';
+            else {
+                // Handle potential array response from Supabase joins
+                const order = Array.isArray(jobInfo.orders) ? jobInfo.orders[0] : jobInfo.orders;
+                const transfer = Array.isArray(jobInfo.transfer_orders) ? jobInfo.transfer_orders[0] : jobInfo.transfer_orders;
+                type = order?.transfer_type || transfer?.transfer_type;
+            }
+
             if (type) setTransferType(type as 'BOX' | 'ITEM')
         }
 
@@ -187,6 +198,12 @@ export default function DoPickingPage() {
     }
 
     const handleScan = (code: string) => {
+        // Enforce mode based on type
+        if (transferType === 'BOX') {
+            validateBoxCode(code)
+            return
+        }
+
         if (scannerMode === 'BOX_UNLOCK') validateBoxCode(code)
         else handleScanOutbox(code)
     }
@@ -444,8 +461,12 @@ export default function DoPickingPage() {
                         return (
                             <div
                                 key={task.id}
-                                onClick={() => !isDone && handleToggleTask(task.id)}
-                                className={`rounded-xl border p-4 flex items-center justify-between gap-3 shadow-sm cursor-pointer transition-all
+                                onClick={() => {
+                                    if (transferType === 'BOX') return // Disable individual toggle for Box Pick
+                                    !isDone && handleToggleTask(task.id)
+                                }}
+                                className={`rounded-xl border p-4 flex items-center justify-between gap-3 shadow-sm transition-all
+                                    ${transferType !== 'BOX' ? 'cursor-pointer' : ''}
                                     ${isDone ? 'bg-slate-50 border-slate-200 opacity-60' :
                                         isSelected ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-slate-200'}
                                 `}

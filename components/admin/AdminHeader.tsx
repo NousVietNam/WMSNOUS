@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { LayoutDashboard, LogOut, Package, User, MapPin, Box, History, Printer, FileText, ArrowRightLeft, Cloud } from "lucide-react"
+import { LayoutDashboard, LogOut, Package, User, MapPin, Box, History, Printer, FileText, ArrowRightLeft, Cloud, Truck, FileOutput } from "lucide-react"
 import Link from "next/link"
 
 export function AdminHeader() {
@@ -20,12 +20,11 @@ export function AdminHeader() {
         { href: "/admin", icon: LayoutDashboard, label: "Tổng Quan" },
         { href: "/admin/map", icon: MapPin, label: "Sơ Đồ Kho" },
         { href: "/admin/locations", icon: MapPin, label: "DS Vị Trí" },
-        { href: "/admin/orders", icon: FileText, label: "Đơn Hàng" },
         { href: "/admin/inventory", icon: Package, label: "Tồn Kho" },
         { href: "/admin/boxes", icon: Box, label: "Thùng" },
-        { href: "/admin/transfers", icon: ArrowRightLeft, label: "Điều Chuyển" },
+        { href: "/admin/outbound", icon: FileOutput, label: "Outbound" },
         { href: "/admin/outboxes", icon: Package, label: "Outbox" },
-        { href: "/admin/shipping", icon: Cloud, label: "Xuất Kho" },
+        { href: "/admin/shipping", icon: Truck, label: "Ship" },
         { href: "/admin/picking-jobs", icon: Package, label: "Jobs" },
         { href: "/admin/history", icon: History, label: "Lịch Sử" },
         { href: "/admin/bulk-print", icon: Printer, label: "In Lô" },

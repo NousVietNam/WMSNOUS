@@ -108,24 +108,24 @@ export default function ShippingDetailPage() {
             }
 
             if (type === 'MANUAL_JOB' && localData) {
-                // Heuristic for Manual Jobs: Find Outboxes containing these products
-                const productIds = Array.from(new Set(localData.manual_items.map((t: any) => t.product_id)))
+                // FIX: Only show outboxes that belong to THIS job (from picking_tasks.outbox_code)
+                // Not ALL outboxes containing these products!
+                const jobOutboxCodes = Array.from(new Set(
+                    localData.manual_items
+                        .filter((t: any) => t.outbox_code)
+                        .map((t: any) => t.outbox_code)
+                ))
 
-                if (productIds.length > 0) {
-                    const { data: invItems } = await supabase
-                        .from('inventory_items')
-                        .select('product_id, quantity, box_id, boxes!inner(code, type)')
-                        .in('product_id', productIds)
-                        .eq('boxes.type', 'OUTBOX')
-
-                    if (invItems && invItems.length > 0) {
-                        const map: Record<string, Set<string>> = {}
-                        invItems.forEach((inv: any) => {
-                            if (!map[inv.product_id]) map[inv.product_id] = new Set()
-                            if (inv.boxes?.code) map[inv.product_id].add(inv.boxes.code)
-                        })
-                        setProductBoxMap(map)
-                    }
+                if (jobOutboxCodes.length > 0) {
+                    // Build product -> outbox map from THIS job's tasks only
+                    const map: Record<string, Set<string>> = {}
+                    localData.manual_items.forEach((task: any) => {
+                        if (task.product_id && task.outbox_code) {
+                            if (!map[task.product_id]) map[task.product_id] = new Set()
+                            map[task.product_id].add(task.outbox_code)
+                        }
+                    })
+                    setProductBoxMap(map)
                 }
             }
 
