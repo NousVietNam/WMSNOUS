@@ -63,6 +63,7 @@ export default function DoPickingPage() {
     const [tempSelectedTaskIds, setTempSelectedTaskIds] = useState<Set<string>>(new Set())
     const [isConfirmingBox, setIsConfirmingBox] = useState(false)
     const [jobCode, setJobCode] = useState<string | null>(null)
+    const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
 
     // Derived State
     const jobStats = (() => {
@@ -167,7 +168,7 @@ export default function DoPickingPage() {
             .from('picking_tasks')
             .select(`
                 *,
-                products (id, sku, name, barcode),
+                products (id, sku, name, barcode, image_url),
                 boxes:box_id (id, code, location_id, locations (code)),
                 locations (id, code)
             `)
@@ -239,7 +240,15 @@ export default function DoPickingPage() {
         }
 
         if (!activeGroup) {
-            alert("Không tìm thấy thùng này trong danh sách!")
+            toast.error("Không tìm thấy thùng này trong danh sách!")
+            return
+        }
+
+        // Logic check: For ITEM_PICK, must have outbox selected before unlocking any source box
+        const isItemPick = transferType === 'ITEM' || jobType === 'ITEM_PICK'
+        if (isItemPick && !activeOutbox) {
+            toast.error("Vui lòng quét chọn Outbox trước khi quét thùng hàng!")
+            setScanInput("")
             return
         }
 
@@ -248,19 +257,10 @@ export default function DoPickingPage() {
             setScanInput("")
             setShowScanner(false)
 
-            // AUTO PICK LOGIC for BOX Type
+            // INFO: Confirmation removed, replaced with success toast
             if (transferType === 'BOX') {
-                // Confirm all pending tasks in this box
-                const tasksToPick = activeGroup.tasks.filter(t => t.status !== 'COMPLETED')
-                if (tasksToPick.length > 0) {
-                    const confirm = window.confirm(`Bạn có muốn xác nhận lấy toàn bộ thùng ${activeGroup.boxCode}? Thùng sẽ được chuyển ra cửa xuất.`)
-                    if (confirm) {
-                        handleConfirmBox(tasksToPick.map(t => t.id))
-                        toast.success(`Đã lấy xong thùng ${activeGroup.boxCode}`)
-                        // Auto close box after short delay
-                        setTimeout(() => setActiveBoxId(null), 1000)
-                    }
-                }
+                toast.success(`Đã chọn đúng thùng ${activeGroup.boxCode}!`)
+                // Auto focus input or just wait for Confirm button
             }
         } else {
             alert("Sai mã thùng!")
@@ -463,46 +463,56 @@ export default function DoPickingPage() {
                     </div>
                 )}
 
-                <div className={`space-y-3 transition-opacity ${!isUnlocked ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
+                <div className={`space-y-2 transition-opacity ${!isUnlocked ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
                     {activeGroup.tasks.map(task => {
                         const isDone = task.status === 'COMPLETED'
                         const isSelected = tempSelectedTaskIds.has(task.id)
                         const sku = task.products?.sku || 'UNKNOWN'
-                        // const { picked, total } = getSkuProgress(sku)
 
                         return (
                             <div
                                 key={task.id}
-                                onClick={() => {
-                                    if (transferType === 'BOX') return // Disable individual toggle for Box Pick
-                                    !isDone && handleToggleTask(task.id)
-                                }}
-                                className={`rounded-xl border p-4 flex items-center justify-between gap-3 shadow-sm transition-all
-                                    ${transferType !== 'BOX' ? 'cursor-pointer' : ''}
+                                className={`rounded-xl border flex items-stretch overflow-hidden shadow-sm transition-all
                                     ${isDone ? 'bg-slate-50 border-slate-200 opacity-60' :
                                         isSelected ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'bg-white border-slate-200'}
                                 `}
                             >
-                                <div className="flex-1">
-                                    <div className={`font-bold text-lg leading-tight ${isDone ? 'text-slate-500' : 'text-slate-800'}`}>{sku}</div>
-                                    <div className="text-sm text-slate-500 line-clamp-1">{task.products?.name || 'Không rõ tên'}</div>
-                                </div>
-                                <div className="text-right min-w-[80px]">
-                                    <div className="flex flex-col items-end">
-                                        <span className={`text-3xl font-black ${isDone ? 'text-slate-400' : isSelected ? 'text-blue-600' : 'text-slate-600'}`}>
-                                            {task.quantity}
-                                        </span>
-                                        {/* <span className="text-[10px] bg-slate-100 px-1 rounded text-slate-500">
-                                            Kho: {task.available_qty}
-                                        </span> */}
+                                {/* Clickable Content for Popup */}
+                                <div
+                                    className="flex-1 p-3 flex flex-col justify-center cursor-pointer active:bg-slate-100"
+                                    onClick={() => setSelectedProduct(task.products)}
+                                >
+                                    <div className={`font-bold text-sm leading-tight ${isDone ? 'text-slate-500' : 'text-indigo-700'}`}>
+                                        {sku}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 line-clamp-1 leading-tight mt-0.5">
+                                        {task.products?.name || 'Không rõ tên'}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                        {task.products?.barcode || '---'}
                                     </div>
                                 </div>
 
-                                <div className={`h-10 w-10 rounded-full flex items-center justify-center border-2 
-                                    ${isDone ? 'bg-slate-200 border-slate-300 text-slate-500' :
-                                        isSelected ? 'bg-blue-500 border-blue-500 text-white' : 'bg-white border-slate-300 text-transparent'}
-                                `}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><polyline points="20 6 9 17 4 12" /></svg>
+                                {/* Right Side: Qty & Checkbox */}
+                                <div className="flex items-center gap-3 p-3 pl-0">
+                                    <div className="text-right min-w-[40px]">
+                                        <div className={`text-2xl font-black ${isDone ? 'text-slate-400' : isSelected ? 'text-blue-600' : 'text-slate-600'}`}>
+                                            {task.quantity}
+                                        </div>
+                                    </div>
+
+                                    <div
+                                        onClick={() => {
+                                            if (transferType === 'BOX') return
+                                            !isDone && handleToggleTask(task.id)
+                                        }}
+                                        className={`h-9 w-9 rounded-full flex items-center justify-center border-2 transition-all cursor-pointer
+                                            ${isDone ? 'bg-green-100 border-green-200 text-green-600' :
+                                                isSelected ? 'bg-blue-500 border-blue-500 text-white shadow-inner' : 'bg-white border-slate-200 text-transparent'}
+                                        `}
+                                    >
+                                        <Check className="h-5 w-5" strokeWidth={3} />
+                                    </div>
                                 </div>
                             </div>
                         )
@@ -674,6 +684,46 @@ export default function DoPickingPage() {
             </main>
 
             {showScanner && <QRScanner onScan={handleScan} onClose={() => setShowScanner(false)} />}
+
+            {/* Product Image Popup */}
+            {selectedProduct && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSelectedProduct(null)}>
+                    <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                        <div className="relative aspect-square bg-slate-100 flex items-center justify-center">
+                            {selectedProduct.image_url ? (
+                                <img src={selectedProduct.image_url} alt={selectedProduct.sku} className="w-full h-full object-contain" />
+                            ) : (
+                                <div className="flex flex-col items-center text-slate-400">
+                                    <Package className="h-16 w-16 mb-2" />
+                                    <span className="text-sm">Không có ảnh</span>
+                                </div>
+                            )}
+                            <button
+                                onClick={() => setSelectedProduct(null)}
+                                className="absolute top-3 right-3 h-10 w-10 bg-black/20 hover:bg-black/40 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-colors"
+                            >
+                                <X className="h-6 w-6" />
+                            </button>
+                        </div>
+                        <div className="p-5">
+                            <div className="text-indigo-700 font-bold text-lg leading-tight mb-1">{selectedProduct.sku}</div>
+                            <div className="text-slate-600 text-sm leading-snug mb-2">{selectedProduct.name}</div>
+                            <div className="flex items-center gap-2 text-xs text-slate-400 font-mono bg-slate-50 px-3 py-2 rounded-lg">
+                                <span className="uppercase tracking-wider">Barcode:</span>
+                                <span className="font-bold">{selectedProduct.barcode || '---'}</span>
+                            </div>
+                        </div>
+                        <div className="p-4 pt-0">
+                            <button
+                                onClick={() => setSelectedProduct(null)}
+                                className="w-full h-12 bg-slate-900 text-white font-bold rounded-xl active:scale-95 transition-transform"
+                            >
+                                Đóng
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
