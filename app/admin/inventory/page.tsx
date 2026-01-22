@@ -106,7 +106,7 @@ export default function InventoryPage() {
 
     // New State for Details
     const [detailOpen, setDetailOpen] = useState(false)
-    const [detailType, setDetailType] = useState<'APPROVED' | 'ALLOCATED'>('APPROVED')
+    const [detailType, setDetailType] = useState<'BOOKED' | 'ALLOCATED'>('BOOKED')
     const [detailData, setDetailData] = useState<any[]>([])
     const [detailLoading, setDetailLoading] = useState(false)
     const [detailTitle, setDetailTitle] = useState("")
@@ -125,18 +125,17 @@ export default function InventoryPage() {
 
     const showApprovedDetails = async (item: InventoryItem) => {
         if (!item.products?.id) return
-        setDetailType('APPROVED')
+        setDetailType('BOOKED')
         setDetailTitle(`Nhu Cầu Đã Duyệt - ${item.products.sku}`)
         setDetailOpen(true)
         setDetailLoading(true)
 
         const { data } = await supabase
-            .from('order_items')
-            .select('quantity, orders!inner(id, code, status, created_at, users(name))')
+            .from('outbound_order_items')
+            .select('quantity, outbound_orders!inner(id, code, status, created_at, internal_staff(name))')
             .eq('product_id', item.products.id)
-            .eq('orders.is_approved', true)
-            .neq('orders.status', 'SHIPPED')
-            .neq('orders.status', 'COMPLETED')
+            .eq('outbound_orders.is_approved', true)
+            .not('outbound_orders.status', 'in', '("SHIPPED", "COMPLETED", "CANCELLED")')
         //.order('orders(created_at)', { ascending: true }) // Syntax might be tricky, let's sort client side or trust default
 
         setDetailData(data || [])

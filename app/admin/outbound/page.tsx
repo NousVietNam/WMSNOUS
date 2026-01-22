@@ -345,6 +345,7 @@ export default function OutboundListPage() {
         const styles: Record<string, string> = {
             'PENDING': 'bg-gray-100 text-gray-600',
             'ALLOCATED': 'bg-yellow-100 text-yellow-700',
+            'READY': 'bg-indigo-100 text-indigo-700 font-bold',
             'PICKING': 'bg-orange-100 text-orange-700',
             'PACKED': 'bg-blue-100 text-blue-700',
             'SHIPPED': 'bg-green-100 text-green-700',
@@ -354,6 +355,7 @@ export default function OutboundListPage() {
         const labels: Record<string, string> = {
             'PENDING': 'Chờ Xử Lý',
             'ALLOCATED': 'Đã Phân Bổ',
+            'READY': 'Đã Tạo Job',
             'PICKING': 'Đang Soạn',
             'PACKED': 'Đã Đóng Gói',
             'SHIPPED': 'Đã Xuất',
@@ -454,6 +456,7 @@ export default function OutboundListPage() {
                         <option value="ALL">Tất cả trạng thái</option>
                         <option value="PENDING">Chờ Xử Lý</option>
                         <option value="ALLOCATED">Đã Phân Bổ</option>
+                        <option value="READY">Đã Tạo Job</option>
                         <option value="PICKING">Đang Soạn</option>
                         <option value="PACKED">Đã Đóng Gói</option>
                         <option value="SHIPPED">Đã Xuất</option>

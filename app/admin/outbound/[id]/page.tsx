@@ -490,6 +490,7 @@ export default function OutboundDetailPage() {
         const styles: Record<string, string> = {
             'PENDING': 'bg-gray-100 text-gray-600',
             'ALLOCATED': 'bg-yellow-100 text-yellow-700',
+            'READY': 'bg-indigo-100 text-indigo-700 font-bold',
             'PICKING': 'bg-orange-100 text-orange-700',
             'PACKED': 'bg-blue-100 text-blue-700',
             'SHIPPED': 'bg-green-100 text-green-700',
@@ -497,6 +498,7 @@ export default function OutboundDetailPage() {
         const labels: Record<string, string> = {
             'PENDING': 'Chờ Xử Lý',
             'ALLOCATED': 'Đã Phân Bổ',
+            'READY': 'Đã Tạo Job',
             'PICKING': 'Đang Soạn',
             'PACKED': 'Đã Đóng Gói',
             'SHIPPED': 'Đã Xuất',
@@ -517,7 +519,7 @@ export default function OutboundDetailPage() {
     const canApprove = isPending && !order.is_approved
     const canUnapprove = isPending && order.is_approved
     const canAllocate = isPending && order.is_approved
-    const canDeallocate = order.status === 'ALLOCATED'
+    const canDeallocate = ['ALLOCATED', 'READY'].includes(order.status)
     const canCreateJob = order.status === 'ALLOCATED'
     const canShip = ['PACKED'].includes(order.status)
     const isShipped = order.status === 'SHIPPED'

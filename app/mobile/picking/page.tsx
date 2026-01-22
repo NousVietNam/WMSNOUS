@@ -42,14 +42,10 @@ export default function PickingJobsPage() {
     const handleTakeJob = async (jobId: string) => {
         if (!session?.user) return
 
-        const { error } = await supabase
-            .from('picking_jobs')
-            .update({
-                status: 'IN_PROGRESS',
-                assigned_to: session.user.id
-            })
-            .eq('id', jobId)
-            .is('assigned_to', null)
+        const { error } = await supabase.rpc('start_picking_job', {
+            p_job_id: jobId,
+            p_user_id: session.user.id
+        })
 
         if (error) console.error(error)
     }

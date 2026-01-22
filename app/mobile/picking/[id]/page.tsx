@@ -160,7 +160,7 @@ export default function DoPickingPage() {
             .select(`
                 *,
                 products (id, sku, name, barcode),
-                boxes (id, code, location_id, locations (code)),
+                boxes:box_id (id, code, location_id, locations (code)),
                 locations (id, code)
             `)
             .eq('job_id', id)
