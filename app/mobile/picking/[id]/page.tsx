@@ -56,11 +56,13 @@ export default function DoPickingPage() {
     const [scanInput, setScanInput] = useState("")
     const [showScanner, setShowScanner] = useState(false)
     const [scannerMode, setScannerMode] = useState<'BOX_UNLOCK' | 'OUTBOX'>('BOX_UNLOCK')
+    const [jobType, setJobType] = useState<string | null>(null)
 
     // Outbox State
     const [activeOutbox, setActiveOutbox] = useState<ActiveOutbox | null>(null)
     const [tempSelectedTaskIds, setTempSelectedTaskIds] = useState<Set<string>>(new Set())
     const [isConfirmingBox, setIsConfirmingBox] = useState(false)
+    const [jobCode, setJobCode] = useState<string | null>(null)
 
     // Derived State
     const jobStats = (() => {
@@ -134,7 +136,8 @@ export default function DoPickingPage() {
             .from('picking_jobs')
             .select(`
                 type, 
-                outbound_orders (
+                outbound_order:outbound_orders!outbound_order_id (
+                    code,
                     transfer_type
                 )
             `)
@@ -142,17 +145,22 @@ export default function DoPickingPage() {
             .single()
 
         if (jobInfo) {
+            setJobType(jobInfo.type)
             // Priority: Explicit Job Type > Order Type
             let type: string | undefined = undefined;
 
             if (jobInfo.type === 'BOX_PICK') type = 'BOX';
             else if (jobInfo.type === 'ITEM_PICK') type = 'ITEM';
             else {
-                const order = Array.isArray(jobInfo.outbound_orders) ? jobInfo.outbound_orders[0] : jobInfo.outbound_orders;
+                const order = Array.isArray(jobInfo.outbound_order) ? jobInfo.outbound_order[0] : jobInfo.outbound_order as any;
                 type = order?.transfer_type;
             }
 
             if (type) setTransferType(type as 'BOX' | 'ITEM')
+
+            const order = Array.isArray(jobInfo.outbound_order) ? jobInfo.outbound_order[0] : jobInfo.outbound_order as any;
+            if (order?.code) setJobCode(`PICK-${order.code}`)
+            else setJobCode(`JOB-${typeof id === 'string' ? id.slice(0, 8).toUpperCase() : id}`)
         }
 
         const { data: tasks, error } = await supabase
@@ -320,7 +328,8 @@ export default function DoPickingPage() {
 
     // Batch Confirm Box
     const handleConfirmBox = async (taskIds: string[]) => {
-        if (transferType !== 'BOX' && !activeOutbox) {
+        const isBoxPick = transferType === 'BOX' || jobType === 'BOX_PICK'
+        if (!isBoxPick && !activeOutbox) {
             toast.error("Vui lòng chọn Outbox trước!")
             return
         }
@@ -424,7 +433,7 @@ export default function DoPickingPage() {
                     </div>
                 </div>
 
-                {!activeOutbox && transferType !== 'BOX' && (
+                {!activeOutbox && transferType !== 'BOX' && jobType !== 'BOX_PICK' && (
                     <div className="bg-orange-50 p-3 rounded border border-orange-200 flex items-center justify-between">
                         <div className="text-xs text-orange-800 font-bold flex items-center gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg> Chọn thùng đóng gói!
@@ -563,9 +572,9 @@ export default function DoPickingPage() {
 
     return (
         <div className="min-h-screen bg-slate-100 flex flex-col pb-6">
-            <MobileHeader title={`JOB-${typeof id === 'string' ? id.slice(0, 8).toUpperCase() : id}`} backLink="/mobile/picking" />
+            <MobileHeader title={jobCode || "..."} backLink="/mobile/picking" />
 
-            {transferType !== 'BOX' && (
+            {transferType !== 'BOX' && jobType !== 'BOX_PICK' && (
                 <div className={`p-3 px-4 flex items-center justify-between text-sm ${activeOutbox ? 'bg-pink-600 text-white' : 'bg-slate-800 text-slate-300'}`}>
                     <div className="flex items-center gap-2">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
@@ -587,7 +596,7 @@ export default function DoPickingPage() {
                         <div className="flex flex-col">
                             <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Mã Job</span>
                             <span className="font-mono font-bold text-slate-800">
-                                JOB-{typeof id === 'string' ? id.slice(0, 8).toUpperCase() : ''}
+                                {jobCode || '...'}
                             </span>
                         </div>
                         <div className="flex flex-col text-right">

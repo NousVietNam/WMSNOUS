@@ -274,7 +274,7 @@ export default function PickingJobsPage() {
                                 const order = job.outbound_order
                                 const isManual = job.type === 'MANUAL_PICK'
                                 const isTransfer = order?.type === 'TRANSFER' || order?.type === 'INTERNAL'
-                                const code = isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : (order?.code || 'N/A')
+                                const code = isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : `PICK-${order?.code || 'N/A'}`
                                 const link = `/admin/outbound/${job.outbound_order_id || ''}` // Unified link
                                 const info = isManual
                                     ? 'Upload thủ công'

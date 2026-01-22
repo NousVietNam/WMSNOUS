@@ -70,7 +70,7 @@ export default function PickingJobsPage() {
                                     <div className="flex justify-between items-start mb-1">
                                         <div>
                                             <div className="font-bold text-lg text-indigo-700">
-                                                {job.outbound_orders?.code || `JOB-${job.id.slice(0, 8)}`}
+                                                {job.outbound_orders?.code ? `PICK-${job.outbound_orders.code}` : `JOB-${job.id.slice(0, 8)}`}
                                             </div>
                                             <div className="text-sm text-slate-500">
                                                 {job.outbound_orders?.customers?.name || job.outbound_orders?.destinations?.name || (job.type === 'MANUAL_PICK' ? 'Upload Thủ Công' : '')}

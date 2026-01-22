@@ -36,42 +36,8 @@ export async function POST(req: NextRequest) {
 
         // 2. Revert Inventory Allocation
         // NOTE: Database Trigger 'tr_picking_allocation' handles the actual stock reversion on delete.
-        // We create RELEASE transactions for audit trail
-
-        const transactions = []
-        const shouldLogTransaction = !!job.outbound_order_id
-
-        if (shouldLogTransaction && job.tasks && job.tasks.length > 0) {
-            for (const task of job.tasks) {
-                if (task.product_id && task.quantity > 0) {
-                    // Fetch product SKU for log
-                    const { data: product } = await supabaseAdmin
-                        .from('products')
-                        .select('sku')
-                        .eq('id', task.product_id)
-                        .single()
-
-                    transactions.push({
-                        type: 'RELEASE',
-                        entity_type: 'ITEM',
-                        sku: product?.sku || null,
-                        quantity: task.quantity,
-                        from_box_id: task.box_id,
-                        reference_id: job.outbound_order_id,
-                        note: `Hủy phân bổ - Job ${job.type}`,
-                        created_at: new Date().toISOString()
-                    })
-                }
-            }
-        }
-
-        // 3. Insert RELEASE Transactions (Audit Log)
-        if (transactions.length > 0) {
-            const { error: txError } = await supabaseAdmin.from('transactions').insert(transactions)
-            if (txError) {
-                console.error("Tx Log Error:", txError)
-            }
-        }
+        // Brain Rule: We do NOT log RELEASE transactions here because deleting a job only moves the order back to ALLOCATED.
+        // Transations are only logged during Phân bổ (RESERVE) and Hủy phân bổ (RELEASE).
 
         // 4. Revert Outbound Order Status (Unified Schema)
         if (job.outbound_order_id) {
