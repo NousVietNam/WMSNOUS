@@ -147,22 +147,23 @@ function PutAwayContent() {
         }
 
         setLoading(true)
-        // Verify box exists and check for order_id (lock)
+        // Verify box exists and check for outbound_order_id (lock)
         const { data, error } = await supabase
             .from('boxes')
-            .select('id, code, location_id, order_id, locations(code)')
+            .select('id, code, location_id, outbound_order_id, locations(code)')
             .eq('code', boxCode)
             .single()
 
         if (error || !data) {
+            console.error("Box Fetch Error:", error)
             playErrorSound()
-            alert("Không tìm thấy thùng này!")
+            alert("Không tìm thấy thùng này! Lỗi: " + (error?.message || "Unknown"))
             setLoading(false)
             return
         }
 
         // NEW: Check if box is assigned to an order (LOCKED)
-        if (data.order_id) {
+        if (data.outbound_order_id) {
             playErrorSound()
             alert("THÙNG ĐÃ BỊ KHÓA!\nThùng này đã được gán vào một đơn hàng và đang chờ xuất. Không thể thêm hàng vào thùng này.")
             setLoading(false)
