@@ -49,6 +49,9 @@ BEGIN
         -- CRITICAL: Set to COMPLETED
         UPDATE picking_tasks SET status = 'COMPLETED', outbox_id = p_outbox_id, picked_at = NOW(), picked_by = p_user_id WHERE id = v_task_id;
         
+        -- Tracking: Set job started_at on first pick
+        UPDATE picking_jobs SET started_at = NOW() WHERE id = v_task.job_id AND started_at IS NULL;
+
         -- Polymorphic Update for Order Items
         UPDATE outbound_order_items SET picked_quantity = COALESCE(picked_quantity, 0) + v_task.quantity WHERE id = v_task.order_item_id;
         UPDATE order_items SET picked_quantity = COALESCE(picked_quantity, 0) + v_task.quantity WHERE id = v_task.order_item_id;
@@ -98,6 +101,9 @@ BEGIN
     LOOP
         -- CRITICAL: Set to COMPLETED
         UPDATE picking_tasks SET status = 'COMPLETED', picked_at = NOW(), picked_by = p_user_id WHERE id = v_task.id;
+
+        -- Tracking: Set job started_at on first pick
+        UPDATE picking_jobs SET started_at = NOW() WHERE id = p_job_id AND started_at IS NULL;
 
         UPDATE outbound_order_items SET picked_quantity = COALESCE(picked_quantity, 0) + v_task.quantity WHERE id = v_task.order_item_id;
         UPDATE order_items SET picked_quantity = COALESCE(picked_quantity, 0) + v_task.quantity WHERE id = v_task.order_item_id;

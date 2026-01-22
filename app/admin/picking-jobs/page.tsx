@@ -168,14 +168,33 @@ export default function PickingJobsPage() {
 
     const getStatusBadge = (status: string) => {
         switch (status) {
-            case 'PENDING': return <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">Chờ Xử Lý</Badge>
-            case 'OPEN': return <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">Mới Tạo (Open)</Badge>
-            case 'IN_PROGRESS': return <Badge variant="outline" className="bg-indigo-100 text-indigo-800 border-indigo-200">Đang Lấy</Badge>
-            case 'COMPLETED': return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">Hoàn Thành (Đã lấy)</Badge>
-            case 'SHIPPED': return <Badge variant="default" className="bg-green-600 hover:bg-green-700">Đã Xuất Kho</Badge>
-            case 'CANCELLED': return <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200">Đã Hủy</Badge>
-            default: return <Badge variant="outline">{status}</Badge>
+            case 'PENDING': return <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200 uppercase text-[10px]">Chờ Xử Lý</Badge>
+            case 'PLANNED': return <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200 uppercase text-[10px]">Đã Lên Kế Hoạch</Badge>
+            case 'OPEN': return <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200 uppercase text-[10px]">Mới Tạo</Badge>
+            case 'IN_PROGRESS': return <Badge variant="outline" className="bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]">Đang Lấy</Badge>
+            case 'PICKING': return <Badge variant="outline" className="bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]">Đang Lấy</Badge>
+            case 'COMPLETED': return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 uppercase text-[10px]">Hoàn Thành</Badge>
+            case 'PACKED': return <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200 uppercase text-[10px]">Đã Đóng Gói</Badge>
+            case 'SHIPPED': return <Badge variant="default" className="bg-green-600 hover:bg-green-700 uppercase text-[10px]">Đã Xuất Kho</Badge>
+            case 'CANCELLED': return <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200 uppercase text-[10px]">Đã Hủy</Badge>
+            default: return <Badge variant="outline" className="uppercase text-[10px]">{status}</Badge>
         }
+    }
+
+    const formatDuration = (start: string | null, end: string | null) => {
+        if (!start) return '---'
+        const startTime = new Date(start).getTime()
+        const endTime = end ? new Date(end).getTime() : Date.now()
+        const diff = Math.max(0, endTime - startTime)
+
+        const mins = Math.floor(diff / 60000)
+        const secs = Math.floor((diff % 60000) / 1000)
+
+        if (mins > 60) {
+            const hrs = Math.floor(mins / 60)
+            return `${hrs}h ${mins % 60}m`
+        }
+        return `${mins}p ${secs}s`
     }
 
     return (
@@ -260,6 +279,8 @@ export default function PickingJobsPage() {
                             <th className="p-3 text-center">SL Items</th>
                             <th className="p-3 text-left">Nhân Viên</th>
                             <th className="p-3 text-center">Trạng Thái</th>
+                            <th className="p-3 text-center">Bắt đầu</th>
+                            <th className="p-3 text-center">Thời gian</th>
                             <th className="p-3 text-right">Ngày Tạo</th>
                             <th className="p-3 text-right">Hành Động</th>
                         </tr>
@@ -348,8 +369,16 @@ export default function PickingJobsPage() {
                                         </td>
                                         <td className="p-3 text-slate-600 text-sm">{job.user?.name || '---'}</td>
                                         <td className="p-3 text-center">{getStatusBadge(job.status)}</td>
+                                        <td className="p-3 text-center text-xs font-medium text-slate-500">
+                                            {job.started_at ? new Date(job.started_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '---'}
+                                        </td>
+                                        <td className="p-3 text-center text-xs font-bold text-indigo-600">
+                                            {formatDuration(job.started_at, job.completed_at || null)}
+                                        </td>
                                         <td className="p-3 text-right text-slate-500 text-xs">
-                                            {new Date(job.created_at).toLocaleString('vi-VN')}
+                                            {new Date(job.created_at).toLocaleDateString('vi-VN')}
+                                            <br />
+                                            <span className="opacity-60">{new Date(job.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
                                         </td>
                                         <td className="p-3 text-right">
                                             <Button
