@@ -186,8 +186,12 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Không tìm thấy đơn hàng');
     END IF;
     
-    IF v_order.status != 'APPROVED' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Đơn hàng phải ở trạng thái APPROVED mới được Phân Bổ');
+    IF v_order.is_approved IS NOT TRUE THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Đơn hàng chưa được Duyệt (Approved)');
+    END IF;
+    
+    IF v_order.status IN ('ALLOCATED', 'PICKING', 'PACKED', 'SHIPPED', 'COMPLETED') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Đơn hàng đã được phân bổ hoặc đang xử lý');
     END IF;
 
     -- 2. Create PLANNED Job

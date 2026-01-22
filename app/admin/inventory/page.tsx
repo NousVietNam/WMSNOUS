@@ -35,6 +35,28 @@ interface InventoryItem {
     locations: { code: string } | null
 }
 
+interface GroupedInventoryItem {
+    product_id: string
+    sku: string
+    name: string
+    barcode: string | null
+    image_url: string | null
+    brand: string | null
+    total_quantity: number
+    total_allocated: number
+    soft_sale: number
+    soft_gift: number
+    soft_internal: number
+    soft_transfer: number
+    available_quantity: number
+    total_count: number
+    target_audience?: string | null
+    product_group?: string | null
+    season?: string | null
+    launch_month?: string | null
+    location_details?: any[] | null
+}
+
 const ITEMS_PER_PAGE = 200
 
 export default function InventoryPage() {
@@ -45,7 +67,9 @@ export default function InventoryPage() {
     const [total, setTotal] = useState(0)
 
 
+
     // New State
+    const [groupedItems, setGroupedItems] = useState<GroupedInventoryItem[]>([])
     const [viewImage, setViewImage] = useState<string | null>(null)
 
     // Global Totals State
@@ -78,7 +102,7 @@ export default function InventoryPage() {
     const [targets, setTargets] = useState<string[]>([])
     const [productGroups, setProductGroups] = useState<string[]>([])
     const [seasons, setSeasons] = useState<string[]>([])
-    const [months, setMonths] = useState<number[]>([])
+    const [months, setMonths] = useState<string[]>([])
 
     // New State for Details
     const [detailOpen, setDetailOpen] = useState(false)
@@ -241,10 +265,18 @@ export default function InventoryPage() {
 
             if (monthData?.[0]) {
                 const rawMonths = monthData[0].months || []
+                // Keep raw strings to match database values exactly
                 const uniqueMonths = rawMonths
-                    .map((m: any) => Number(m))
-                    .filter((n: number) => !isNaN(n))
-                setMonths(uniqueMonths.sort((a: number, b: number) => a - b))
+                    .filter((m: any) => m !== null && m !== undefined && m !== '')
+                    .map((m: any) => String(m)) // Ensure string
+
+                // Sort numerically if possible, otherwise alphabetically
+                setMonths(uniqueMonths.sort((a: string, b: string) => {
+                    const numA = parseFloat(a)
+                    const numB = parseFloat(b)
+                    if (!isNaN(numA) && !isNaN(numB)) return numA - numB
+                    return a.localeCompare(b)
+                }))
             }
 
         } catch (e) {
@@ -282,91 +314,115 @@ export default function InventoryPage() {
     const fetchInventory = async () => {
         setLoading(true)
 
-        // Dynamic Select: Use !inner for boxes if filtering by box to ensure correct filtering
-        let selectQuery = `
-            id, quantity, allocated_quantity, created_at, box_id, location_id, warehouse_id,
-            products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
-            locations (code)
-        `
-        if (filterBox !== "all") {
-            selectQuery += `, boxes!inner (code, locations (code))`
-        } else {
-            selectQuery += `, boxes (code, locations (code))`
-        }
+        if (viewMode === 'SUMMARY') {
+            // CALL RPC FOR SUMMARY
+            const { data, error } = await supabase.rpc('get_inventory_grouped', {
+                p_page: page,
+                p_page_size: ITEMS_PER_PAGE,
+                p_warehouse_id: filterWarehouse !== "all" ? filterWarehouse : null,
+                p_location_code: filterLocation !== "all" ? filterLocation : null,
+                p_box_code: filterBox !== "all" ? filterBox : null,
+                p_brand: filterBrand !== "all" ? filterBrand : null,
+                p_target_audience: filterTarget !== "all" ? filterTarget : null,
+                p_product_group: filterProductGroup !== "all" ? filterProductGroup : null,
+                p_season: filterSeason !== "all" ? filterSeason : null,
+                p_launch_month: filterMonth !== "all" ? filterMonth : null,
+                p_search: searchTerm || null
+            })
 
-        let query = supabase
-            .from('inventory_items')
-            .select(selectQuery, { count: 'exact' })
-            .gt('quantity', 0)
-
-        // SERVER-SIDE FILTERS
-        if (filterWarehouse !== "all") query = query.eq('warehouse_id', filterWarehouse)
-        if (filterBrand !== "all") query = query.eq('products.brand', filterBrand)
-        if (filterTarget !== "all") query = query.eq('products.target_audience', filterTarget)
-        if (filterProductGroup !== "all") query = query.eq('products.product_group', filterProductGroup)
-        if (filterSeason !== "all") query = query.eq('products.season', filterSeason)
-        if (filterMonth !== "all") query = query.eq('products.launch_month', filterMonth)
-        if (filterBox !== "all") query = query.eq('boxes.code', filterBox)
-
-        // Location Filter: Complex because efficient OR query across tables is hard via JS client
-        // Workaround: We filter mainly on box location if it exists, or direct location
-        // Note: strict exact match on ONE of them might miss the other if we use .eq() on one.
-        // For now, if filterLocation is set:
-        // We defer to a client-side filter check if result set is small? No, pagination breaks.
-        // We will try using a raw filter string for the OR condition if possible, or simple .eq on boxes.locations if that's the primary use case.
-        if (filterLocation !== "all") {
-            // Try filtering by box location (most common)
-            // Ideally we need an RPC for search to be perfect with pagination.
-            // Given limitations, we'll filter 'boxes.locations.code'
-            // query = query.eq('boxes.locations.code', filterLocation)
-            // But we should also check direct location.
-            // Let's filter purely on client side for the PAGE if search is active?
-            // Actually, for "Location" filter, let's treat it as a "Global Search" to bypass pagination issues
-            // allowing client-side filter on the full result set (up to a limit?)
-            // Or better: Use the RPC 'get_inventory_items' if we had one.
-
-            // Current compromise: Filter by Text Search on the joined columns if possible?
-            // No, let's use the .or() syntax properly if possible.
-            // rpc functions are better.
-
-            // Temporary fix: Filter boxes.locations.code (Primary storage)
-            // This assumes most content is in boxes.
-        }
-
-        const isGlobalSearch = searchTerm.length > 0 || filterLocation !== "all"; // Treat Location filter like search for now to allow client-side fallback
-        if (!isGlobalSearch) {
-            const from = page * ITEMS_PER_PAGE
-            const to = from + ITEMS_PER_PAGE - 1
-            query = query.range(from, to)
-        }
-
-        const { data, count, error } = await query.order('created_at', { ascending: false })
-
-        if (error) {
-            console.error(error)
-        } else {
-            let inventoryItems = data as any || []
-
-            if (isGlobalSearch) {
-                const s = searchTerm.toLowerCase()
-                inventoryItems = inventoryItems.filter((item: any) => (
-                    item.products?.name?.toLowerCase().includes(s) ||
-                    item.products?.sku?.toLowerCase().includes(s) ||
-                    item.boxes?.code?.toLowerCase().includes(s) ||
-                    item.locations?.code?.toLowerCase().includes(s) ||
-                    item.products?.barcode?.toLowerCase().includes(s)
-                ))
-                setTotal(inventoryItems.length)
+            if (error) {
+                console.error("Fetch Inventory Grouped Error:", error)
+                setGroupedItems([])
+                setTotal(0)
             } else {
-                setTotal(count || 0)
+                setGroupedItems(data || [])
+                // Set total from the first item (all items have same total_count)
+                setTotal(data && data.length > 0 ? Number(data[0].total_count) : 0)
+            }
+        } else {
+            // DETAILED VIEW (Existing Logic)
+            // Dynamic Select: Use !inner for boxes if filtering by box to ensure correct filtering
+            let selectQuery = `
+                id, quantity, allocated_quantity, created_at, box_id, location_id, warehouse_id,
+                products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
+                locations (code)
+            `
+            if (filterBox !== "all") {
+                selectQuery += `, boxes!inner (code, locations (code))`
+            } else {
+                selectQuery += `, boxes (code, locations (code))`
             }
 
-            setItems(inventoryItems)
+            let query = supabase
+                .from('inventory_items')
+                .select(selectQuery, { count: 'exact' })
+                .gt('quantity', 0)
 
-            // Fetch View Data for these items
-            const productIds = Array.from(new Set(inventoryItems.map((i: any) => i.products?.id).filter(Boolean))) as string[]
-            if (productIds.length > 0) {
-                await fetchAvailabilityView(productIds)
+            // SERVER-SIDE FILTERS
+            if (filterWarehouse !== "all") query = query.eq('warehouse_id', filterWarehouse)
+            if (filterBrand !== "all") query = query.eq('products.brand', filterBrand)
+            if (filterTarget !== "all") query = query.eq('products.target_audience', filterTarget)
+            if (filterProductGroup !== "all") query = query.eq('products.product_group', filterProductGroup)
+            if (filterSeason !== "all") query = query.eq('products.season', filterSeason)
+            if (filterMonth !== "all") query = query.eq('products.launch_month', filterMonth)
+            if (filterBox !== "all") query = query.eq('boxes.code', filterBox)
+
+            // Search Logic
+            if (searchTerm) {
+                // Note: Simple ILIKE on joined tables is hard without RPC or complex query.
+                // We will rely on Client-Side filtering for Search in Detailed Mode (as originally implemented)
+                // OR we accept that Pagination + Search on DB is better.
+                // For now, let's keep original behavior: Fetch page, then filter? 
+                // Original Code: "isGlobalSearch" check.
+                // But wait, "query = query.range()" was conditional.
+
+                // Re-implementing simplified search for DB side or keeping hybrid:
+                // The original code fetched ALL data if search was active. That's slow.
+                // Let's stick to the previous hybrid logic for Detailed View to minimize regression.
+            }
+
+            const isGlobalSearch = searchTerm.length > 0 || filterLocation !== "all";
+
+            if (!isGlobalSearch) {
+                const from = page * ITEMS_PER_PAGE
+                const to = from + ITEMS_PER_PAGE - 1
+                query = query.range(from, to)
+            }
+
+            const { data, count, error } = await query.order('created_at', { ascending: false })
+
+            if (error) {
+                console.error(error)
+            } else {
+                let inventoryItems = data as any || []
+
+                if (isGlobalSearch) {
+                    const s = searchTerm.toLowerCase()
+                    inventoryItems = inventoryItems.filter((item: any) => (
+                        item.products?.name?.toLowerCase().includes(s) ||
+                        item.products?.sku?.toLowerCase().includes(s) ||
+                        item.boxes?.code?.toLowerCase().includes(s) ||
+                        item.locations?.code?.toLowerCase().includes(s) ||
+                        item.products?.barcode?.toLowerCase().includes(s)
+                    ))
+                    setTotal(inventoryItems.length)
+
+                    // Manually paginate the filtered result for display?
+                    // Previous code just displayed "filteredItems". 
+                    // We need to set 'items' to the full filtered list? 
+                    // No, 'items' is used for display.
+                    // If isGlobalSearch, we have ALL items.
+                    // The Table uses 'filteredItems' variable which further filters 'items'.
+                    // If we fetch ALL here, 'items' = ALL. 'filteredItems' will re-filter (redundant but safe).
+                } else {
+                    setTotal(count || 0)
+                }
+
+                setItems(inventoryItems)
+
+                // Fetch View Data for these items (for soft allocation in Detail View?)
+                // Detail view doesn't usually show Soft Allocation per item/row, only Summary does.
+                // But we keep it if needed.
             }
         }
         setLoading(false)
@@ -395,8 +451,11 @@ export default function InventoryPage() {
                 setTotals({
                     quantity: 0,
                     allocated: 0,
-                    approved: 0,
-                    available: 0
+                    available: 0,
+                    approved_sale: 0,
+                    approved_gift: 0,
+                    approved_internal: 0,
+                    approved_transfer: 0
                 })
             } else if (data && data.length > 0) {
                 const result = data[0]
@@ -405,15 +464,15 @@ export default function InventoryPage() {
                 // Detail Tab: available_detail = Total - Hard
                 // Summary Tab: available_summary = Total - Hard - Soft
                 setTotals({
-                    quantity: result.total_quantity || 0,
-                    allocated: result.total_allocated || 0,
-                    approved_sale: result.total_approved_sale || 0,
-                    approved_gift: result.total_approved_gift || 0,
-                    approved_internal: result.total_approved_internal || 0,
-                    approved_transfer: result.total_approved_transfer || 0,
-                    available: viewMode === 'DETAILED'
+                    quantity: Number(result.total_quantity || 0),
+                    allocated: Number(result.total_allocated || 0),
+                    approved_sale: Number(result.total_approved_sale || 0),
+                    approved_gift: Number(result.total_approved_gift || 0),
+                    approved_internal: Number(result.total_approved_internal || 0),
+                    approved_transfer: Number(result.total_approved_transfer || 0),
+                    available: Number(viewMode === 'DETAILED'
                         ? (result.available_detail || 0)
-                        : (result.available_summary || 0)
+                        : (result.available_summary || 0))
                 })
             } else {
                 // If RPC returns no data (e.g., no items match filters), set totals to zero
@@ -429,8 +488,11 @@ export default function InventoryPage() {
             setTotals({
                 quantity: 0,
                 allocated: 0,
-                approved: 0,
-                available: 0
+                available: 0,
+                approved_sale: 0,
+                approved_gift: 0,
+                approved_internal: 0,
+                approved_transfer: 0
             })
         }
         setCalculatingTotals(false)
@@ -475,84 +537,8 @@ export default function InventoryPage() {
     })
 
     // Summary View Aggregation (Updated to use View Data)
-    const summaryItems = (() => {
-        try {
-            if (viewMode !== 'SUMMARY') return []
+    // Summary Calc Removed - Using Server Side 'groupedItems'
 
-            const map: Record<string, any> = {}
-
-            filteredItems.forEach(item => {
-                if (!item.products?.sku) return
-                const sku = item.products.sku
-                if (!map[sku]) {
-                    const viewInfo = item.products.id ? viewDataMap[item.products.id] : null
-                    map[sku] = {
-                        ...item.products,
-                        totalQty: 0,
-                        totalAllocated: 0,
-
-                        // Use View Data if available for Soft Allocation
-                        softSale: viewInfo ? (viewInfo.soft_booked_sale || 0) : 0,
-                        softGift: viewInfo ? (viewInfo.soft_booked_gift || 0) : 0,
-                        softInternal: viewInfo ? (viewInfo.soft_booked_internal || 0) : 0,
-                        softTransfer: viewInfo ? (viewInfo.soft_booked_transfer || 0) : 0,
-
-                        locations: new Set(),
-                        items: []
-                    }
-                }
-                // We still sum "totalQty" and "totalAllocated" from the filtered items 
-                // because "Summary" view might be showing a SUBSET (filtered by warehouse).
-                // The VIEW data is GLOBAL.
-                // CAUTION: The User might want GLOBAL availability or FILTERED availability.
-                // Usually "Available" is Global for Selling.
-                // Let's rely on the View for "Available" column logic if possible, 
-                // OR stick to manual sum for Qty but View for Soft?
-                // "Soft Allocation" (Orders) is usually Global (not assigned to warehouse yet).
-                // So View is correct for Soft.
-
-                map[sku].totalQty += item.quantity
-                map[sku].totalAllocated += (item.allocated_quantity || 0)
-
-                const locCode = item.boxes?.locations?.code || item.locations?.code
-                if (locCode) map[sku].locations.add(locCode)
-
-                map[sku].items.push(item)
-            })
-
-            return Object.values(map).map(i => {
-                // Real Available Calculation
-                // If we are viewing specific warehouse, Qty is local.
-                // But Demand is Global.
-                // Available = Local Qty - Local Hard - Global Soft (Risk of negative?).
-                // Usually Available is calculated Globally.
-                // Let's display: Local Qty, Local Hard, Global Soft Orders, Global Soft Transfers.
-
-                return {
-                    ...i,
-                    locationStr: Array.from(i.locations).sort().join(', '),
-                    available: Math.max(0, i.totalQty - i.totalAllocated - i.softSale - i.softGift - i.softInternal - i.softTransfer)
-                }
-            })
-        } catch (e) {
-            console.error("Summary Calc Error:", e)
-            return []
-        }
-    })()
-
-    // Calculate totals for Summary mode (from summaryItems)
-    const summaryTotals = (() => {
-        if (viewMode !== 'SUMMARY' || summaryItems.length === 0) return { softSale: 0, softGift: 0, softInternal: 0, softTransfer: 0, totalQty: 0, totalAllocated: 0, available: 0 }
-        return summaryItems.reduce((acc, item) => ({
-            softSale: acc.softSale + (item.softSale || 0),
-            softGift: acc.softGift + (item.softGift || 0),
-            softInternal: acc.softInternal + (item.softInternal || 0),
-            softTransfer: acc.softTransfer + (item.softTransfer || 0),
-            totalQty: acc.totalQty + (item.totalQty || 0),
-            totalAllocated: acc.totalAllocated + (item.totalAllocated || 0),
-            available: acc.available + (item.available || 0)
-        }), { softSale: 0, softGift: 0, softInternal: 0, softTransfer: 0, totalQty: 0, totalAllocated: 0, available: 0 })
-    })()
 
     const handleExport = async () => {
         try {
@@ -795,7 +781,7 @@ export default function InventoryPage() {
                                         </>
                                     )}
                                     <th className="p-3 w-[70px] text-center text-green-600">Khả Dụng</th>
-                                    <th className="p-3 w-[110px]">Thùng</th>
+                                    {viewMode === 'DETAILED' && <th className="p-3 w-[110px]">Thùng</th>}
                                     <th className="p-3 w-[110px]">Vị Trí</th>
                                 </tr>
                             </thead>
@@ -824,17 +810,28 @@ export default function InventoryPage() {
                                     <td className="p-3 text-center text-green-700 text-base bg-green-50 font-bold">
                                         {calculatingTotals ? '...' : totals.available}
                                     </td>
-                                    <td colSpan={2}></td>
+                                    <td colSpan={viewMode === 'SUMMARY' ? 1 : 2}></td>
                                 </tr>
 
 
                                 {loading ? (
-                                    <tr><td colSpan={viewMode === 'SUMMARY' ? 17 : 13} className="p-8 text-center text-slate-400">Đang tải dữ liệu...</td></tr>
+                                    <tr><td colSpan={viewMode === 'SUMMARY' ? 16 : 13} className="p-8 text-center text-slate-400">Đang tải dữ liệu...</td></tr>
                                 ) : viewMode === 'SUMMARY' ? (
-                                    summaryItems.map((item, idx) => (
+                                    groupedItems.map((item, idx) => (
                                         <tr key={idx} className="border-b hover:bg-slate-50 transition-colors text-sm">
-                                            <td className="py-3 px-4">{item.barcode || '-'}</td>
-                                            <td className="py-3 px-4 font-mono text-slate-600">{item.sku}</td>
+                                            <td className="py-3 px-4">
+                                                <div className="flex flex-col">
+                                                    <span>{item.barcode || '-'}</span>
+                                                </div>
+                                            </td>
+                                            <td className="py-3 px-4 font-mono text-slate-600">
+                                                <button
+                                                    className="hover:underline text-blue-600 font-bold text-left"
+                                                    onClick={() => item.image_url && setViewImage(item.image_url)}
+                                                >
+                                                    {item.sku}
+                                                </button>
+                                            </td>
                                             <td className="py-3 px-4 font-medium text-slate-800">{item.name}</td>
                                             <td className="py-3 px-4">{item.brand || '-'}</td>
                                             <td className="py-3 px-4">{item.target_audience || '-'}</td>
@@ -842,38 +839,48 @@ export default function InventoryPage() {
                                             <td className="py-3 px-4 text-center">{item.season || '-'}</td>
                                             <td className="py-3 px-4 text-center">{item.launch_month || '-'}</td>
 
-                                            <td className="py-3 px-4 text-center font-bold text-slate-700">{item.totalQty}</td>
+                                            <td className="py-3 px-4 text-center font-bold text-slate-700">{item.total_quantity}</td>
                                             <td className="py-3 px-4 text-center font-bold text-slate-600" title="Đã cấp phát cứng">
-                                                {item.totalAllocated > 0 ? item.totalAllocated : '-'}
+                                                {item.total_allocated > 0 ? item.total_allocated : '-'}
                                             </td>
                                             {/* Soft Allocation Categories */}
                                             <td className="py-3 px-4 text-center font-bold text-blue-600">
-                                                {item.softSale > 0 ? item.softSale : '-'}
+                                                {item.soft_sale > 0 ? item.soft_sale : '-'}
                                             </td>
                                             <td className="py-3 px-4 text-center font-bold text-pink-600">
-                                                {item.softGift > 0 ? item.softGift : '-'}
+                                                {item.soft_gift > 0 ? item.soft_gift : '-'}
                                             </td>
                                             <td className="py-3 px-4 text-center font-bold text-purple-600">
-                                                {item.softInternal > 0 ? item.softInternal : '-'}
+                                                {item.soft_internal > 0 ? item.soft_internal : '-'}
                                             </td>
                                             <td className="py-3 px-4 text-center font-bold text-orange-600">
-                                                {item.softTransfer > 0 ? item.softTransfer : '-'}
+                                                {item.soft_transfer > 0 ? item.soft_transfer : '-'}
                                             </td>
                                             <td className="py-3 px-4 text-center font-bold text-green-600 bg-green-50">
-                                                {item.available}
+                                                {item.available_quantity}
                                             </td>
 
-                                            <td className="py-3 px-4 text-center text-slate-400">-</td>
-                                            <td className="py-3 px-4 text-sm text-slate-600 max-w-[150px] truncate" title={item.locationStr}>
-                                                {item.locationStr || 'Chưa xếp'}
-                                                <Button variant="ghost" size="sm" className="h-6 w-6 ml-1 p-0" onClick={() => showLocationDetails(item)}>
-                                                    <Search className="h-3 w-3" />
-                                                </Button>
+                                            <td className="py-3 px-4 text-center text-xs font-medium text-blue-700">
+                                                {item.location_details && item.location_details.length > 0 ? (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 text-xs text-blue-600 hover:bg-blue-50"
+                                                        onClick={() => {
+                                                            setLocationDetailTitle(`Chi tiết vị trí - ${item.sku}`)
+                                                            setLocationDetailData(item.location_details || [])
+                                                            setLocationDetailOpen(true)
+                                                        }}
+                                                    >
+                                                        Xem ({item.location_details.length}) vị trí
+                                                    </Button>
+                                                ) : <span className="text-slate-400">-</span>}
                                             </td>
                                         </tr>
                                     ))
-                                ) : filteredItems.length === 0 ? (
-                                    <tr><td colSpan={viewMode === 'SUMMARY' ? 17 : 13} className="p-8 text-center text-muted-foreground italic tracking-wide">Không tìm thấy sản phẩm nào khớp với bộ lọc.</td></tr>
+
+                                ) : items.length === 0 ? (
+                                    <tr><td colSpan={13} className="p-8 text-center text-muted-foreground italic tracking-wide">Không tìm thấy sản phẩm nào khớp với bộ lọc.</td></tr>
                                 ) : (
                                     filteredItems.map(item => {
                                         const allocated = item.allocated_quantity || 0
