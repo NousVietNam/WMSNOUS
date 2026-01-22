@@ -126,7 +126,7 @@ export default function PickingJobsPage() {
     }
 
     const handleDelete = async (jobId: string, type: string) => {
-        if (!confirm("Hủy Picking Job này?\n\nHệ thống sẽ:\n1. Xóa Job và các Task.\n2. Hoàn trả tồn kho đã phân bổ.\n3. Đặt lại trạng thái đơn về PENDING.")) return
+        if (!confirm("Hủy Picking Job này?\n\nHệ thống sẽ:\n1. Xóa Job và các Task.\n2. Hoàn trả tồn kho đã phân bổ.\n3. Đặt lại trạng thái đơn về ALLOCATED.")) return
 
         setDeletingId(jobId)
         try {

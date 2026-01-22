@@ -43,9 +43,10 @@ BEGIN
         RETURN jsonb_build_object('success', false, 'error', 'Đơn hàng phải được Duyệt (is_approved) mới được Phân Bổ');
     END IF;
 
-    -- If already allocated, return error
-    IF v_order.status != 'PENDING' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Chỉ có thể phân bổ đơn đang ở trạng thái PENDING (Hiện tại: ' || v_order.status || ')');
+    -- If already allocated and has tasks, we should check status. 
+    -- We allow PENDING or ALLOCATED (if someone manually reverted or deleted job)
+    IF v_order.status NOT IN ('PENDING', 'ALLOCATED') THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Chỉ có thể phân bổ đơn đang ở trạng thái PENDING hoặc ALLOCATED (Hiện tại: ' || v_order.status || ')');
     END IF;
 
     -- Get list of all required products for Strategy Context
@@ -184,9 +185,9 @@ BEGIN
     DELETE FROM picking_tasks WHERE job_id IN (SELECT id FROM picking_jobs WHERE outbound_order_id = p_order_id);
     DELETE FROM picking_jobs WHERE outbound_order_id = p_order_id;
 
-    -- Update Order - Set to PENDING (since APPROVED is gone)
+    -- Update Order - Set to ALLOCATED (per user request for revert logic)
     UPDATE outbound_orders 
-    SET status = 'PENDING', 
+    SET status = 'ALLOCATED', 
         allocated_at = NULL 
     WHERE id = p_order_id;
 

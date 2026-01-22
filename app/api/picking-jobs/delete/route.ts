@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
             const { error: updateError } = await supabaseAdmin
                 .from('outbound_orders')
                 .update({
-                    status: 'PENDING',
+                    status: 'ALLOCATED',
                     allocated_at: null
                 })
                 .eq('id', job.outbound_order_id)

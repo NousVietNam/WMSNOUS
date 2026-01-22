@@ -516,14 +516,15 @@ export default function OutboundDetailPage() {
 
     // Permissions Logic
     const isPending = order.status === 'PENDING'
+    const isAllocated = order.status === 'ALLOCATED'
     const canApprove = isPending && !order.is_approved
     const canUnapprove = isPending && order.is_approved
-    const canAllocate = isPending && order.is_approved
+    const canAllocate = (isPending || isAllocated) && order.is_approved
     const canDeallocate = ['ALLOCATED', 'READY'].includes(order.status)
     const canCreateJob = order.status === 'ALLOCATED'
     const canShip = ['PACKED'].includes(order.status)
     const isShipped = order.status === 'SHIPPED'
-    const canEdit = isPending && !order.is_approved
+    const canEdit = (isPending || isAllocated) && !order.is_approved
 
     return (
         <div className="p-6 max-w-5xl mx-auto space-y-6">
