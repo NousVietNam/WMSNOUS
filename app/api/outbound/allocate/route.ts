@@ -8,14 +8,15 @@ const supabase = createClient(
 
 export async function POST(request: Request) {
     try {
-        const { orderId } = await request.json()
+        const { orderId, strategy } = await request.json()
 
         if (!orderId) {
             return NextResponse.json({ success: false, error: 'orderId is required' }, { status: 400 })
         }
 
         const { data, error } = await supabase.rpc('allocate_outbound', {
-            p_order_id: orderId
+            p_order_id: orderId,
+            p_strategy: strategy || 'FIFO'
         })
 
         if (error) throw error

@@ -393,7 +393,10 @@ export default function OutboundDetailPage() {
         try {
             const res = await fetch('/api/outbound/allocate', {
                 method: 'POST',
-                body: JSON.stringify({ orderId: id })
+                body: JSON.stringify({
+                    orderId: id,
+                    strategy: 'MATCH_ORDER_CONTENT' // Brain Rule: Prioritize boxes with matching items
+                })
             })
             const data = await res.json()
             if (data.success) {
