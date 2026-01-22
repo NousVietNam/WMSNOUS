@@ -105,12 +105,15 @@ export default function ShipPage() {
                 .single()
 
             if (error || !box) {
-                toast.error("Không tìm thấy mã (Đơn hàng hoặc Thùng)")
+                console.error("Box Error:", error)
+                toast.error("Không tìm thấy mã: " + (error?.message || "Không có dữ liệu"))
                 return
             }
 
             // @ts-ignore
             const itemCount = box.inventory_items?.[0]?.count || 0
+            console.log("Found Box:", box, "ItemCount:", itemCount)
+
             if (itemCount === 0) {
                 toast.error("Thùng này không có hàng bên trong!")
                 return
