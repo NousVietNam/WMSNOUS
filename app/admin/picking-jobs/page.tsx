@@ -107,9 +107,12 @@ export default function PickingJobsPage() {
                     type, 
                     status, 
                     created_at,
+                    started_at,
+                    completed_at,
                     user:users(name),
-                    outbound_order:outbound_orders(code, customer_name),
-                    transfer:outbound_orders!outbound_order_id(code, destination:destinations(name))
+                    outbound_order:outbound_orders(code, customer:customers(name)),
+                    transfer:outbound_orders!outbound_order_id(code, destination:destinations(name)),
+                    picking_tasks(id, status, quantity)
                 `)
                 .order('created_at', { ascending: false })
 
@@ -123,7 +126,7 @@ export default function PickingJobsPage() {
     }
 
     const handleDelete = async (jobId: string, type: string) => {
-        if (!confirm("Hủy Picking Job này?\n\nHệ thống sẽ:\n1. Xóa Job và các Task.\n2. Hoàn trả tồn kho đã phân bổ.\n3. Tạo giao dịch RELEASE.")) return
+        if (!confirm("Hủy Picking Job này?\n\nHệ thống sẽ:\n1. Xóa Job và các Task.\n2. Hoàn trả tồn kho đã phân bổ.\n3. Đặt lại trạng thái đơn về PENDING.")) return
 
         setDeletingId(jobId)
         try {
@@ -153,7 +156,7 @@ export default function PickingJobsPage() {
         // But for clarity in UI, we check both order/transfer which actually point to same relation
         // In unified schema: picking_jobs -> outbound_orders
         const orderCode = job.outbound_order?.code || ''
-        const customerName = job.outbound_order?.customer_name || ''
+        const customerName = job.outbound_order?.customer?.name || ''
         // For transfer, destination logic might need careful check if not fetched via outbound_orders relation
         // Assuming outbound_orders has destination_id -> destination(name) relation if we updated query
 
@@ -252,6 +255,9 @@ export default function PickingJobsPage() {
                             <th className="p-3 text-left">Mã Đơn / Phiếu</th>
                             <th className="p-3 text-left">Loại Job</th>
                             <th className="p-3 text-left">Thông Tin Nguồn/Đích</th>
+                            <th className="p-3 text-center">Tasks</th>
+                            <th className="p-3 text-center">Tiến Độ</th>
+                            <th className="p-3 text-center">SL Items</th>
                             <th className="p-3 text-left">Nhân Viên</th>
                             <th className="p-3 text-center">Trạng Thái</th>
                             <th className="p-3 text-right">Ngày Tạo</th>
@@ -260,18 +266,25 @@ export default function PickingJobsPage() {
                     </thead>
                     <tbody className="divide-y">
                         {loading ? (
-                            <tr><td colSpan={7} className="p-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></td></tr>
+                            <tr><td colSpan={10} className="p-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></td></tr>
                         ) : filteredJobs.length === 0 ? (
-                            <tr><td colSpan={7} className="p-8 text-center text-muted-foreground">Không tìm thấy job nào.</td></tr>
+                            <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Không tìm thấy job nào.</td></tr>
                         ) : (
                             filteredJobs.map(job => {
                                 const order = job.outbound_order
                                 const isManual = job.type === 'MANUAL_PICK'
+                                const isTransfer = order?.type === 'TRANSFER' || order?.type === 'INTERNAL'
                                 const code = isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : (order?.code || 'N/A')
                                 const link = `/admin/outbound/${job.outbound_order_id || ''}` // Unified link
                                 const info = isManual
                                     ? 'Upload thủ công'
-                                    : (order?.customer_name || 'N/A') // Simplify for now, can add destination logic if fetched
+                                    : (order?.customer?.name || 'N/A') // Simplify for now, can add destination logic if fetched
+
+                                // Calculate task statistics
+                                const tasks = (job as any).picking_tasks || []
+                                const totalTasks = tasks.length
+                                const completedTasks = tasks.filter((t: any) => t.status === 'COMPLETED').length
+                                const totalItems = tasks.reduce((sum: number, t: any) => sum + (t.quantity || 0), 0)
 
                                 return (
                                     <tr key={job.id} className="hover:bg-slate-50">
@@ -311,9 +324,29 @@ export default function PickingJobsPage() {
                                             )}
                                         </td>
                                         <td className="p-3 text-slate-600">{info}</td>
-                                        <td className="p-3 text-slate-600 text-sm">
-                                            {job.user?.name || '---'}
+                                        {/* New columns for task statistics */}
+                                        <td className="p-3 text-center">
+                                            <span className="text-sm font-medium text-slate-700">{totalTasks}</span>
                                         </td>
+                                        <td className="p-3 text-center">
+                                            {totalTasks > 0 ? (
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <span className="text-sm font-medium text-slate-700">{completedTasks}/{totalTasks}</span>
+                                                    <div className="w-16 bg-slate-200 rounded-full h-2">
+                                                        <div
+                                                            className="bg-green-500 h-2 rounded-full transition-all"
+                                                            style={{ width: `${(completedTasks / totalTasks) * 100}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-slate-400">-</span>
+                                            )}
+                                        </td>
+                                        <td className="p-3 text-center">
+                                            <span className="text-sm font-semibold text-blue-700">{totalItems}</span>
+                                        </td>
+                                        <td className="p-3 text-slate-600 text-sm">{job.user?.name || '---'}</td>
                                         <td className="p-3 text-center">{getStatusBadge(job.status)}</td>
                                         <td className="p-3 text-right text-slate-500 text-xs">
                                             {new Date(job.created_at).toLocaleString('vi-VN')}

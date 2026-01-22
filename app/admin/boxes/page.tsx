@@ -31,26 +31,16 @@ export default function BoxesPage() {
     const [loading, setLoading] = useState(true)
     const [openDialog, setOpenDialog] = useState(false)
 
+    // Sort state
+    const [sortColumn, setSortColumn] = useState<string | null>(null)
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
     // Print State
     const [printBox, setPrintBox] = useState<Box | null>(null) // For Modal Preview
     const [printQueue, setPrintQueue] = useState<Box[]>([]) // For Actual Print - Hidden
     const [bulkQty, setBulkQty] = useState<string>('')
     const [searchTerm, setSearchTerm] = useState<string>('')
     const [customCode, setCustomCode] = useState<string>('')
-
-    // Transfer Creation State
-    const [transferDialogOpen, setTransferDialogOpen] = useState(false)
-    const [destinationId, setDestinationId] = useState('')
-    const [transferNote, setTransferNote] = useState('')
-    const [destinations, setDestinations] = useState<any[]>([])
-    const [creatingTransfer, setCreatingTransfer] = useState(false)
-
-    const [orderDialogOpen, setOrderDialogOpen] = useState(false)
-    const [orderCustomer, setOrderCustomer] = useState('') // Still used? Rename to orderCustomerId
-    const [orderCustomerId, setOrderCustomerId] = useState('')
-    const [orderNote, setOrderNote] = useState('')
-    const [creatingOrder, setCreatingOrder] = useState(false)
-    const [customers, setCustomers] = useState<any[]>([])
 
     const printRef = useRef(null)
     const handleReactToPrint = useReactToPrint({
@@ -95,17 +85,7 @@ export default function BoxesPage() {
 
     useEffect(() => {
         fetchBoxes()
-        fetchDestinations()
     }, [])
-
-    const fetchDestinations = async () => {
-        const { data } = await supabase.from('destinations').select('id, name, type').order('name')
-        if (data) {
-            setDestinations(data.filter((d: any) => d.type !== 'customer')) // Stores
-            setCustomers(data.filter((d: any) => d.type === 'customer'))   // Customers
-        }
-    }
-
 
     const fetchBoxes = async () => {
         setLoading(true)
@@ -366,97 +346,18 @@ export default function BoxesPage() {
         triggerPrint([box])
     }
 
-    const handleCreateTransfer = async () => {
-        if (!destinationId) return alert("Vui lòng chọn nơi đến")
-        if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
-
-        setCreatingTransfer(true)
-        try {
-            const res = await fetch('/api/transfers/create-from-boxes', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    boxIds: Array.from(selectedIds),
-                    destinationId,
-                    note: transferNote || null
-                })
-            })
-
-            const json = await res.json()
-
-            if (!res.ok) throw new Error(json.error || 'Failed to create transfer')
-
-            alert(`✅ Đã tạo đơn điều chuyển: ${json.transferCode}\n\nSố thùng: ${selectedIds.size}\nMã đơn: ${json.transferCode}`)
-
-            // Reset state
-            setTransferDialogOpen(false)
-            setDestinationId('')
-            setTransferNote('')
-            setSelectedIds(new Set())
-
-            // Optional: Navigate to transfer detail
-            if (json.transferId) {
-                window.location.href = `/admin/transfers/${json.transferId}`
-            }
-        } catch (error: any) {
-            alert("Lỗi tạo đơn: " + error.message)
-        } finally {
-            setCreatingTransfer(false)
+    const handleSort = (column: string) => {
+        if (sortColumn === column) {
+            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortColumn(column)
+            setSortDirection('asc')
         }
     }
 
-    const handleCreateOrder = async () => {
-        if (!orderCustomerId) return alert("Vui lòng chọn khách hàng")
-        if (selectedIds.size === 0) return alert("Vui lòng chọn ít nhất 1 thùng")
-
-        const selectedCust = customers.find(c => c.id === orderCustomerId)
-        if (!selectedCust) return
-
-        setCreatingOrder(true)
-        try {
-            // Generate Order Code (client side or server side? create API expects code)
-            // Server API expects 'code'. Let's generating one here.
-            const orderCode = `ORD-${Date.now().toString().slice(-6)}`
-
-            const payload = {
-                code: orderCode,
-                // customerName: orderCustomer, // Replace with selected Name
-                customerName: selectedCust.name,
-                customerId: selectedCust.id,
-                note: orderNote,
-                type: 'BOX',
-                items: [],
-                boxes: Array.from(selectedIds).map(id => ({ id })) // API only needs IDs
-            }
-
-            const res = await fetch('/api/orders/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            })
-
-            const json = await res.json()
-            if (!json.success) throw new Error(json.error)
-
-            alert(`✅ Đã tạo đơn hàng: ${orderCode}\n\nSố thùng: ${selectedIds.size}`)
-
-            // Reset
-            setOrderDialogOpen(false)
-            setOrderCustomerId('')
-            setOrderNote('')
-            setSelectedIds(new Set())
-            fetchBoxes() // Refresh to update status if needed (though API updates boxes)
-
-            // Navigate
-            if (json.orderId) {
-                window.location.href = `/admin/orders/${json.orderId}`
-            }
-
-        } catch (error: any) {
-            alert("Lỗi tạo đơn: " + error.message)
-        } finally {
-            setCreatingOrder(false)
-        }
+    const getSortIcon = (column: string) => {
+        if (sortColumn !== column) return null
+        return sortDirection === 'asc' ? ' ↑' : ' ↓'
     }
 
 
@@ -487,8 +388,8 @@ export default function BoxesPage() {
                                     <DialogHeader><DialogTitle>Tạo Thùng Mới</DialogTitle></DialogHeader>
                                     <div className="py-4 space-y-6">
                                         <div className="space-y-4 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                                            <div className="space-y-2">
-                                                <label className="text-sm font-medium">Tạo 1 thùng lẻ</label>
+                                            <div className="space-y-3">
+                                                <label className="text-sm font-medium block">Tạo 1 thùng lẻ</label>
                                                 <div className="flex gap-2">
                                                     <Input
                                                         placeholder="VD: BOX-VIP-01"
@@ -541,14 +442,6 @@ export default function BoxesPage() {
                                     </div>
                                 </DialogContent>
                             </Dialog>
-                            <div className="grid grid-cols-2 gap-2">
-                                <Button variant="outline" onClick={() => setTransferDialogOpen(true)} disabled={selectedIds.size === 0} className="w-full">
-                                    <ArrowRightLeft className="mr-2 h-4 w-4" /> Tạo Đơn DC ({selectedIds.size})
-                                </Button>
-                                <Button variant="outline" onClick={() => setOrderDialogOpen(true)} disabled={selectedIds.size === 0} className="w-full">
-                                    <Package className="mr-2 h-4 w-4" /> Tạo Đơn Hàng ({selectedIds.size})
-                                </Button>
-                            </div>
                             <Button variant="outline" onClick={handlePrintBatch} disabled={selectedIds.size === 0} className="w-full">
                                 <Printer className="mr-2 h-4 w-4" /> In ({selectedIds.size})
                             </Button>
@@ -674,101 +567,7 @@ export default function BoxesPage() {
                 </Dialog>
 
 
-                {/* Create Transfer Dialog */}
-                <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Tạo Đơn Điều Chuyển từ {selectedIds.size} Thùng</DialogTitle>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid gap-2">
-                                <Label>Nơi Đến *</Label>
-                                <Select value={destinationId} onValueChange={setDestinationId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Chọn nơi đến" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {destinations.map(d => (
-                                            <SelectItem key={d.id} value={d.id}>
-                                                {d.name} ({d.type === 'store' ? 'Kho' : 'KH'})
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Ghi Chú (Tùy chọn)</Label>
-                                <Input
-                                    value={transferNote}
-                                    onChange={e => setTransferNote(e.target.value)}
-                                    placeholder="Ghi chú về đơn điều chuyển..."
-                                />
-                            </div>
-                            <div className="bg-blue-50 p-3 rounded-lg">
-                                <p className="text-sm text-blue-800">
-                                    Đơn điều chuyển sẽ được tạo với loại: <strong>Cả Thùng</strong>
-                                </p>
-                                <p className="text-xs text-blue-600 mt-1">
-                                    Sau khi tạo, vào chi tiết đơn và nhấn "Phân Bổ" để tạo picking jobs.
-                                </p>
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Hủy</Button>
-                            <Button onClick={handleCreateTransfer} disabled={creatingTransfer || !destinationId}>
-                                {creatingTransfer ? 'Đang Tạo...' : 'Tạo Đơn'}
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
 
-                {/* Create Order Dialog */}
-                <Dialog open={orderDialogOpen} onOpenChange={setOrderDialogOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Tạo Đơn Hàng từ {selectedIds.size} Thùng</DialogTitle>
-                        </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid gap-2">
-                                <Label>Khách Hàng *</Label>
-                                <Select value={orderCustomerId} onValueChange={setOrderCustomerId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Chọn khách hàng..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {customers.length === 0 ? (
-                                            <div className="p-2 text-sm text-muted-foreground">Chưa có khách hàng</div>
-                                        ) : customers.map(c => (
-                                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="grid gap-2">
-                                <Label>Ghi Chú</Label>
-                                <Input
-                                    placeholder="Ghi chú đơn hàng..."
-                                    value={orderNote}
-                                    onChange={e => setOrderNote(e.target.value)}
-                                />
-                            </div>
-                            <div className="bg-green-50 p-3 rounded-lg border border-green-100">
-                                <p className="text-sm text-green-800">
-                                    Chế độ: <strong>Bán Nguyên Thùng</strong>
-                                </p>
-                                <p className="text-xs text-green-600 mt-1">
-                                    Hệ thống sẽ tạo đơn hàng và tự động gán {selectedIds.size} thùng này vào đơn.
-                                </p>
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setOrderDialogOpen(false)}>Hủy</Button>
-                            <Button onClick={handleCreateOrder} disabled={creatingOrder || !orderCustomerId}>
-                                {creatingOrder ? 'Đang Tạo...' : 'Tạo Đơn Hàng'}
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
 
                 {/* Drill Down Items */}
                 <Dialog open={!!selectedBox} onOpenChange={(open) => !open && setSelectedBox(null)}>

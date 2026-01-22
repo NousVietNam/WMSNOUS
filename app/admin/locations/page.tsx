@@ -19,12 +19,18 @@ interface Location {
     description: string
     box_count?: number
     boxes?: { count: number }[]
+    last_update?: string | null
 }
 
 export default function LocationsPage() {
     const [locations, setLocations] = useState<Location[]>([])
     const [loading, setLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState("")
+
+    // Sort & Filter state
+    const [sortColumn, setSortColumn] = useState<string | null>(null)
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+    const [typeFilter, setTypeFilter] = useState<string>('ALL')
 
     // Dialogs
     const [openDialog, setOpenDialog] = useState(false) // Create
@@ -68,18 +74,35 @@ export default function LocationsPage() {
 
     const fetchLocations = async () => {
         setLoading(true)
-        // Fetch locations with count of boxes
+        // Fetch locations with count of boxes and last transaction date
         const { data, error } = await supabase
             .from('locations')
-            .select('*, boxes(count)')
+            .select(`
+                *,
+                boxes(count)
+            `)
             .order('code')
 
         if (!error && data) {
-            const mapped = data.map((d: any) => ({
-                ...d,
-                box_count: d.boxes?.[0]?.count || 0
-            }))
-            setLocations(mapped)
+            // For each location, fetch the last transaction date
+            const enriched = await Promise.all(
+                data.map(async (d: any) => {
+                    const { data: lastTx } = await supabase
+                        .from('transactions')
+                        .select('created_at')
+                        .eq('location_id', d.id)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .single()
+
+                    return {
+                        ...d,
+                        box_count: d.boxes?.[0]?.count || 0,
+                        last_update: lastTx?.created_at || null
+                    }
+                })
+            )
+            setLocations(enriched)
         }
         setLoading(false)
     }
@@ -198,10 +221,49 @@ export default function LocationsPage() {
     `
     })
 
-    const filteredLocations = locations.filter(l =>
+    const handleSort = (column: string) => {
+        if (sortColumn === column) {
+            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+        } else {
+            setSortColumn(column)
+            setSortDirection('asc')
+        }
+    }
+
+    const getSortIcon = (column: string) => {
+        if (sortColumn !== column) return null
+        return sortDirection === 'asc' ? ' ↑' : ' ↓'
+    }
+
+    let filteredLocations = locations.filter(l =>
         l.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
         l.description?.toLowerCase().includes(searchTerm.toLowerCase())
     )
+
+    // Apply type filter
+    if (typeFilter !== 'ALL') {
+        filteredLocations = filteredLocations.filter(l => l.type === typeFilter)
+    }
+
+    // Apply sorting
+    if (sortColumn) {
+        filteredLocations.sort((a, b) => {
+            let aVal: any = a[sortColumn as keyof Location]
+            let bVal: any = b[sortColumn as keyof Location]
+
+            if (sortColumn === 'box_count') {
+                aVal = a.box_count || 0
+                bVal = b.box_count || 0
+            } else if (sortColumn === 'last_update') {
+                aVal = a.last_update ? new Date(a.last_update).getTime() : 0
+                bVal = b.last_update ? new Date(b.last_update).getTime() : 0
+            }
+
+            if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+            if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+            return 0
+        })
+    }
 
     return (
         <div className="min-h-screen bg-slate-50 flex flex-col">            <main className="flex-1 p-6 space-y-6">
@@ -220,6 +282,17 @@ export default function LocationsPage() {
                             onChange={e => setSearchTerm(e.target.value)}
                         />
                     </div>
+                    <Select value={typeFilter} onValueChange={setTypeFilter}>
+                        <SelectTrigger className="w-32">
+                            <SelectValue placeholder="Loại" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ALL">Tất cả</SelectItem>
+                            <SelectItem value="SHELF">Kệ</SelectItem>
+                            <SelectItem value="BIN">Bin</SelectItem>
+                            <SelectItem value="FLOOR">Sàn</SelectItem>
+                        </SelectContent>
+                    </Select>
                     <Button variant="outline" onClick={handleDownloadExample} title="Tải file mẫu import">
                         <Download className="mr-2 h-4 w-4" /> File Mẫu
                     </Button>
@@ -271,27 +344,41 @@ export default function LocationsPage() {
                     <table className="w-full text-sm text-left relative">
                         <thead className="bg-slate-100 font-medium text-slate-700 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="p-4">Mã Vị Trí</th>
-                                <th className="p-4">Loại</th>
-                                <th className="p-4">Hiện Tại</th>
-                                <th className="p-4">Sức Chứa</th>
-                                <th className="p-4">Mô tả</th>
-                                <th className="p-4 text-right">Thao tác</th>
+                                <th className="p-2 cursor-pointer hover:bg-slate-200" onClick={() => handleSort('code')}>
+                                    Mã Vị Trí{getSortIcon('code')}
+                                </th>
+                                <th className="p-2 cursor-pointer hover:bg-slate-200" onClick={() => handleSort('type')}>
+                                    Loại{getSortIcon('type')}
+                                </th>
+                                <th className="p-2 cursor-pointer hover:bg-slate-200" onClick={() => handleSort('box_count')}>
+                                    Hiện Tại{getSortIcon('box_count')}
+                                </th>
+                                <th className="p-2 cursor-pointer hover:bg-slate-200" onClick={() => handleSort('capacity')}>
+                                    Sức Chứa{getSortIcon('capacity')}
+                                </th>
+                                <th className="p-2">Mô tả</th>
+                                <th className="p-2 cursor-pointer hover:bg-slate-200" onClick={() => handleSort('last_update')}>
+                                    Ngày Update{getSortIcon('last_update')}
+                                </th>
+                                <th className="p-2 text-right">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody>
                             {filteredLocations.map(loc => (
                                 <tr key={loc.id} className="border-t hover:bg-slate-50 cursor-pointer" onClick={() => handleViewDetails(loc)}>
-                                    <td className="p-4 font-bold text-primary underline">{loc.code}</td>
-                                    <td className="p-4"><span className="bg-slate-100 px-2 py-1 rounded text-xs">{loc.type}</span></td>
-                                    <td className="p-4">
+                                    <td className="p-2 font-bold text-primary underline">{loc.code}</td>
+                                    <td className="p-2"><span className="bg-slate-100 px-2 py-1 rounded text-xs">{loc.type}</span></td>
+                                    <td className="p-2">
                                         <span className={`font-bold ${loc.box_count! > 0 ? 'text-blue-600' : 'text-slate-400'}`}>
                                             {loc.box_count} thùng
                                         </span>
                                     </td>
-                                    <td className="p-4">{loc.capacity}</td>
-                                    <td className="p-4 text-muted-foreground">{loc.description}</td>
-                                    <td className="p-4 text-right flex justify-end gap-2" onClick={e => e.stopPropagation()}>
+                                    <td className="p-2">{loc.capacity}</td>
+                                    <td className="p-2 text-muted-foreground">{loc.description}</td>
+                                    <td className="p-2 text-xs text-slate-500">
+                                        {loc.last_update ? new Date(loc.last_update).toLocaleString('vi-VN') : '-'}
+                                    </td>
+                                    <td className="p-2 text-right flex justify-end gap-2" onClick={e => e.stopPropagation()}>
                                         <Button size="sm" variant="outline" onClick={(e) => openEditDialog(loc, e)} className="text-blue-600 hover:text-blue-800"><span className="mr-1">✎</span> Sửa</Button>
                                         <Button size="sm" variant="outline" onClick={() => setPrintLocation(loc)}><Printer className="h-4 w-4" /></Button>
                                         <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(loc.id, loc.box_count || 0)}>
@@ -399,9 +486,10 @@ export default function LocationsPage() {
                 </DialogContent>
             </Dialog>
 
-        </main>
+        </main >
             {/* PRINT AREA - HIDDEN FROM SCREEN, RENDERED FOR PRINT */}
-            <div style={{ overflow: "hidden", height: 0, width: 0, position: "absolute" }}>
+            < div style={{ overflow: "hidden", height: 0, width: 0, position: "absolute" }
+            }>
                 <div ref={printRef} className="print:w-full print:h-full">
                     <style type="text/css" media="print">
                         {`@page { size: 100mm 150mm; margin: 0; }`}
@@ -422,7 +510,7 @@ export default function LocationsPage() {
                         </div>
                     )}
                 </div>
-            </div>
+            </div >
         </div >
     )
 }

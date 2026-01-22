@@ -36,47 +36,36 @@ export async function POST(req: NextRequest) {
 
         // 2. Revert Inventory Allocation
         // NOTE: Database Trigger 'tr_picking_allocation' handles the actual stock reversion on delete.
-        // We only need to log 'RELEASE' transactions for Audit if it's an Order.
+        // We create RELEASE transactions for audit trail
 
         const transactions = []
-        const shouldLogTransaction = !!job.order_id
+        const shouldLogTransaction = !!job.outbound_order_id
 
-        if (shouldLogTransaction && job.type === 'ITEM_PICK' && job.tasks && job.tasks.length > 0) {
-
-
+        if (shouldLogTransaction && job.tasks && job.tasks.length > 0) {
             for (const task of job.tasks) {
-                if (task.inventory_item_id && task.quantity > 0) {
-                    // Fetch location for log
-                    const { data: invItem } = await supabaseAdmin
-                        .from('inventory_items')
-                        .select('location_id')
-                        .eq('id', task.inventory_item_id)
+                if (task.product_id && task.quantity > 0) {
+                    // Fetch product SKU for log
+                    const { data: product } = await supabaseAdmin
+                        .from('products')
+                        .select('sku')
+                        .eq('id', task.product_id)
                         .single()
 
-                    if (invItem) {
-                        transactions.push({
-                            type: 'RELEASE',
-                            sku: null, // Could fetch SKU if needed, or leave null as per prior logic
-                            quantity: task.quantity,
-                            location_id: invItem.location_id,
-                            reference_id: job.id,
-                            note: `Hủy Picking Job: ${job.type}`,
-                            created_at: new Date().toISOString()
-                        })
-                    }
+                    transactions.push({
+                        type: 'RELEASE',
+                        entity_type: 'ITEM',
+                        sku: product?.sku || null,
+                        quantity: task.quantity,
+                        from_box_id: task.box_id,
+                        reference_id: job.outbound_order_id,
+                        note: `Hủy phân bổ - Job ${job.type}`,
+                        created_at: new Date().toISOString()
+                    })
                 }
             }
-        } else if (shouldLogTransaction && job.type === 'BOX_PICK') {
-            transactions.push({
-                type: 'RELEASE',
-                quantity: 1,
-                reference_id: job.id,
-                note: `Hủy Picking Job (Box): ${job.box_id || 'Unknown'}`,
-                created_at: new Date().toISOString()
-            })
         }
 
-        // 3. Insert RELEASE Transactions (Audit Log) - Only for Sales Orders
+        // 3. Insert RELEASE Transactions (Audit Log)
         if (transactions.length > 0) {
             const { error: txError } = await supabaseAdmin.from('transactions').insert(transactions)
             if (txError) {
@@ -84,60 +73,21 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // 4. Revert Order/Transfer Status
-        if (job.transfer_order_id) {
-            // Check if there are other ACTIVE jobs for this transfer
-            const { count } = await supabaseAdmin
-                .from('picking_jobs')
-                .select('id', { count: 'exact', head: true })
-                .eq('transfer_order_id', job.transfer_order_id)
-                .neq('id', jobId) // Exclude current job
-                .neq('status', 'CANCELLED')
+        // 4. Revert Outbound Order Status (Unified Schema)
+        if (job.outbound_order_id) {
+            // For PLANNED jobs, reset outbound_order status back to APPROVED
+            // This is equivalent to "Cancel Allocation" button
+            const { error: updateError } = await supabaseAdmin
+                .from('outbound_orders')
+                .update({
+                    status: 'PENDING',
+                    allocated_at: null
+                })
+                .eq('id', job.outbound_order_id)
 
-
-
-            if (count === 0) {
-                // If this was the last job, revert to 'approved' (Ready to Allocate)
-                const { error: updateError } = await supabaseAdmin
-                    .from('transfer_orders')
-                    .update({ status: 'approved' })
-                    .eq('id', job.transfer_order_id)
-
-                if (updateError) console.error("Failed to revert transfer status:", updateError)
+            if (updateError) {
+                console.error("Failed to revert outbound order status:", updateError)
             }
-        } else if (job.order_id) {
-            // Revert Sales Order
-            // We also need to decrease 'allocated_quantity' on 'order_items'
-            if (job.tasks && job.tasks.length > 0) {
-                for (const task of job.tasks) {
-                    // Find order item for this product
-                    const { data: orderItems } = await supabaseAdmin
-                        .from('order_items')
-                        .select('id, allocated_quantity, quantity')
-                        .eq('order_id', job.order_id)
-                        .eq('product_id', task.product_id)
-
-                    if (orderItems && orderItems.length > 0) {
-                        let remainingRevert = task.quantity
-                        for (const oi of orderItems) {
-                            if (remainingRevert <= 0) break
-                            const canRevert = Math.min(remainingRevert, oi.allocated_quantity || 0)
-                            if (canRevert > 0) {
-                                await supabaseAdmin
-                                    .from('order_items')
-                                    .update({ allocated_quantity: (oi.allocated_quantity || 0) - canRevert })
-                                    .eq('id', oi.id)
-                                remainingRevert -= canRevert
-                            }
-                        }
-                    }
-                }
-            }
-
-            await supabaseAdmin
-                .from('orders')
-                .update({ status: 'PENDING' })
-                .eq('id', job.order_id)
         }
 
         // 5. Delete Job (Cascade will delete tasks)

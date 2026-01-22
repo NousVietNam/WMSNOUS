@@ -8,8 +8,172 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/lib/supabase"
 import { History, ArrowRight, Filter, RefreshCw, Download, ChevronLeft, ChevronRight, Trash2 } from "lucide-react"
 import * as XLSX from "xlsx"
-import { saveAs } from 'file-saver'
+import { toast } from "sonner"
 
+// ... (imports remain)
+
+// Helper to enrich raw transactions (reused logic could be extracted, but keeping inline for safety)
+const enrichTransactions = async (rawTxs: any[]) => {
+    // Collect IDs
+    const boxIds = new Set<string>()
+    const itemIds = new Set<string>()
+    const userIds = new Set<string>()
+
+    rawTxs.forEach(tx => {
+        if (tx.entity_type === 'BOX' && tx.entity_id) boxIds.add(tx.entity_id)
+        if (tx.entity_type === 'ITEM' && tx.entity_id) itemIds.add(tx.entity_id)
+        if (tx.user_id) userIds.add(tx.user_id)
+    })
+
+    const boxMap: Record<string, string> = {}
+    const itemMap: Record<string, { sku: string, name: string }> = {}
+    const userMap: Record<string, string> = {}
+
+    if (boxIds.size > 0) {
+        const { data: boxes } = await supabase.from('boxes').select('id, code').in('id', Array.from(boxIds))
+        boxes?.forEach(b => boxMap[b.id] = b.code)
+    }
+
+    if (itemIds.size > 0) {
+        const { data: items } = await supabase.from('inventory_items').select('id, products(sku, name)').in('id', Array.from(itemIds))
+        items?.forEach((i: any) => {
+            if (i.products) itemMap[i.id] = i.products
+        })
+    }
+
+    if (userIds.size > 0) {
+        const { data: users } = await supabase.from('users').select('id, name').in('id', Array.from(userIds))
+        users?.forEach(u => userMap[u.id] = u.name)
+    }
+
+    // Fetch References
+    const refIds = new Set<string>()
+    rawTxs.forEach(tx => {
+        if (tx.reference_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tx.reference_id)) {
+            refIds.add(tx.reference_id)
+        }
+    })
+    const refMap: Record<string, string> = {}
+    if (refIds.size > 0) {
+        const { data: orders } = await supabase.from('outbound_orders').select('id, code').in('id', Array.from(refIds))
+        orders?.forEach(o => refMap[o.id] = o.code)
+
+        const missingRefs = Array.from(refIds).filter(id => !refMap[id])
+        if (missingRefs.length > 0) {
+            const { data: shipments } = await supabase.from('outbound_shipments').select('id, code').in('id', missingRefs)
+            shipments?.forEach(s => refMap[s.id] = s.code)
+        }
+    }
+
+    // Fetch Product Names by SKU
+    const skus = new Set<string>()
+    rawTxs.forEach(tx => {
+        if (tx.sku) skus.add(tx.sku)
+    })
+    const skuMap: Record<string, string> = {}
+    if (skus.size > 0) {
+        const { data: products } = await supabase.from('products').select('sku, name').in('sku', Array.from(skus))
+        products?.forEach(p => skuMap[p.sku] = p.name)
+    }
+
+    return rawTxs.map((tx: any) => {
+        const code = tx.sku || (tx.entity_type === 'ITEM' && itemMap[tx.entity_id!]?.sku) || (tx.entity_type === 'BOX' && boxMap[tx.entity_id!] || 'N/A')
+        const name = tx.sku ? skuMap[tx.sku] : (tx.entity_type === 'ITEM' && itemMap[tx.entity_id!]?.name) || ''
+        const refCode = refMap[tx.reference_id] || tx.reference_id || '-'
+
+        return {
+            ...tx,
+            computed_entity_code: code,
+            computed_entity_name: name,
+            computed_user_name: userMap[tx.user_id] || 'Unknown',
+            computed_ref_code: refCode
+        }
+    })
+}
+
+const handleExportAll = async () => {
+    toast.info("Đang tải toàn bộ dữ liệu... Vui lòng chờ")
+    try {
+        let query = supabase
+            .from('transactions')
+            .select(`
+                *,
+                from_loc:from_location_id (code),
+                to_loc:to_location_id (code),
+                from_box:from_box_id (code),
+                to_box:to_box_id (code)
+            `)
+            .order('created_at', { ascending: false })
+
+        // NO RANGE LIMIT
+
+        // Apply Filters (Same as main fetch)
+        if (dateFrom) query = query.gte('created_at', dateFrom)
+        if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59')
+        if (filterType !== 'ALL') query = query.eq('type', filterType)
+        if (filterUser !== 'ALL') query = query.eq('user_id', filterUser)
+
+        // Server-side Search
+        if (filterSearch) {
+            const term = `%${filterSearch}%`
+            query = query.or(`sku.ilike.${term},type.ilike.${term}`)
+        }
+
+        const { data: rawData, error } = await query
+        if (error) throw error
+        if (!rawData || rawData.length === 0) {
+            toast.warning("Không có dữ liệu để xuất")
+            return
+        }
+
+        // Client-side generic text filter (Simulating the frontend filter)
+        let filteredData = rawData
+        if (filterSearch) {
+            const lower = filterSearch.toLowerCase()
+            // Note: We can't easily filter on computed fields before computing them.
+            // So we must enrich first, OR filter strictly on what we have. 
+            // To match UI exactly, we should enrich all 1000+ records? Yes, essential for Export.
+        }
+
+        toast.info(`Đang xử lý ${rawData.length} dòng dữ liệu...`)
+        const enrichedData = await enrichTransactions(rawData)
+
+        // Apply final search filter on computed fields if needed
+        let finalData = enrichedData
+        if (filterSearch) {
+            const lower = filterSearch.toLowerCase()
+            finalData = enrichedData.filter(tx =>
+                tx.computed_entity_code?.toLowerCase().includes(lower) ||
+                tx.sku?.toLowerCase().includes(lower) ||
+                tx.from_box?.code?.toLowerCase().includes(lower) ||
+                tx.to_box?.code?.toLowerCase().includes(lower)
+            )
+        }
+
+        const excelRows = finalData.map(tx => ({
+            'Thời Gian': new Date(tx.created_at).toLocaleString('vi-VN'),
+            'Người Dùng': tx.computed_user_name || (tx.user_id ? 'Staff' : 'Unknown'),
+            'Loại': tx.type,
+            'Mã SKU': tx.sku || tx.computed_entity_code || '-',
+            'Tên Hàng': tx.computed_entity_name || (tx.entity_type === 'BOX' ? 'Thùng Hàng' : '-'),
+            'Số Lượng': tx.quantity || 1,
+            'Tham Chiếu': tx.computed_ref_code,
+            'Thùng Đi': tx.from_box?.code || '-',
+            'Vị Trí Đi': tx.from_loc?.code || '-',
+            'Thùng Đến': tx.to_box?.code || '-',
+            'Vị Trí Đến': tx.to_loc?.code || '-'
+        }))
+
+        const ws = XLSX.utils.json_to_sheet(excelRows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, "FullHistory")
+        XLSX.writeFile(wb, `LichSu_FULL_${new Date().toISOString().split('T')[0]}.xlsx`)
+        toast.success("Xuất file thành công!")
+
+    } catch (e: any) {
+        toast.error("Lỗi xuất file: " + e.message)
+    }
+}
 interface Transaction {
     id: string
     type: string
@@ -29,6 +193,8 @@ interface Transaction {
     computed_entity_code?: string
     computed_entity_name?: string
     computed_user_name?: string
+    computed_ref_code?: string
+    reference_id?: string
 }
 
 export default function HistoryPage() {
@@ -141,6 +307,26 @@ export default function HistoryPage() {
             users?.forEach(u => userMap[u.id] = u.name)
         }
 
+        // Fetch References (Order Codes)
+        const refIds = new Set<string>()
+        rawTxs.forEach(tx => {
+            if (tx.reference_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tx.reference_id)) {
+                refIds.add(tx.reference_id)
+            }
+        })
+        const refMap: Record<string, string> = {}
+        if (refIds.size > 0) {
+            const { data: orders } = await supabase.from('outbound_orders').select('id, code').in('id', Array.from(refIds))
+            orders?.forEach(o => refMap[o.id] = o.code)
+
+            // Also check shipments if not found in orders
+            const missingRefs = Array.from(refIds).filter(id => !refMap[id])
+            if (missingRefs.length > 0) {
+                const { data: shipments } = await supabase.from('outbound_shipments').select('id, code').in('id', missingRefs)
+                shipments?.forEach(s => refMap[s.id] = s.code)
+            }
+        }
+
         // Fetch Product Names by SKU (for transactions that have SKU but no entity_id)
         const skus = new Set<string>()
         rawTxs.forEach(tx => {
@@ -153,21 +339,19 @@ export default function HistoryPage() {
             products?.forEach(p => skuMap[p.sku] = p.name)
         }
 
-        const enriched = rawTxs.map(tx => {
-            let code = 'N/A'
-            let name = ''
-            if (tx.entity_type === 'BOX' && tx.entity_id) {
-                code = boxMap[tx.entity_id] || 'Deleted Box'
-                name = 'Thùng hàng'
-            } else if (tx.entity_type === 'ITEM' && tx.entity_id) {
-                const item = itemMap[tx.entity_id]
-                code = item?.sku || 'Deleted Item'
-                name = item?.name || ''
-            } else if (tx.sku) {
-                code = tx.sku
-                name = skuMap[tx.sku] || ''
+        const enriched = rawTxs.map((tx: any) => {
+            const code = tx.sku || (tx.entity_type === 'ITEM' && itemMap[tx.entity_id!]?.sku) || (tx.entity_type === 'BOX' && boxMap[tx.entity_id!] || 'N/A')
+            const name = tx.sku ? skuMap[tx.sku] : (tx.entity_type === 'ITEM' && itemMap[tx.entity_id!]?.name) || ''
+
+            const refCode = refMap[tx.reference_id] || tx.reference_id || '-'
+
+            return {
+                ...tx,
+                computed_entity_code: code,
+                computed_entity_name: name,
+                computed_user_name: userMap[tx.user_id] || 'Unknown',
+                computed_ref_code: refCode
             }
-            return { ...tx, computed_entity_code: code, computed_entity_name: name, computed_user_name: userMap[tx.user_id] || 'Unknown' }
         })
 
         // Client-side Filter
@@ -202,6 +386,81 @@ export default function HistoryPage() {
         } catch (e: any) {
             console.error(e)
             alert("Lỗi khi xóa giao dịch: " + e.message)
+        }
+    }
+
+    const handleExportAll = async () => {
+        toast.info("Đang tải toàn bộ dữ liệu... Vui lòng chờ")
+        try {
+            let query = supabase
+                .from('transactions')
+                .select(`
+                *,
+                from_loc:from_location_id (code),
+                to_loc:to_location_id (code),
+                from_box:from_box_id (code),
+                to_box:to_box_id (code)
+            `)
+                .order('created_at', { ascending: false })
+
+            // NO RANGE LIMIT
+
+            // Apply Filters (Same as main fetch)
+            if (dateFrom) query = query.gte('created_at', dateFrom)
+            if (dateTo) query = query.lte('created_at', dateTo + 'T23:59:59')
+            if (filterType !== 'ALL') query = query.eq('type', filterType)
+            if (filterUser !== 'ALL') query = query.eq('user_id', filterUser)
+
+            // Server-side Search
+            if (filterSearch) {
+                const term = `%${filterSearch}%`
+                query = query.or(`sku.ilike.${term},type.ilike.${term}`)
+            }
+
+            const { data: rawData, error } = await query
+            if (error) throw error
+            if (!rawData || rawData.length === 0) {
+                toast.warning("Không có dữ liệu để xuất")
+                return
+            }
+
+            toast.info(`Đang xử lý ${rawData.length} dòng dữ liệu...`)
+            const enrichedData = await enrichTransactions(rawData)
+
+            // Apply final search filter on computed fields if needed
+            let finalData = enrichedData
+            if (filterSearch) {
+                const lower = filterSearch.toLowerCase()
+                finalData = enrichedData.filter(tx =>
+                    tx.computed_entity_code?.toLowerCase().includes(lower) ||
+                    tx.sku?.toLowerCase().includes(lower) ||
+                    tx.from_box?.code?.toLowerCase().includes(lower) ||
+                    tx.to_box?.code?.toLowerCase().includes(lower)
+                )
+            }
+
+            const excelRows = finalData.map(tx => ({
+                'Thời Gian': new Date(tx.created_at).toLocaleString('vi-VN'),
+                'Người Dùng': tx.computed_user_name || (tx.user_id ? 'Staff' : 'Unknown'),
+                'Loại': tx.type,
+                'Mã SKU': tx.sku || tx.computed_entity_code || '-',
+                'Tên Hàng': tx.computed_entity_name || (tx.entity_type === 'BOX' ? 'Thùng Hàng' : '-'),
+                'Số Lượng': tx.quantity || 1,
+                'Tham Chiếu': tx.computed_ref_code,
+                'Thùng Đi': tx.from_box?.code || '-',
+                'Vị Trí Đi': tx.from_loc?.code || '-',
+                'Thùng Đến': tx.to_box?.code || '-',
+                'Vị Trí Đến': tx.to_loc?.code || '-'
+            }))
+
+            const ws = XLSX.utils.json_to_sheet(excelRows)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, "FullHistory")
+            XLSX.writeFile(wb, `LichSu_FULL_${new Date().toISOString().split('T')[0]}.xlsx`)
+            toast.success("Xuất file thành công!")
+
+        } catch (e: any) {
+            toast.error("Lỗi xuất file: " + e.message)
         }
     }
 
@@ -247,8 +506,8 @@ export default function HistoryPage() {
                             <ChevronRight className="h-4 w-4" />
                         </Button>
                     </div>
-                    <Button variant="outline" onClick={handleExport} className="gap-2">
-                        <Download className="h-4 w-4" /> Xuất Excel
+                    <Button variant="outline" onClick={handleExportAll} className="gap-2">
+                        <Download className="h-4 w-4" /> Xuất Excel (All)
                     </Button>
                 </div>
             </div>
@@ -320,6 +579,7 @@ export default function HistoryPage() {
                                 <th className="p-4 w-[120px]">Mã SKU</th>
                                 <th className="p-4">Tên Hàng / Nội Dung</th>
                                 <th className="p-4 w-[80px] text-center">SL</th>
+                                <th className="p-4">Tham Chiếu</th>
                                 <th className="p-4">Thùng Đi (From Box)</th>
                                 <th className="p-4">Vị trí Đi (From Loc)</th>
                                 <th className="p-4">Thùng Đến (To Box)</th>
@@ -393,6 +653,14 @@ export default function HistoryPage() {
                                             {/* Qty */}
                                             <td className="p-4 text-center font-bold">
                                                 {qty !== '-' ? qty : '-'}
+                                            </td>
+                                            {/* Reference */}
+                                            <td className="p-4 font-medium text-slate-800">
+                                                {tx.computed_ref_code !== '-' ? (
+                                                    <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs">
+                                                        {tx.computed_ref_code}
+                                                    </span>
+                                                ) : '-'}
                                             </td>
                                             {/* From Box */}
                                             <td className="p-4 text-blue-700 font-medium text-sm">

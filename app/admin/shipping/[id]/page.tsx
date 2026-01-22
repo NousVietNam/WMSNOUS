@@ -40,7 +40,7 @@ export default function ShippingDetailPage() {
             if (type === 'ORDER') {
                 const { data: order, error } = await supabase
                     .from('orders')
-                    .select('*, order_items(*, products(*)), picking_jobs(*, picking_tasks(*, boxes(*)))')
+                    .select('*, order_items(*, products(*)), picking_jobs(*, picking_tasks(*, boxes:boxes!box_id(*)))')
                     .eq('id', id)
                     .single()
                 if (error) throw error
@@ -49,7 +49,7 @@ export default function ShippingDetailPage() {
             } else if (type === 'MANUAL_JOB') {
                 const { data: job, error } = await supabase
                     .from('picking_jobs')
-                    .select('*, picking_tasks(*, boxes(*), products(*))')
+                    .select('*, picking_tasks(*, boxes:boxes!box_id(*), products(*))')
                     .eq('id', id)
                     .single()
                 if (error) throw error
@@ -65,7 +65,7 @@ export default function ShippingDetailPage() {
             } else {
                 const { data: transfer, error } = await supabase
                     .from('transfer_orders')
-                    .select('*, destinations(*), transfer_order_items(*, products(*)), picking_jobs(*, picking_tasks(*, boxes(*)))')
+                    .select('*, destinations(*), transfer_order_items(*, products(*)), picking_jobs(*, picking_tasks(*, boxes:boxes!box_id(*)))')
                     .eq('id', id)
                     .single()
                 if (error) throw error

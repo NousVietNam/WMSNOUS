@@ -106,6 +106,21 @@ export default function NewOutboundPage() {
         }
     }, [orderType])
 
+    // Rules for Sale Class (Normal vs Promotion)
+    useEffect(() => {
+        if (orderType === 'SALE') {
+            if (saleClass === 'NORMAL') {
+                // Normal: Default Rewards = On
+                setIsBonusConsideration(true)
+                setIsBonusCalculation(true)
+            } else if (saleClass === 'PROMOTION') {
+                // Promotion: Default Rewards = Off
+                setIsBonusConsideration(false)
+                setIsBonusCalculation(false)
+            }
+        }
+    }, [orderType, saleClass])
+
     const fetchDropdowns = async () => {
         const [{ data: custs }, { data: dests }, { data: emps }] = await Promise.all([
             supabase.from('customers').select('id, name, sale_staff_id, default_discount').order('name'),
@@ -934,8 +949,9 @@ export default function NewOutboundPage() {
                                     <div>
                                         <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Loại chiết khấu</label>
                                         <select
-                                            className="w-full px-3 py-2 border rounded-lg bg-white"
+                                            className="w-full px-3 py-2 border rounded-lg bg-white disabled:bg-gray-100 disabled:text-gray-500"
                                             value={discountType}
+                                            disabled={orderType === 'SALE' && saleClass === 'NORMAL'}
                                             onChange={(e) => setDiscountType(e.target.value as any)}
                                         >
                                             <option value="PERCENT">Phần trăm (%)</option>
@@ -949,7 +965,8 @@ export default function NewOutboundPage() {
                                         <input
                                             type="number"
                                             min="0"
-                                            className="w-full px-3 py-2 border rounded-lg"
+                                            className="w-full px-3 py-2 border rounded-lg disabled:bg-gray-100 disabled:text-gray-500"
+                                            disabled={orderType === 'SALE' && saleClass === 'NORMAL'}
                                             value={discountValue}
                                             onChange={(e) => setDiscountValue(parseFloat(e.target.value) || 0)}
                                         />
