@@ -52,26 +52,35 @@ export default function ShipPage() {
         setOrderInfo(null)
 
         try {
-            // 1. Try Find Order
+            // 1. Try Find Order (Unified)
             const { data: order } = await supabase
-                .from('orders')
-                .select('id, code, customer_name, status')
+                .from('outbound_orders')
+                .select(`
+                    id, code, status, type,
+                    customer:customers(name),
+                    destination:destinations(name)
+                `)
                 .eq('code', cleanCode)
                 .single()
 
             if (order) {
                 // Found Order -> Switch to Verify Mode
+                // Also get customer/dest name for display
+                // @ts-ignore
+                const orderName = order.customer?.name || order.destination?.name || '---'
+                const displayOrder = { ...order, customer_name: orderName }
+
                 const { data: boxes } = await supabase
                     .from('boxes')
                     .select('id, code, type, status, location_id')
-                    .eq('order_id', order.id)
+                    .eq('outbound_order_id', order.id) // Use outbound_order_id
 
                 if (!boxes || boxes.length === 0) {
                     toast.error("Đơn hàng này chưa có thùng nào được đóng gói!")
                     return
                 }
 
-                setOrderInfo(order)
+                setOrderInfo(displayOrder)
                 setLinkedBoxes(boxes)
                 setVerifiedBoxIds(new Set())
                 setMode('ORDER_VERIFY')
@@ -80,13 +89,16 @@ export default function ShipPage() {
                 return
             }
 
-            // 2. Try Find Box (Legacy)
+            // 2. Try Find Box (Unified)
             const { data: box, error } = await supabase
                 .from('boxes')
                 .select(`
                     id, code, type, status,
-                    orders (id, code, customer_name, status),
-                    transfer_orders (id, code, destinations (name), status),
+                    outbound_orders (
+                        id, code, status, type,
+                        customer:customers(name),
+                        destination:destinations(name)
+                    ),
                     inventory_items!inventory_items_box_id_fkey (count)
                 `)
                 .eq('code', cleanCode)
@@ -109,6 +121,7 @@ export default function ShipPage() {
             setCode(cleanCode)
 
         } catch (e) {
+            console.error(e)
             toast.error("Lỗi kiểm tra mã")
         } finally {
             setVerifying(false)
@@ -169,9 +182,10 @@ export default function ShipPage() {
         setCode("")
     }
 
-    const linkedDoc = boxInfo?.orders || boxInfo?.transfer_orders
-    const isOrder = !!boxInfo?.orders
-    const docName = isOrder ? boxInfo?.orders?.customer_name : boxInfo?.transfer_orders?.destinations?.name
+    const linkedDoc = boxInfo?.outbound_orders
+    const isSale = linkedDoc?.type === 'SALE' || linkedDoc?.type === 'GIFT'
+    // @ts-ignore
+    const docName = isSale ? linkedDoc?.customer?.name : linkedDoc?.destination?.name
 
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
@@ -271,7 +285,7 @@ export default function ShipPage() {
                             <div className="p-5 space-y-4">
                                 <div className="flex items-start gap-4">
                                     <div className="h-12 w-12 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 shrink-0">
-                                        {isOrder ? <User className="h-6 w-6" /> : <ArrowRightLeft className="h-6 w-6" />}
+                                        {isSale ? <User className="h-6 w-6" /> : <ArrowRightLeft className="h-6 w-6" />}
                                     </div>
                                     <div className="flex-1">
                                         <div className="text-[10px] font-black uppercase text-slate-400">Khách hàng / Đối tác</div>

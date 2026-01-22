@@ -167,16 +167,13 @@ BEGIN
     END IF;
 
     -- NEW LOGIC: Unlock Linked Boxes AND Clear outbound_order_id
+    -- Robust change: Unlock ANY box that is currently locked by this order,
+    -- regardless of what the items say.
     UPDATE boxes
     SET status = 'OPEN',
         outbound_order_id = NULL,
         updated_at = NOW()
-    WHERE id IN (
-        SELECT DISTINCT from_box_id 
-        FROM outbound_order_items 
-        WHERE order_id = p_order_id 
-          AND from_box_id IS NOT NULL
-    );
+    WHERE outbound_order_id = p_order_id;
 
     -- Unapprove
     UPDATE outbound_orders 

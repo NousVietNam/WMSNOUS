@@ -519,7 +519,7 @@ export default function OutboundDetailPage() {
     const canAllocate = isPending && order.is_approved
     const canDeallocate = order.status === 'ALLOCATED'
     const canCreateJob = order.status === 'ALLOCATED'
-    const canShip = ['ALLOCATED', 'PICKING', 'PACKED'].includes(order.status)
+    const canShip = ['PACKED'].includes(order.status)
     const isShipped = order.status === 'SHIPPED'
     const canEdit = isPending && !order.is_approved
 
