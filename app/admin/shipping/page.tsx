@@ -69,62 +69,40 @@ export default function ShippingPage() {
 
             allRequests.push(...mappedShipments)
 
-            // 2. FETCH PENDING ITEMS (From Source Tables)
-            // Only fetch if we are interested in PENDING or ALL status
+            // 2. FETCH PENDING ITEMS (From outbound_orders)
             if (filterStatus !== 'SHIPPED') {
-                // A. Pending Orders
-                const { data: orders } = await supabase
-                    .from('orders')
-                    .select('id, code, status, customer_name, created_at, order_items(count)')
-                    .eq('status', 'PACKED') // Only Packed, not Shipped
+                const { data: outbounds } = await supabase
+                    .from('outbound_orders')
+                    .select('id, code, status, type, customer_name, created_at, outbound_order_items(count)')
+                    .eq('status', 'PACKED')
 
-                if (orders) {
-                    allRequests.push(...orders.map(o => ({
+                if (outbounds) {
+                    allRequests.push(...outbounds.map(o => ({
                         id: o.id,
                         code: o.code,
-                        type: 'ORDER' as const,
+                        type: o.type as any,
                         status: 'PACKED',
-                        customer_name: o.customer_name,
+                        customer_name: o.customer_name || (o.type === 'TRANSFER' ? 'Điều chuyển' : 'N/A'),
                         created_at: o.created_at,
                         // @ts-ignore
-                        item_count: o.order_items?.[0]?.count || 0
+                        item_count: o.outbound_order_items?.[0]?.count || 0
                     })))
                 }
 
-                // B. Pending Transfers
-                const { data: transfers } = await supabase
-                    .from('transfer_orders')
-                    .select('id, code, status, destinations(name), created_at, transfer_order_items(count)')
-                    .eq('status', 'packed')
-
-                if (transfers) {
-                    allRequests.push(...transfers.map(t => ({
-                        id: t.id,
-                        code: t.code,
-                        type: 'TRANSFER' as const,
-                        status: 'PACKED',
-                        // @ts-ignore
-                        destination_name: t.destinations?.name || 'Chi nhánh',
-                        customer_name: t.code, // Swap for consistency implies Destination is main info
-                        created_at: t.created_at,
-                        // @ts-ignore
-                        item_count: t.transfer_order_items?.[0]?.count || 0
-                    })))
-                }
-
-                // C. Pending Manual Jobs
+                // C. Pending Manual Jobs (Still from picking_jobs for now if they don't have an outbound_order)
                 const { data: jobs } = await supabase
                     .from('picking_jobs')
                     .select('id, status, created_at, type, picking_tasks(count)')
                     .eq('type', 'MANUAL_PICK')
-                    .eq('status', 'COMPLETED') // Picked but not Shipped
+                    .eq('status', 'COMPLETED')
+                    .is('outbound_order_id', null) // Only those without unified record
 
                 if (jobs) {
                     allRequests.push(...jobs.map(j => ({
                         id: j.id,
                         code: `JOB-${j.id.slice(0, 8).toUpperCase()}`,
                         type: 'MANUAL_JOB' as const,
-                        status: 'PACKED', // COMPLETED job = PACKED/Ready status for shipping
+                        status: 'PACKED',
                         customer_name: 'Xuất Thủ Công',
                         created_at: j.created_at,
                         // @ts-ignore
@@ -319,7 +297,7 @@ export default function ShippingPage() {
                                 </Link>
 
                                 {/* QUICK SHIP BUTTON OVERLAY (Only for PACKED orders) */}
-                                {req.type === 'ORDER' && req.status === 'PACKED' && !isShipped && (
+                                {req.status === 'PACKED' && !isShipped && (
                                     <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <Button
                                             className="shadow-lg bg-indigo-600 hover:bg-indigo-700"

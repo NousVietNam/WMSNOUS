@@ -15,7 +15,7 @@ export async function POST(request: Request) {
         }
 
         // Call RPC for Atomic Transaction
-        const { data, error } = await supabase.rpc('ship_order', { p_order_id: orderId })
+        const { data, error } = await supabase.rpc('ship_outbound_order', { p_order_id: orderId })
 
         if (error) throw error
 

@@ -35,17 +35,16 @@ export default function ShippingDetailPage() {
     const fetchData = async () => {
         setLoading(true)
         try {
-            let localData: any = null // Hold data locally for immediate use
+            let localData: any = null
 
-            if (type === 'ORDER') {
-                const { data: order, error } = await supabase
-                    .from('orders')
-                    .select('*, order_items(*, products(*)), picking_jobs(*, picking_tasks(*, boxes:boxes!box_id(*)))')
+            if (type === 'ORDER' || type === 'TRANSFER') {
+                const { data: outbound, error } = await supabase
+                    .from('outbound_orders')
+                    .select('*, outbound_order_items(*, products(*)), picking_jobs(*, picking_tasks(*, boxes:boxes!box_id(*)))')
                     .eq('id', id)
                     .single()
                 if (error) throw error
-                localData = order
-                setData(order)
+                localData = outbound
             } else if (type === 'MANUAL_JOB') {
                 const { data: job, error } = await supabase
                     .from('picking_jobs')
@@ -53,7 +52,6 @@ export default function ShippingDetailPage() {
                     .eq('id', id)
                     .single()
                 if (error) throw error
-                // Normalize data structure for manual job
                 localData = {
                     ...job,
                     code: `JOB-${job.id.slice(0, 8).toUpperCase()}`,
@@ -61,28 +59,16 @@ export default function ShippingDetailPage() {
                     created_at: job.created_at,
                     manual_items: job.picking_tasks
                 }
-                setData(localData)
-            } else {
-                const { data: transfer, error } = await supabase
-                    .from('transfer_orders')
-                    .select('*, destinations(*), transfer_order_items(*, products(*)), picking_jobs(*, picking_tasks(*, boxes:boxes!box_id(*)))')
-                    .eq('id', id)
-                    .single()
-                if (error) throw error
-                localData = transfer
-                setData(transfer)
             }
 
+            if (!localData) throw new Error("Không tìm thấy dữ liệu")
+
             // 4. Fetch Linked Level 2 Info (Outboxes & Inventory)
-            // Only for ORDER and TRANSFER where we expect linked boxes
-            // STRATEGY: 
-            // - For ITEM_PICK: Items are in an OUTBOX linked to the Order. We show OUTBOX code.
-            // - For BOX_PICK: Items are in a STORAGE BOX linked to the Order (locked). We show STORAGE BOX code.
             if (type === 'ORDER' || type === 'TRANSFER') {
                 const { data: linkedBoxes } = await supabase
                     .from('boxes')
                     .select('id, code, type')
-                    .eq('order_id', id)
+                    .eq('outbound_order_id', id)
 
                 if (linkedBoxes && linkedBoxes.length > 0) {
                     const boxIds = linkedBoxes.map(b => b.id)
@@ -91,7 +77,6 @@ export default function ShippingDetailPage() {
                         .select('product_id, quantity, box_id')
                         .in('box_id', boxIds)
 
-                    // Map Product -> Set of Box Codes
                     const map: Record<string, Set<string>> = {}
                     const boxCodeById = linkedBoxes.reduce((acc: any, b: any) => {
                         acc[b.id] = b.code
@@ -105,44 +90,28 @@ export default function ShippingDetailPage() {
                     })
                     setProductBoxMap(map)
                 }
+            } else if (type === 'MANUAL_JOB') {
+                const map: Record<string, Set<string>> = {}
+                localData.manual_items?.forEach((task: any) => {
+                    if (task.product_id && task.outbox_code) {
+                        if (!map[task.product_id]) map[task.product_id] = new Set()
+                        map[task.product_id].add(task.outbox_code)
+                    }
+                })
+                setProductBoxMap(map)
             }
 
-            if (type === 'MANUAL_JOB' && localData) {
-                // FIX: Only show outboxes that belong to THIS job (from picking_tasks.outbox_code)
-                // Not ALL outboxes containing these products!
-                const jobOutboxCodes = Array.from(new Set(
-                    localData.manual_items
-                        .filter((t: any) => t.outbox_code)
-                        .map((t: any) => t.outbox_code)
-                ))
-
-                if (jobOutboxCodes.length > 0) {
-                    // Build product -> outbox map from THIS job's tasks only
-                    const map: Record<string, Set<string>> = {}
-                    localData.manual_items.forEach((task: any) => {
-                        if (task.product_id && task.outbox_code) {
-                            if (!map[task.product_id]) map[task.product_id] = new Set()
-                            map[task.product_id].add(task.outbox_code)
-                        }
-                    })
-                    setProductBoxMap(map)
-                }
-            }
-
-            // 5. Fetch Outbound Shipment Info (The unified source of truth for shipping time)
-            if (localData && (localData.status === 'SHIPPED' || localData.status === 'COMPLETED')) {
+            // 5. Fetch Outbound Shipment Info
+            if (localData.status === 'SHIPPED' || localData.status === 'COMPLETED') {
                 const { data: shipment } = await supabase
                     .from('outbound_shipments')
                     .select('*')
-                    .eq('source_id', id)
+                    .eq('outbound_order_id', id)
                     .single()
 
                 if (shipment) {
                     localData.shipment_info = shipment
-                    // If source doesn't have shipped_at, use shipment.created_at
-                    if (!localData.shipped_at) {
-                        localData.shipped_at = shipment.created_at
-                    }
+                    if (!localData.shipped_at) localData.shipped_at = shipment.created_at
                 }
             }
 
@@ -160,8 +129,7 @@ export default function ShippingDetailPage() {
 
         setIsConfirming(true)
         try {
-            if (type === 'ORDER') {
-                // Use the robust Shipping API for Orders
+            if (type === 'ORDER' || type === 'TRANSFER') {
                 const res = await fetch('/api/orders/ship', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -179,21 +147,6 @@ export default function ShippingDetailPage() {
                 const json = await res.json()
                 if (!json.success) throw new Error(json.error)
                 toast.success(json.message)
-            } else {
-                // Legacy/Simple update for Transfers (TODO: Implement api/transfers/ship)
-                const table = 'transfer_orders'
-                const status = 'shipped'
-
-                const { error } = await supabase
-                    .from(table)
-                    .update({
-                        status: status,
-                        shipped_at: new Date().toISOString()
-                    })
-                    .eq('id', id)
-
-                if (error) throw error
-                toast.success("Đã xác nhận xuất kho thành công!")
             }
             fetchData()
         } catch (e: any) {
@@ -206,15 +159,9 @@ export default function ShippingDetailPage() {
     if (loading) return <div className="p-20 text-center">Đang tải...</div>
     if (!data) return <div className="p-20 text-center text-red-500">Không tìm thấy dữ liệu</div>
 
-    const items = type === 'ORDER' ? data.order_items
-        : type === 'MANUAL_JOB' ? data.manual_items
-            : data.transfer_order_items
-
-    const destination = type === 'ORDER' ? data.customer_name
-        : type === 'MANUAL_JOB' ? 'Xuất Thủ Công'
-            : data.destinations?.name
-    const isShipped = data.status.toUpperCase() === 'SHIPPED' ||
-        (type !== 'MANUAL_JOB' && data.status.toUpperCase() === 'COMPLETED')
+    const items = (type === 'ORDER' || type === 'TRANSFER') ? data.outbound_order_items : (type === 'MANUAL_JOB' ? data.manual_items : [])
+    const destination = (type === 'ORDER' || type === 'TRANSFER') ? data.customer_name : (type === 'MANUAL_JOB' ? 'Xuất Thủ Công' : 'Unknown')
+    const isShipped = data.status.toUpperCase() === 'SHIPPED' || (type !== 'MANUAL_JOB' && data.status.toUpperCase() === 'COMPLETED')
 
     return (
         <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -243,7 +190,7 @@ export default function ShippingDetailPage() {
                                 Danh Sách Hàng Hóa
                             </CardTitle>
                             <Badge variant={isShipped ? "default" : "secondary"} className={isShipped ? "bg-green-100 text-green-700" : ""}>
-                                {isShipped ? "ĐÃ XUẤT KHO" : "CHỜ XUẤT"}
+                                {isShipped ? "ĐÀ XUẤT KHO" : "CHỜ XUẤT"}
                             </Badge>
                         </div>
                     </CardHeader>
@@ -257,50 +204,25 @@ export default function ShippingDetailPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y">
-                                {items.map((item: any) => (
+                                {items?.map((item: any) => (
                                     <tr key={item.id} className="hover:bg-slate-50/50">
                                         <td className="p-4">
                                             <div className="font-bold">{item.products?.sku}</div>
                                             <div className="text-xs text-slate-500">{item.products?.name}</div>
                                         </td>
                                         <td className="p-4 text-center font-bold text-lg">
-                                            {type === 'ORDER' ? item.picked_quantity
-                                                : type === 'MANUAL_JOB' ? item.quantity // Task quantity
-                                                    : item.quantity}
+                                            {item.picked_quantity ?? item.quantity}
                                         </td>
                                         <td className="p-4 text-right">
                                             <div className="flex flex-wrap justify-end gap-1">
-                                                <div className="flex flex-wrap justify-end gap-1">
-                                                    {/* Logic to find boxes for this product */}
-                                                    {/* Priority: Use Inventory-based Map (Real-time location) */}
-                                                    {productBoxMap[item.product_id] && Array.from(productBoxMap[item.product_id]).map(code => (
-                                                        <Badge key={code} variant="outline" className="bg-white border-blue-200 text-blue-700">
-                                                            {code}
-                                                        </Badge>
-                                                    ))}
-
-                                                    {/* Fallback to Picking Tasks if Map is empty (e.g. Manual Job or Data Lag) */}
-                                                    {(!productBoxMap[item.product_id] || productBoxMap[item.product_id].size === 0) && (
-                                                        <>
-                                                            {type !== 'MANUAL_JOB' && data.picking_jobs?.flatMap((j: any) =>
-                                                                j.picking_tasks?.filter((t: any) => t.product_id === item.product_id)
-                                                                    .map((t: any) => (
-                                                                        <Badge key={t.id} variant="outline" className="bg-white">
-                                                                            {t.boxes?.code || 'LẺ'}
-                                                                        </Badge>
-                                                                    ))
-                                                            )}
-                                                            {type === 'MANUAL_JOB' && (
-                                                                <Badge variant="outline" className="bg-white">
-                                                                    {productBoxMap[item.product_id]
-                                                                        ? Array.from(productBoxMap[item.product_id]).join(', ')
-                                                                        : item.boxes?.code || 'LẺ'
-                                                                    }
-                                                                </Badge>
-                                                            )}
-                                                        </>
-                                                    )}
-                                                </div>
+                                                {productBoxMap[item.product_id] && Array.from(productBoxMap[item.product_id]).map(code => (
+                                                    <Badge key={code} variant="outline" className="bg-white border-blue-200 text-blue-700">
+                                                        {code}
+                                                    </Badge>
+                                                ))}
+                                                {(!productBoxMap[item.product_id] || productBoxMap[item.product_id].size === 0) && (
+                                                    <Badge variant="outline" className="bg-white">LẺ</Badge>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -360,18 +282,8 @@ export default function ShippingDetailPage() {
                 </div>
             </div>
 
-            {/* PRINT COMPONENT (Hidden) */}
             <div style={{ display: "none" }}>
                 <div ref={printRef} className="bg-white p-5 font-sans text-slate-900 mx-auto" style={{ width: "210mm", minHeight: "297mm" }}>
-                    <style type="text/css" media="print">
-                        {`
-                            @media print {
-                                @page { size: A4; margin: 10mm; }
-                                body { -webkit-print-color-adjust: exact; }
-                            }
-                        `}
-                    </style>
-
                     <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
                         <div>
                             <h1 className="text-3xl font-black uppercase tracking-tighter">Phiếu Xuất Kho</h1>
@@ -391,19 +303,12 @@ export default function ShippingDetailPage() {
                             <h2 className="text-sm font-black uppercase border-b pb-1 text-slate-500">Đơn vị nhận hàng</h2>
                             <div>
                                 <p className="text-2xl font-black text-indigo-700 uppercase">{destination}</p>
-                                {type === 'TRANSFER' && data.destinations?.address && (
-                                    <p className="text-sm text-slate-600 mt-1">{data.destinations.address}</p>
-                                )}
                             </div>
                         </div>
                         <div className="space-y-4">
                             <h2 className="text-sm font-black uppercase border-b pb-1 text-slate-500">Thông tin phiếu</h2>
                             <table className="w-full text-sm">
                                 <tbody>
-                                    <tr className="border-b border-slate-100">
-                                        <td className="py-2 text-slate-500">Loại:</td>
-                                        <td className="py-2 font-bold">{type === 'ORDER' ? 'Đơn Bán Hàng' : 'Điều Chuyển'}</td>
-                                    </tr>
                                     <tr className="border-b border-slate-100">
                                         <td className="py-2 text-slate-500">Ngày tạo:</td>
                                         <td className="py-2 font-bold">{format(new Date(data.created_at), 'dd/MM/yyyy')}</td>
@@ -423,87 +328,27 @@ export default function ShippingDetailPage() {
                             <tr className="bg-slate-50 border-b-2 border-slate-900">
                                 <th className="p-2 text-left font-black uppercase text-xs w-10">STT</th>
                                 <th className="p-2 text-left font-black uppercase text-xs">SKU</th>
-                                <th className="p-2 text-left font-black uppercase text-xs">Barcode</th>
                                 <th className="p-2 text-left font-black uppercase text-xs">Tên Sản Phẩm</th>
                                 <th className="p-2 text-center font-black uppercase text-xs w-20">Số Lượng</th>
                                 <th className="p-2 text-right font-black uppercase text-xs w-24">Thùng</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200">
-                            {items.map((item: any, idx: number) => (
+                            {items?.map((item: any, idx: number) => (
                                 <tr key={item.id}>
                                     <td className="p-2 text-sm text-center">{idx + 1}</td>
-                                    <td className="p-2 font-mono font-bold whitespace-nowrap">{item.products?.sku}</td>
-                                    <td className="p-2 font-mono text-xs">{item.products?.barcode || '-'}</td>
+                                    <td className="p-2 font-mono font-bold">{item.products?.sku}</td>
                                     <td className="p-2 text-sm">{item.products?.name}</td>
                                     <td className="p-2 text-center font-black text-lg">
-                                        {type === 'ORDER' ? item.picked_quantity : item.quantity}
+                                        {item.picked_quantity ?? item.quantity}
                                     </td>
                                     <td className="p-2 text-right text-[10px] font-mono">
-                                        {/* Print View Box Logic */}
-                                        {productBoxMap[item.product_id]
-                                            ? Array.from(productBoxMap[item.product_id]).join(', ')
-                                            : data.picking_jobs?.flatMap((j: any) =>
-                                                j.picking_tasks?.filter((t: any) => t.product_id === item.product_id)
-                                                    .map((t: any) => t.boxes?.code || 'LE')
-                                            ).join(', ')
-                                        }
+                                        {productBoxMap[item.product_id] ? Array.from(productBoxMap[item.product_id]).join(', ') : 'LẺ'}
                                     </td>
                                 </tr>
                             ))}
-                            <tr className="bg-slate-50 border-t-2 border-slate-900">
-                                <td colSpan={4} className="p-3 text-right font-black uppercase text-xs">Tổng cộng:</td>
-                                <td className="p-3 text-center font-black text-lg">
-                                    {items.reduce((sum: number, item: any) => sum + (type === 'ORDER' ? (item.picked_quantity || 0) : (item.quantity || 0)), 0)}
-                                </td>
-                                <td className="p-3"></td>
-                            </tr>
                         </tbody>
                     </table>
-
-                    {/* Summary Section */}
-                    <div className="mb-10 p-4 border border-slate-900 bg-slate-50">
-                        <h3 className="text-sm font-black uppercase mb-4 border-b border-slate-300 pb-2">Tổng hợp</h3>
-                        <div className="grid grid-cols-3 gap-4 text-sm">
-                            <div>
-                                <span className="text-slate-500 block text-xs uppercase font-bold">Tổng số lượng sản phẩm</span>
-                                <span className="font-black text-xl">
-                                    {items.reduce((sum: number, item: any) => sum + (type === 'ORDER' ? (item.picked_quantity || 0) : (item.quantity || 0)), 0)}
-                                </span>
-                            </div>
-                            <div>
-                                <span className="text-slate-500 block text-xs uppercase font-bold">Tổng số mã (SKU)</span>
-                                <span className="font-black text-xl">{items.length}</span>
-                            </div>
-                            <div>
-                                <span className="text-slate-500 block text-xs uppercase font-bold">Tổng số thùng</span>
-                                <span className="font-black text-xl">
-                                    {(() => {
-                                        const allBoxes = new Set<string>();
-                                        // Collect boxes from productBoxMap
-                                        Object.values(productBoxMap).forEach(set => set.forEach(code => allBoxes.add(code)))
-
-                                        // Also collect from direct item boxes if map is empty relevantly
-                                        items.forEach((item: any) => {
-                                            if (!productBoxMap[item.product_id] || productBoxMap[item.product_id].size === 0) {
-                                                const fbCode = item.boxes?.code;
-                                                if (fbCode) allBoxes.add(fbCode);
-
-                                                // Also check picking jobs fallback
-                                                if (type !== 'MANUAL_JOB') {
-                                                    data.picking_jobs?.flatMap((j: any) =>
-                                                        j.picking_tasks?.filter((t: any) => t.product_id === item.product_id)
-                                                            .map((t: any) => t.boxes?.code)
-                                                    ).forEach((c: any) => { if (c) allBoxes.add(c) })
-                                                }
-                                            }
-                                        })
-                                        return allBoxes.size;
-                                    })()}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
 
                     <div className="grid grid-cols-3 gap-4 mt-20 text-center uppercase font-black text-xs h-32">
                         <div className="flex flex-col justify-between">
@@ -518,10 +363,6 @@ export default function ShippingDetailPage() {
                             <p>Người Nhận Hàng</p>
                             <p>(Ký tên)</p>
                         </div>
-                    </div>
-
-                    <div className="mt-20 border-t pt-4 text-center text-[10px] text-slate-400">
-                        Cảm ơn quý khách đã tin dùng dịch vụ của NOUS
                     </div>
                 </div>
             </div>
