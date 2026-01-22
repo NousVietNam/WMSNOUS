@@ -418,19 +418,25 @@ export default function OutboundDetailPage() {
 
         setActionLoading('deallocate')
         try {
+            console.log("Deallocating order:", id)
             const res = await fetch('/api/outbound/deallocate', {
                 method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ orderId: id })
             })
+
             const data = await res.json()
+            console.log("Deallocate response:", data)
+
             if (data.success) {
                 toast.success("Đã hủy phân bổ!")
                 fetchOrder()
             } else {
-                toast.error(data.error || "Lỗi hủy phân bổ")
+                toast.error("Lỗi: " + (data.error || "Không thể hủy phân bổ"))
             }
-        } catch (e) {
-            toast.error("Lỗi kết nối")
+        } catch (e: any) {
+            console.error("Deallocate error:", e)
+            toast.error("Lỗi kết nối: " + e.message)
         } finally {
             setActionLoading(null)
         }
@@ -519,57 +525,155 @@ export default function OutboundDetailPage() {
 
     return (
         <div className="p-6 max-w-5xl mx-auto space-y-6">
-            {/* Header */}
-            <div className="flex items-center gap-4">
-                <Link href="/admin/outbound" className="h-10 w-10 flex items-center justify-center rounded-lg border hover:bg-gray-50">
-                    <ArrowLeft className="h-5 w-5" />
-                </Link>
-                <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                        <h1 className="text-2xl font-bold">{order.code}</h1>
-                        {order.is_approved && (
-                            <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-xs font-bold border border-green-200 rounded-full">
-                                <CheckCircle className="h-3 w-3" />
-                                Đã duyệt
+            {/* Actions & Header */}
+            <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                    <Link href="/admin/outbound" className="h-10 w-10 flex items-center justify-center rounded-lg border hover:bg-gray-50 bg-white">
+                        <ArrowLeft className="h-5 w-5" />
+                    </Link>
+                    <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-2xl font-bold">{order.code}</h1>
+                            {order.is_approved && (
+                                <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-xs font-bold border border-green-200 rounded-full">
+                                    <CheckCircle className="h-3 w-3" />
+                                    Đã duyệt
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-1">
+                            {getStatusBadge(order.status)}
+                            <span className="text-sm text-gray-500">
+                                {order.type} • {order.transfer_type}
                             </span>
-                        )}
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
-                        {getStatusBadge(order.status)}
-                        <span className="text-sm text-gray-500">
-                            {order.type} • {order.transfer_type}
-                        </span>
+
+                    {/* Pricing Summary (Compact) */}
+                    <div className="flex flex-col items-end mr-4 text-sm">
+                        <div className="text-gray-500">Tạm tính: <span className="font-medium text-gray-900">{new Intl.NumberFormat('vi-VN').format(order.subtotal)}đ</span></div>
+                        {order.discount_amount > 0 && (
+                            <div className="text-red-600">
+                                CK ({order.discount_type === 'PERCENT' ? `${order.discount_value}%` : 'Tiền'}): -{new Intl.NumberFormat('vi-VN').format(order.discount_amount)}đ
+                            </div>
+                        )}
+                        <div className="font-bold text-blue-600 text-lg">{new Intl.NumberFormat('vi-VN').format(order.total)}đ</div>
+                    </div>
+
+                    <div className="flex gap-2">
+                        <button
+                            onClick={handleExportExcel}
+                            className="h-9 px-3 border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm bg-white"
+                            title="Xuất Excel"
+                        >
+                            <Download className="h-4 w-4" />
+                            Excel
+                        </button>
+                        <button
+                            onClick={handleExportPDF}
+                            className="h-9 px-3 border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm bg-white"
+                            title="In phiếu xuất kho"
+                        >
+                            <FileText className="h-4 w-4" />
+                            PDF
+                        </button>
                     </div>
                 </div>
 
-                {/* Export Buttons */}
-                <div className="flex gap-2">
-                    <button
-                        onClick={handleExportExcel}
-                        className="h-9 px-3 border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm"
-                        title="Xuất Excel"
-                    >
-                        <Download className="h-4 w-4" />
-                        Excel
-                    </button>
-                    <button
-                        onClick={handleExportPDF}
-                        className="h-9 px-3 border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm"
-                        title="In phiếu xuất kho"
-                    >
-                        <FileText className="h-4 w-4" />
-                        PDF
-                    </button>
-                    {canEdit && (
-                        <Link
-                            href={`/admin/outbound/${id}/edit`}
-                            className="h-9 px-3 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg flex items-center gap-2 hover:bg-blue-100 text-sm"
-                        >
-                            <Pencil className="h-4 w-4" />
-                            Sửa
-                        </Link>
-                    )}
-                </div>
+                {/* Toolbar: Actions */}
+                {!isShipped && (
+                    <div className="flex items-center justify-between bg-white p-2 rounded-lg border shadow-sm">
+                        <div className="flex gap-2">
+                            {canEdit && (
+                                <Link
+                                    href={`/admin/outbound/${id}/edit`}
+                                    className="h-9 px-4 bg-gray-100 text-gray-700 rounded-lg flex items-center gap-2 hover:bg-gray-200 text-sm font-medium"
+                                >
+                                    <Pencil className="h-4 w-4" />
+                                    Sửa Đơn
+                                </Link>
+                            )}
+
+                            {/* Approval Actions */}
+                            {canApprove && (
+                                <button
+                                    onClick={handleApprove}
+                                    disabled={actionLoading === 'approve'}
+                                    className="h-9 px-4 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+                                >
+                                    {actionLoading === 'approve' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                                    Duyệt Đơn
+                                </button>
+                            )}
+                            {canUnapprove && (
+                                <button
+                                    onClick={handleUnapprove}
+                                    disabled={actionLoading === 'unapprove'}
+                                    className="h-9 px-4 bg-white border border-red-200 text-red-600 rounded-lg flex items-center gap-2 hover:bg-red-50 disabled:opacity-50 text-sm font-medium"
+                                >
+                                    {actionLoading === 'unapprove' ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4" />}
+                                    Hủy Duyệt
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="flex gap-2">
+                            {/* Alloc & Ship Actions */}
+                            {canAllocate && (
+                                <button
+                                    onClick={handleAllocate}
+                                    disabled={actionLoading === 'allocate'}
+                                    className="h-9 px-4 bg-yellow-500 text-white rounded-lg flex items-center gap-2 hover:bg-yellow-600 disabled:opacity-50 text-sm font-medium"
+                                >
+                                    {actionLoading === 'allocate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
+                                    Phân Bổ
+                                </button>
+                            )}
+                            {canDeallocate && (
+                                <button
+                                    onClick={handleDeallocate}
+                                    disabled={actionLoading === 'deallocate'}
+                                    className="h-9 px-4 bg-white border border-orange-200 text-orange-600 rounded-lg flex items-center gap-2 hover:bg-orange-50 disabled:opacity-50 text-sm font-medium"
+                                >
+                                    {actionLoading === 'deallocate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                                    Hủy Phân Bổ
+                                </button>
+                            )}
+                            {canCreateJob && (
+                                <button
+                                    onClick={handleCreateJob}
+                                    disabled={actionLoading === 'job'}
+                                    className="h-9 px-4 bg-orange-500 text-white rounded-lg flex items-center gap-2 hover:bg-orange-600 disabled:opacity-50 text-sm font-medium"
+                                >
+                                    {actionLoading === 'job' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
+                                    Tạo Job
+                                </button>
+                            )}
+                            {canShip && (
+                                <button
+                                    onClick={handleShip}
+                                    disabled={actionLoading === 'ship'}
+                                    className="h-9 px-4 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
+                                >
+                                    {actionLoading === 'ship' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
+                                    Xuất Kho
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {isShipped && (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <CheckCircle className="h-5 w-5 text-green-600" />
+                            <span className="font-bold text-green-700">Đơn hàng đã xuất kho hoàn thành</span>
+                        </div>
+                        <div className="text-sm text-green-600 font-medium">
+                            Thời gian: {order.shipped_at && format(new Date(order.shipped_at), 'dd/MM/yyyy HH:mm', { locale: vi })}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Info Cards */}
@@ -674,112 +778,8 @@ export default function OutboundDetailPage() {
                         ))}
                     </tbody>
                 </table>
+
             </div>
-
-            {/* Pricing Summary */}
-            <div className="bg-white rounded-lg border p-4">
-                <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                        <span className="text-gray-500">Tạm tính</span>
-                        <span>{new Intl.NumberFormat('vi-VN').format(order.subtotal)}đ</span>
-                    </div>
-                    {order.discount_amount > 0 && (
-                        <div className="flex justify-between text-red-600">
-                            <span>Chiết khấu ({order.discount_type === 'PERCENT' ? `${order.discount_value}%` : 'Cố định'})</span>
-                            <span>-{new Intl.NumberFormat('vi-VN').format(order.discount_amount)}đ</span>
-                        </div>
-                    )}
-                    <div className="flex justify-between pt-2 border-t font-bold text-lg">
-                        <span>Tổng cộng</span>
-                        <span className="text-blue-600">{new Intl.NumberFormat('vi-VN').format(order.total)}đ</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Actions */}
-            {!isShipped && (
-                <div className="flex flex-col gap-3">
-                    {/* Approval Zone */}
-                    <div className="flex gap-3">
-                        {canApprove && (
-                            <button
-                                onClick={handleApprove}
-                                disabled={actionLoading === 'approve'}
-                                className="flex-1 h-12 bg-blue-600 text-white font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 shadow-sm"
-                            >
-                                {actionLoading === 'approve' ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle className="h-5 w-5" />}
-                                Duyệt Đơn Hàng
-                            </button>
-                        )}
-                        {canUnapprove && (
-                            <button
-                                onClick={handleUnapprove}
-                                disabled={actionLoading === 'unapprove'}
-                                className="h-12 px-6 bg-white border border-red-200 text-red-600 font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-red-50 disabled:opacity-50"
-                            >
-                                {actionLoading === 'unapprove' ? <Loader2 className="h-5 w-5 animate-spin" /> : <AlertCircle className="h-5 w-5" />}
-                                Hủy Duyệt
-                            </button>
-                        )}
-                    </div>
-
-                    {/* Fulfillment Zone */}
-                    <div className="flex gap-3">
-                        {canAllocate && (
-                            <button
-                                onClick={handleAllocate}
-                                disabled={actionLoading === 'allocate'}
-                                className="flex-1 h-12 bg-yellow-500 text-white font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-yellow-600 disabled:opacity-50"
-                            >
-                                {actionLoading === 'allocate' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Package className="h-5 w-5" />}
-                                Phân Bổ Tồn Kho
-                            </button>
-                        )}
-                        {canDeallocate && (
-                            <button
-                                onClick={handleDeallocate}
-                                disabled={actionLoading === 'deallocate'}
-                                className="h-12 px-6 bg-white border border-orange-200 text-orange-600 font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-orange-50 disabled:opacity-50"
-                            >
-                                {actionLoading === 'deallocate' ? <Loader2 className="h-5 w-5 animate-spin" /> : <RotateCcw className="h-5 w-5" />}
-                                Hủy Phân Bổ
-                            </button>
-                        )}
-                        {canCreateJob && (
-                            <button
-                                onClick={handleCreateJob}
-                                disabled={actionLoading === 'job'}
-                                className="flex-1 h-12 bg-orange-500 text-white font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-orange-600 disabled:opacity-50"
-                            >
-                                {actionLoading === 'job' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Package className="h-5 w-5" />}
-                                Tạo Job Soạn Hàng
-                            </button>
-                        )}
-                        {canShip && (
-                            <button
-                                onClick={handleShip}
-                                disabled={actionLoading === 'ship'}
-                                className="flex-1 h-12 bg-green-600 text-white font-bold rounded-lg flex items-center justify-center gap-2 hover:bg-green-700 disabled:opacity-50"
-                            >
-                                {actionLoading === 'ship' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Truck className="h-5 w-5" />}
-                                Xuất Kho
-                            </button>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {isShipped && (
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
-                    <CheckCircle className="h-6 w-6 text-green-600" />
-                    <div>
-                        <div className="font-medium text-green-800">Đã xuất kho</div>
-                        <div className="text-sm text-green-600">
-                            {order.shipped_at && format(new Date(order.shipped_at), 'dd/MM/yyyy HH:mm', { locale: vi })}
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Missing Items Dialog */}
             <Dialog open={isMissingItemsDialogOpen} onOpenChange={setIsMissingItemsDialogOpen}>

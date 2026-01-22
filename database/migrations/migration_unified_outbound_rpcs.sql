@@ -166,6 +166,7 @@ END;
 $$;
 
 -- 5. ALLOCATE FUNCTION: Respect from_box_id
+DROP FUNCTION IF EXISTS allocate_outbound(UUID, TEXT);
 CREATE OR REPLACE FUNCTION allocate_outbound(p_order_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql

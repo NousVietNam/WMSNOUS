@@ -511,6 +511,8 @@ export default function OutboundListPage() {
                         <tr>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Mã Đơn</th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Loại</th>
+                            <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Trạng Thái</th>
+                            <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Duyệt</th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Mã KH/Đích</th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Đích</th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Sale</th>
@@ -520,8 +522,6 @@ export default function OutboundListPage() {
                             <th className="text-right px-3 py-3 text-xs font-medium text-gray-500 uppercase">Sau CK</th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase max-w-[120px]">Diễn giải</th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase max-w-[120px]">Ghi chú</th>
-                            <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Trạng Thái</th>
-                            <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Duyệt</th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Ngày Tạo</th>
                             <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase w-16"></th>
                         </tr>
@@ -545,6 +545,14 @@ export default function OutboundListPage() {
                                         <div className="text-xs text-gray-400">{order.transfer_type}</div>
                                     </td>
                                     <td className="px-3 py-2">{getTypeBadge(order.type)}</td>
+                                    <td className="px-3 py-2 text-center">{getStatusBadge(order.status)}</td>
+                                    <td className="px-3 py-2 text-center">
+                                        {order.is_approved ? (
+                                            <span className="px-2 py-0.5 text-xs font-bold rounded bg-green-100 text-green-700 border border-green-200">Đã duyệt</span>
+                                        ) : (
+                                            <span className="px-2 py-0.5 text-xs font-bold rounded bg-gray-100 text-gray-500 border border-gray-200">Chưa duyệt</span>
+                                        )}
+                                    </td>
                                     <td className="px-3 py-2 text-xs text-gray-500">
                                         {order.type === 'SALE' || order.type === 'GIFT'
                                             ? order.customers?.code || '-'
@@ -573,14 +581,6 @@ export default function OutboundListPage() {
                                     </td>
                                     <td className="px-3 py-2 text-xs text-gray-500 truncate max-w-[120px]" title={order.note || ''}>
                                         {order.note || '-'}
-                                    </td>
-                                    <td className="px-3 py-2 text-center">{getStatusBadge(order.status)}</td>
-                                    <td className="px-3 py-2 text-center">
-                                        {order.is_approved ? (
-                                            <span className="px-2 py-0.5 text-xs font-bold rounded bg-green-100 text-green-700 border border-green-200">Đã duyệt</span>
-                                        ) : (
-                                            <span className="px-2 py-0.5 text-xs font-bold rounded bg-gray-100 text-gray-500 border border-gray-200">Chưa duyệt</span>
-                                        )}
                                     </td>
                                     <td className="px-3 py-2 text-xs text-gray-500">
                                         {format(new Date(order.created_at), 'dd/MM/yyyy HH:mm', { locale: vi })}

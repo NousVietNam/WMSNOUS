@@ -33,7 +33,7 @@ export default function RootLayout({
         <AuthProvider>
           {children}
         </AuthProvider>
-        <Toaster richColors position="top-center" />
+        <Toaster richColors position="top-center" offset={80} />
       </body>
     </html>
   );
