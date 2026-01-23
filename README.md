@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WMS Application - Interactive Warehouse Map
 
-## Getting Started
+Advanced warehouse management system with a high-performance interactive 2D/3D map.
 
-First, run the development server:
+## Key Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Dynamic Map**: Render thousands of racks with smooth performance using Canvas/WebGL.
+- **Interactive Editing**: Move, Resize, and Create racks or map elements (walls, doors) in real-time.
+- **Multi-Selection**: Lasso selection and Ctrl-click for batch operations.
+- **Detailed Layouts**: Manage inventory levels and locations directly through the map interface.
+- **3D Visualization**: Switch between 2D planning and 3D preview of the warehouse.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Map Interactions
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Action | Control |
+|--------|---------|
+| **Select / View** | Left Click |
+| **Pan Map** | Right Click / Middle Click Drag |
+| **Zoom** | Mouse Scroll |
+| **Lasso Selection** | Shift + Left Click Drag (Edit Mode) |
+| **Multi-Select** | Ctrl + Left Click |
+| **Move Group** | Drag any selected rack |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Tech Stack
 
-## Learn More
+- **Frontend**: Next.js (App Router), React, Lucide-React
+- **State Management**: React Hooks (useState, useRef, useCallback)
+- **Styling**: Tailwind CSS
+- **Visualization**: HTML5 Canvas, React Three Fiber (3D)
 
-To learn more about Next.js, take a look at the following resources:
+## Setup
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Install dependencies: `npm install`
+2. Run development server: `npm run dev`
+3. Build for production: `npm run build`

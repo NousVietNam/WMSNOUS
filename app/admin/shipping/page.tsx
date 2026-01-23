@@ -2,45 +2,61 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Truck, FileText, ArrowRightLeft, Search, Calendar, Package, Upload, Filter, X } from "lucide-react"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { toast } from "sonner"
 import Link from "next/link"
 import { format, subDays, isWithinInterval, startOfDay, endOfDay, parseISO } from "date-fns"
-import { cn } from "@/lib/utils"
+import { vi } from "date-fns/locale"
+import { Package, Truck, Filter, RefreshCw, Eye, Search, Calendar, User, FileText, ArrowRight } from "lucide-react"
+import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 
-interface ShippingRequest {
+type ShippingRequest = {
     id: string
     code: string
     type: 'ORDER' | 'TRANSFER' | 'MANUAL_JOB'
     status: string
     customer_name?: string
+    customer_id?: string
     destination_name?: string
+    destination_id?: string
+    sale_staff_name?: string
     created_at: string
+    shipped_at?: string
     item_count: number
     subtotal: number
     discount_amount: number
     total: number
 }
 
+// Helper types for fetching
+type DbOrder = {
+    id: string
+    code: string
+    type: string
+    status: string
+    created_at: string
+    shipped_at?: string
+    subtotal: number
+    discount_amount: number
+    total: number
+    customer_id?: string
+    destination_id?: string
+    sale_staff_id?: string
+    customers?: { name: string } | null
+    destinations?: { name: string } | null
+    internal_staff?: { name: string } | null
+    outbound_order_items?: { count: number }[]
+}
+
 export default function ShippingPage() {
     const [requests, setRequests] = useState<ShippingRequest[]>([])
     const [loading, setLoading] = useState(true)
-    const [searchTerm, setSearchTerm] = useState("")
 
     // Filters
-    // Filters
-    const [filterStatus, setFilterStatus] = useState("ALL") // ALL, PACKED, SHIPPED
-    const [filterType, setFilterType] = useState("ALL") // ALL, ORDER, TRANSFER, MANUAL_JOB
-    const [dateRange, setDateRange] = useState<{ from: string, to: string }>({
-        from: subDays(new Date(), 30).toISOString().split('T')[0], // Default 30 days
-        to: new Date().toISOString().split('T')[0]
-    })
+    const [filterType, setFilterType] = useState("ALL")
+    const [filterStatus, setFilterStatus] = useState("ALL")
+    const [filterDateFrom, setFilterDateFrom] = useState<string>(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
+    const [filterDateTo, setFilterDateTo] = useState<string>(format(new Date(), 'yyyy-MM-dd'))
+    const [searchTerm, setSearchTerm] = useState("")
 
     useEffect(() => {
         fetchShippingRequests()
@@ -51,87 +67,53 @@ export default function ShippingPage() {
         try {
             const allRequests: ShippingRequest[] = []
 
-            const { data: shipments, error: shipError } = await supabase
-                .from('outbound_shipments')
+            // 1. FETCH ORDERS (PACKED or SHIPPED)
+            // We fetch from outbound_orders directly as it is the source of truth
+            const { data: orders, error } = await supabase
+                .from('outbound_orders')
                 .select(`
                     *,
-                    outbound_orders(subtotal, discount_amount, total)
+                    customers (name),
+                    destinations (name),
+                    internal_staff (name),
+                    outbound_order_items (id)
                 `)
+                .in('status', ['PACKED', 'SHIPPED'])
                 .order('created_at', { ascending: false })
 
-            if (shipError) throw shipError
+            if (error) throw error
 
-            const mappedShipments: ShippingRequest[] = shipments.map(s => ({
-                id: s.source_id,
-                code: s.code,
-                type: s.source_type,
-                status: 'SHIPPED',
-                customer_name: s.metadata?.customer_name || s.metadata?.destination_name || 'Khách lẻ',
-                destination_name: s.metadata?.original_code,
-                created_at: s.created_at,
-                item_count: s.metadata?.item_count || 0,
-                // @ts-ignore
-                subtotal: s.outbound_orders?.subtotal || 0,
-                // @ts-ignore
-                discount_amount: s.outbound_orders?.discount_amount || 0,
-                // @ts-ignore
-                total: s.outbound_orders?.total || 0
-            }))
-
-            allRequests.push(...mappedShipments)
-
-            // 2. FETCH PENDING ITEMS (From outbound_orders)
-            if (filterStatus !== 'SHIPPED') {
-                const { data: outbounds } = await supabase
-                    .from('outbound_orders')
-                    .select('id, code, status, type, customer_name, created_at, subtotal, discount_amount, total, outbound_order_items(count)')
-                    .eq('status', 'PACKED')
-
-                if (outbounds) {
-                    allRequests.push(...outbounds.map(o => ({
-                        id: o.id,
-                        code: o.code,
-                        type: o.type as any,
-                        status: 'PACKED',
-                        customer_name: o.customer_name || (o.type === 'TRANSFER' ? 'Điều chuyển' : 'N/A'),
-                        created_at: o.created_at,
-                        // @ts-ignore
-                        item_count: o.outbound_order_items?.[0]?.count || 0,
-                        subtotal: o.subtotal || 0,
-                        discount_amount: o.discount_amount || 0,
-                        total: o.total || 0
-                    })))
-                }
-
-                // C. Pending Manual Jobs (Still from picking_jobs for now if they don't have an outbound_order)
-                const { data: jobs } = await supabase
-                    .from('picking_jobs')
-                    .select('id, status, created_at, type, picking_tasks(count)')
-                    .eq('type', 'MANUAL_PICK')
-                    .eq('status', 'COMPLETED')
-                    .is('outbound_order_id', null) // Only those without unified record
-
-                if (jobs) {
-                    allRequests.push(...jobs.map(j => ({
-                        id: j.id,
-                        code: `JOB-${j.id.slice(0, 8).toUpperCase()}`,
-                        type: 'MANUAL_JOB' as const,
-                        status: 'PACKED',
-                        customer_name: 'Xuất Thủ Công',
-                        created_at: j.created_at,
-                        // @ts-ignore
-                        item_count: j.picking_tasks?.[0]?.count || 0
-                    })))
-                }
+            if (orders) {
+                const mappedOrders: ShippingRequest[] = orders.map((o: any) => ({
+                    id: o.id,
+                    code: o.code,
+                    type: (o.type === 'SALE' || o.type === 'GIFT') ? 'ORDER' : 'TRANSFER',
+                    status: o.status,
+                    customer_name: o.customers?.name,
+                    destination_name: o.destinations?.name,
+                    sale_staff_name: o.internal_staff?.name,
+                    created_at: o.created_at,
+                    shipped_at: o.shipped_at,
+                    item_count: o.outbound_order_items?.length || 0,
+                    subtotal: o.subtotal || 0,
+                    discount_amount: o.discount_amount || 0,
+                    total: o.total || 0
+                }))
+                allRequests.push(...mappedOrders)
             }
+
+            // 2. FETCH MANUAL JOBS (If needed, those without order, but ideally all should have orders now)
+            // Skipping purely manual jobs for now as the goal is to unify around outbound_orders.
+            // If there's a manual job without an order, it's an edge case we might want to fix upstream.
+            // For now, let's focus on the Order table as the single source for Shipping.
 
             setRequests(allRequests.sort((a, b) =>
                 new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
             ))
 
-        } catch (e) {
+        } catch (e: any) {
             console.error(e)
-            toast.error("Lỗi tải dữ liệu")
+            toast.error("Lỗi tải dữ liệu: " + e.message)
         } finally {
             setLoading(false)
         }
@@ -141,19 +123,20 @@ export default function ShippingPage() {
         // 1. Text Search
         const search = searchTerm.toLowerCase()
         const matchSearch = r.code.toLowerCase().includes(search) ||
-            (r.customer_name || r.destination_name || '').toLowerCase().includes(search)
+            (r.customer_name || '').toLowerCase().includes(search) ||
+            (r.destination_name || '').toLowerCase().includes(search)
 
         // 2. Type Filter
-        const matchType = filterType === 'ALL' || r.type === filterType
+        const matchType = filterType === 'ALL' ||
+            (filterType === 'ORDER' && r.type === 'ORDER') ||
+            (filterType === 'TRANSFER' && r.type === 'TRANSFER')
 
         // 3. Status Filter
         const matchStatus = filterStatus === 'ALL' || r.status === filterStatus
 
-        // 4. Date Range
-        const itemDate = parseISO(r.created_at)
-        const fromDate = startOfDay(parseISO(dateRange.from))
-        const toDate = endOfDay(parseISO(dateRange.to))
-        const matchDate = isWithinInterval(itemDate, { start: fromDate, end: toDate })
+        // 4. Date Range (Compare string YYYY-MM-DD)
+        const itemDate = format(parseISO(r.created_at), 'yyyy-MM-dd')
+        const matchDate = itemDate >= filterDateFrom && itemDate <= filterDateTo
 
         return matchSearch && matchType && matchStatus && matchDate
     })
@@ -165,238 +148,205 @@ export default function ShippingPage() {
         total: acc.total + (Number(r.total) || 0),
     }), { item_count: 0, subtotal: 0, discount: 0, total: 0 })
 
+    const getTypeBadge = (type: string) => {
+        if (type === 'ORDER') return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Đơn Hàng</Badge>
+        if (type === 'TRANSFER') return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">Điều Chuyển</Badge>
+        return <Badge variant="outline">{type}</Badge>
+    }
+
+    const getStatusBadge = (status: string) => {
+        if (status === 'SHIPPED') return <Badge className="bg-green-600 hover:bg-green-700"><Truck className="w-3 h-3 mr-1" /> Đã Xuất Kho</Badge>
+        if (status === 'PACKED') return <Badge className="bg-blue-600 hover:bg-blue-700"><Package className="w-3 h-3 mr-1" /> Đã Đóng Hàng</Badge>
+        return <Badge variant="secondary">{status}</Badge>
+    }
+
     return (
         <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-            {/* Header and Title */}
-            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            {/* Header */}
+            <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold flex items-center gap-3 text-slate-800">
-                        <Truck className="h-10 w-10 text-indigo-600" />
-                        Quản Lý Xuất Kho
+                    <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                        <Truck className="h-8 w-8 text-indigo-600" />
+                        Quản Lý Giao Hàng
                     </h1>
-                    <p className="text-slate-500 mt-1">Quản lý Phiếu Xuất Kho và các đơn hàng chờ xuất.</p>
+                    <p className="text-slate-500">Quản lý và xác nhận xuất kho cho các đơn hàng đã đóng gói.</p>
                 </div>
+                <button
+                    onClick={fetchShippingRequests}
+                    className="h-10 px-4 bg-white border rounded-lg flex items-center gap-2 hover:bg-gray-50 shadow-sm"
+                >
+                    <RefreshCw className="h-4 w-4" />
+                    Làm mới
+                </button>
             </div>
 
             {/* Filter Bar */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4 flex-wrap">
-                {/* Search */}
-                <div className="relative flex-1 min-w-[200px]">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                    <Input
-                        placeholder="Tìm mã phiếu PXK, mã đơn..."
-                        className="pl-9"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-
-                {/* Date Range */}
-                <div className="flex items-center gap-2">
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-end">
+                <div className="flex-1 min-w-[200px]">
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Tìm kiếm</label>
                     <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-xs text-slate-400">Từ</span>
-                        <Input
-                            type="date"
-                            className="pl-8 w-40"
-                            value={dateRange.from}
-                            onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
-                        />
-                    </div>
-                    <span className="text-slate-400">-</span>
-                    <div className="relative">
-                        <span className="absolute left-3 top-2.5 text-xs text-slate-400">Đến</span>
-                        <Input
-                            type="date"
-                            className="pl-8 w-40"
-                            value={dateRange.to}
-                            onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Mã đơn, KH..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full h-10 pl-9 pr-4 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                         />
                     </div>
                 </div>
 
-                {/* Type Filter */}
-                <div className="w-40">
-                    <Select value={filterType} onValueChange={setFilterType}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Loại phiếu" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="ALL">Tất cả Loại</SelectItem>
-                            <SelectItem value="ORDER">Đơn Bán Hàng</SelectItem>
-                            <SelectItem value="TRANSFER">Điều Chuyển</SelectItem>
-                            <SelectItem value="MANUAL_JOB">Xuất Thủ Công</SelectItem>
-                        </SelectContent>
-                    </Select>
+                <div className="min-w-[300px] flex-1">
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Khoảng thời gian</label>
+                    <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                            <input
+                                type="date"
+                                value={filterDateFrom}
+                                onChange={(e) => setFilterDateFrom(e.target.value)}
+                                className="w-full h-10 px-3 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
+                        <span className="text-slate-300">-</span>
+                        <div className="relative flex-1">
+                            <input
+                                type="date"
+                                value={filterDateTo}
+                                onChange={(e) => setFilterDateTo(e.target.value)}
+                                className="w-full h-10 px-3 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                            />
+                        </div>
+                    </div>
                 </div>
 
-                {/* Status Filter */}
-                <div className="w-40">
-                    <Select value={filterStatus} onValueChange={setFilterStatus}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Trạng thái" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="ALL">Tất cả Trạng thái</SelectItem>
-                            <SelectItem value="PACKED">Chờ Xuất (Packed)</SelectItem>
-                            <SelectItem value="SHIPPED">Đã Xuất (PXK)</SelectItem>
-                        </SelectContent>
-                    </Select>
+                <div className="w-[150px]">
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Loại phiếu</label>
+                    <select
+                        value={filterType}
+                        onChange={(e) => setFilterType(e.target.value)}
+                        className="w-full h-10 px-3 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="ALL">Tất cả</option>
+                        <option value="ORDER">Bán Hàng</option>
+                        <option value="TRANSFER">Điều Chuyển</option>
+                    </select>
+                </div>
+
+                <div className="w-[150px]">
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Trạng thái</label>
+                    <select
+                        value={filterStatus}
+                        onChange={(e) => setFilterStatus(e.target.value)}
+                        className="w-full h-10 px-3 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="ALL">Tất cả</option>
+                        <option value="PACKED">Đã Đóng Gói</option>
+                        <option value="SHIPPED">Đã Xuất Kho</option>
+                    </select>
                 </div>
             </div>
 
-            {/* Summary Statistics */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="bg-white border-none shadow-sm overflow-hidden">
-                    <div className="p-4 flex items-center gap-4">
-                        <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
-                            <Package className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <div className="text-[10px] uppercase font-bold text-slate-400">Tổng SL Hàng</div>
-                            <div className="text-xl font-black text-slate-800">{totals.item_count.toLocaleString()}</div>
-                        </div>
-                    </div>
-                </Card>
-                <Card className="bg-white border-none shadow-sm overflow-hidden">
-                    <div className="p-4 flex items-center gap-4">
-                        <div className="h-10 w-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-                            <span className="font-bold">Đ</span>
-                        </div>
-                        <div>
-                            <div className="text-[10px] uppercase font-bold text-slate-400">Trước CK</div>
-                            <div className="text-xl font-black text-slate-800">{totals.subtotal.toLocaleString()}</div>
-                        </div>
-                    </div>
-                </Card>
-                <Card className="bg-white border-none shadow-sm overflow-hidden border-l-4 border-l-rose-500">
-                    <div className="p-4 flex items-center gap-4">
-                        <div className="h-10 w-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600">
-                            <X className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <div className="text-[10px] uppercase font-bold text-slate-400">Khấu Trừ / CK</div>
-                            <div className="text-xl font-black text-rose-600">-{totals.discount.toLocaleString()}</div>
-                        </div>
-                    </div>
-                </Card>
-                <Card className="bg-indigo-600 border-none shadow-md overflow-hidden text-white">
-                    <div className="p-4 flex items-center gap-4">
-                        <div className="h-10 w-10 bg-white/20 rounded-xl flex items-center justify-center text-white">
-                            <Truck className="h-5 w-5" />
-                        </div>
-                        <div>
-                            <div className="text-[10px] uppercase font-bold text-indigo-100">Sau CK (Thanh toán)</div>
-                            <div className="text-xl font-black">{totals.total.toLocaleString()}</div>
-                        </div>
-                    </div>
-                </Card>
-            </div>
-
-            {/* List */}
-            <div className="grid grid-cols-1 gap-4">
-                {loading ? (
-                    <div className="text-center py-20 bg-white rounded-2xl border border-slate-100 shadow-sm">
-                        <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                        <p className="text-slate-500">Đang tải danh sách...</p>
-                    </div>
-                ) : filtered.length === 0 ? (
-                    <div className="text-center py-20 bg-white rounded-2xl border border-slate-100 shadow-sm space-y-4">
-                        <div className="h-16 w-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto text-slate-300">
-                            <Truck className="h-8 w-8" />
-                        </div>
-                        <p className="text-slate-500">Không tìm thấy phiếu nào phù hợp bộ lọc</p>
-                    </div>
-                ) : (
-                    filtered.map((req) => {
-                        // Display Logic
-                        const isShipped = req.status === 'SHIPPED'
-                        const isManualReady = req.type === 'MANUAL_JOB' && req.status === 'COMPLETED'
-
-                        // Badge Logic
-                        let badgeVariant: "default" | "secondary" | "outline" | "destructive" | null | undefined = 'secondary'
-                        let badgeClass = 'bg-blue-100 text-blue-700'
-                        let badgeText = req.status
-
-                        if (isShipped) {
-                            badgeVariant = 'default'
-                            badgeClass = 'bg-green-600 hover:bg-green-700 text-white'
-                            badgeText = 'Đã Xuất Kho (PXK)'
-                        } else if (isManualReady) {
-                            badgeClass = 'bg-orange-100 text-orange-700'
-                            badgeText = 'Đã Nhặt (Sẵn sàng)'
-                        } else if (req.status === 'PACKED') {
-                            badgeClass = 'bg-blue-600 text-white'
-                            badgeText = 'Đã Đóng Hàng (PACKED)'
-                        }
-
-                        return (
-                            <div key={req.id} className="relative group">
-                                <Link href={`/admin/shipping/${req.id}?type=${req.type}`}>
-                                    <Card className={`hover:border-indigo-300 transition-all cursor-pointer shadow-sm ${isShipped ? 'opacity-80 bg-slate-50' : 'bg-white'}`}>
-                                        <CardContent className="p-4 flex items-center justify-between">
-                                            <div className="flex items-center gap-4">
-                                                <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${req.type === 'ORDER' ? 'bg-blue-50 text-blue-600' :
-                                                    req.type === 'TRANSFER' ? 'bg-purple-50 text-purple-600' : 'bg-orange-50 text-orange-600'
-                                                    }`}>
-                                                    {req.type === 'ORDER' ? <FileText className="h-6 w-6" /> :
-                                                        req.type === 'TRANSFER' ? <ArrowRightLeft className="h-6 w-6" /> : <Package className="h-6 w-6" />}
-                                                </div>
-                                                <div>
-                                                    <div className="font-black text-lg text-slate-900 flex items-center gap-2">
-                                                        {req.code}
-                                                        <Badge variant={badgeVariant} className={badgeClass}>
-                                                            {badgeText}
-                                                        </Badge>
-                                                    </div>
-                                                    <div className="text-sm text-slate-500 flex items-center gap-3">
-                                                        <span>{req.customer_name || req.destination_name}</span>
-                                                        <span>•</span>
-                                                        <span>{req.item_count} sản phẩm</span>
-                                                        <span>•</span>
-                                                        <span>{format(new Date(req.created_at), 'dd/MM/yyyy HH:mm')}</span>
-                                                    </div>
-                                                </div>
+            {/* Data Table */}
+            <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
+                            {/* Summary Row */}
+                            <tr className="bg-indigo-50/30 border-b border-indigo-100">
+                                <th colSpan={6} className="px-4 py-3 text-right uppercase text-[11px] tracking-wider font-bold text-indigo-900">
+                                    Tổng cộng ({filtered.length} đơn):
+                                </th>
+                                <th className="px-4 py-3 text-center font-bold text-indigo-700">{totals.item_count.toLocaleString()}</th>
+                                <th className="px-4 py-3 text-right font-bold text-slate-700">{totals.subtotal.toLocaleString()}</th>
+                                <th className="px-4 py-3 text-right font-bold text-rose-600">-{totals.discount.toLocaleString()}</th>
+                                <th className="px-4 py-3 text-right font-bold text-blue-700">{totals.total.toLocaleString()}</th>
+                                <th className="px-4 py-3"></th>
+                            </tr>
+                            <tr>
+                                <th className="px-4 py-3 w-[140px]">Mã Đơn</th>
+                                <th className="px-4 py-3 w-[100px] text-center">Loại</th>
+                                <th className="px-4 py-3 text-center">Trạng Thái</th>
+                                <th className="px-4 py-3">Khách Hàng / Điểm Đích</th>
+                                <th className="px-4 py-3">NV Sale</th>
+                                <th className="px-4 py-3">Ngày Tạo</th>
+                                <th className="px-4 py-3 text-center">SL Item</th>
+                                <th className="px-4 py-3 text-right">Trước CK</th>
+                                <th className="px-4 py-3 text-right">Chiết Khấu</th>
+                                <th className="px-4 py-3 text-right">Tổng Cộng</th>
+                                <th className="px-4 py-3 w-[80px]"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {loading ? (
+                                <tr>
+                                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
+                                        <div className="animate-spin h-6 w-6 border-2 border-indigo-600 border-t-transparent rounded-full mx-auto mb-2"></div>
+                                        Đang tải dữ liệu...
+                                    </td>
+                                </tr>
+                            ) : filtered.length === 0 ? (
+                                <tr>
+                                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
+                                        Không tìm thấy đơn hàng nào phù hợp bộ lọc.
+                                    </td>
+                                </tr>
+                            ) : (
+                                filtered.map((req) => (
+                                    <tr key={req.id} className="hover:bg-slate-50 transition-colors group">
+                                        <td className="px-4 py-3 font-medium font-mono text-indigo-600">
+                                            {req.code}
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            {getTypeBadge(req.type)}
+                                        </td>
+                                        <td className="px-4 py-3 text-center">
+                                            {getStatusBadge(req.status)}
+                                        </td>
+                                        <td className="px-4 py-3 max-w-[200px] truncate" title={req.customer_name || req.destination_name}>
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-slate-800">{req.customer_name || req.destination_name || 'N/A'}</span>
                                             </div>
-                                        </CardContent>
-                                    </Card>
-                                </Link>
-
-                                {/* QUICK SHIP BUTTON OVERLAY (Only for PACKED orders) */}
-                                {req.status === 'PACKED' && !isShipped && (
-                                    <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Button
-                                            className="shadow-lg bg-indigo-600 hover:bg-indigo-700"
-                                            onClick={async (e) => {
-                                                e.stopPropagation()
-                                                e.preventDefault()
-                                                if (!confirm(`Xác nhận Xuất Nhanh đơn ${req.code}?`)) return
-
-                                                try {
-                                                    const res = await fetch('/api/orders/ship', {
-                                                        method: 'POST',
-                                                        headers: { 'Content-Type': 'application/json' },
-                                                        body: JSON.stringify({ orderId: req.id })
-                                                    })
-                                                    const json = await res.json()
-                                                    if (json.success) {
-                                                        toast.success("Xuất hàng thành công!")
-                                                        fetchShippingRequests()
-                                                    } else {
-                                                        toast.error(json.error)
-                                                    }
-                                                } catch (err: any) {
-                                                    toast.error(err.message)
-                                                }
-                                            }}
-                                        >
-                                            <Upload className="h-4 w-4 mr-2" /> Xuất Nhanh
-                                        </Button>
-                                    </div>
-                                )}
-                            </div>
-                        )
-                    })
-                )}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600">
+                                            {req.sale_staff_name || '-'}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600 space-y-1">
+                                            <div className="flex items-center gap-1 text-[11px]">
+                                                <Calendar className="w-3 h-3" />
+                                                {format(new Date(req.created_at), 'dd/MM HH:mm')}
+                                            </div>
+                                            {req.shipped_at && (
+                                                <div className="flex items-center gap-1 text-[11px] text-green-600 font-medium">
+                                                    <Truck className="w-3 h-3" />
+                                                    {format(new Date(req.shipped_at), 'dd/MM HH:mm')}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-medium">
+                                            {req.item_count}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-slate-600">
+                                            {req.subtotal.toLocaleString()}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-rose-500">
+                                            {req.discount_amount > 0 ? `-${req.discount_amount.toLocaleString()}` : '-'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-bold text-slate-900">
+                                            {req.total.toLocaleString()}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <Link href={`/admin/shipping/${req.id}?type=${req.type}`}>
+                                                <button className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 hover:shadow-sm text-slate-400 hover:text-indigo-600 transition-all">
+                                                    <ArrowRight className="h-4 w-4" />
+                                                </button>
+                                            </Link>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     )

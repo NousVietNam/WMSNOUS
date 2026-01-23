@@ -457,7 +457,7 @@ export default function OutboundListPage() {
             'READY': 'bg-indigo-100 text-indigo-700 font-bold',
             'PICKING': 'bg-orange-100 text-orange-700',
             'PACKED': 'bg-blue-600 text-white font-bold',
-            'SHIPPED': 'bg-green-100 text-green-700',
+            'SHIPPED': 'bg-green-600 text-white font-bold',
             'COMPLETED': 'bg-green-200 text-green-800',
             'CANCELLED': 'bg-red-100 text-red-700'
         }

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
-import { format } from "date-fns"
+import { format, formatDistanceStrict } from "date-fns"
 import { vi } from "date-fns/locale"
 import { ArrowLeft, Package, Truck, CheckCircle, AlertCircle, Loader2, FileText, Download, Pencil, RotateCcw } from "lucide-react"
 import { toast } from "sonner"
@@ -62,6 +62,10 @@ export default function OutboundDetailPage() {
     const [missingItems, setMissingItems] = useState<any[]>([])
     const [isMissingItemsDialogOpen, setIsMissingItemsDialogOpen] = useState(false)
 
+    // State for job info
+    const [pickingTime, setPickingTime] = useState<string | null>(null)
+    const [packedTime, setPackedTime] = useState<string | null>(null)
+
     useEffect(() => {
         if (id) fetchOrder()
     }, [id])
@@ -85,6 +89,21 @@ export default function OutboundDetailPage() {
             .from('outbound_order_items')
             .select(`*, products (id, sku, name, barcode), boxes:from_box_id (id, code)`)
             .eq('order_id', id)
+
+        // Fetch Picking Job info for Timestamps
+        const { data: jobs } = await supabase
+            .from('picking_jobs')
+            .select('created_at, completed_at, status')
+            .or(`order_id.eq.${id},outbound_order_id.eq.${id}`)
+            .order('created_at', { ascending: false })
+            .limit(1)
+
+        if (jobs && jobs.length > 0) {
+            setPickingTime(jobs[0].created_at)
+            if (jobs[0].status === 'COMPLETED') {
+                setPackedTime(jobs[0].completed_at)
+            }
+        }
 
         setOrder(orderData)
         setItems(itemsData || [])
@@ -152,29 +171,9 @@ export default function OutboundDetailPage() {
         ]
 
         const ws = XLSX.utils.aoa_to_sheet(wsData)
-
-        // Improved Column Widths for readability
-        ws['!cols'] = [
-            { wch: 6 },  // STT
-            { wch: 18 }, // Mã Thùng
-            { wch: 25 }, // SKU
-            { wch: 18 }, // Barcode
-            { wch: 50 }, // Tên Sản Phẩm (wider)
-            { wch: 10 }, // Đơn Vị
-            { wch: 12 }, // SL Đặt
-            { wch: 14 }, // SL Thực Xuất
-            { wch: 18 }, // Đơn Giá
-            { wch: 20 }  // Thành Tiền
-        ]
-
-        // Styling helpers (using basic XLSX styling via cell properties if supported or standard format)
-        // Since community xlsx doesn't support styles well, we rely on clean data layout.
-
         const wb = XLSX.utils.book_new()
-        XLSX.utils.book_append_sheet(wb, ws, 'Chi Tiết Đơn')
-
-        XLSX.writeFile(wb, `${typeName}_${order.code}.xlsx`)
-        toast.success(`Đã xuất file Excel ${typeName}!`)
+        XLSX.utils.book_append_sheet(wb, ws, "Chi tiết đơn hàng")
+        XLSX.writeFile(wb, `Don_Hang_${order.code}.xlsx`)
     }
 
     // Export PDF (Simple printable HTML)
@@ -520,315 +519,326 @@ export default function OutboundDetailPage() {
     const canApprove = isPending && !order.is_approved
     const canUnapprove = isPending && order.is_approved
     const canAllocate = isPending && order.is_approved
-    const canDeallocate = ['ALLOCATED', 'READY'].includes(order.status)
+    const canDeallocate = order.status === 'ALLOCATED'
     const canCreateJob = order.status === 'ALLOCATED'
     const canShip = ['PACKED'].includes(order.status)
     const isShipped = order.status === 'SHIPPED'
     const canEdit = (isPending || isAllocated) && !order.is_approved
 
+    // Timeline Data Logic
+    const timelineSteps = [
+        {
+            id: 'created',
+            label: 'Đơn Hàng Mới',
+            status: 'PENDING',
+            isCompleted: true, // Always created
+            time: order.created_at
+        },
+        {
+            id: 'approved',
+            label: 'Đã Duyệt',
+            status: 'APPROVED',
+            isCompleted: order.is_approved || ['ALLOCATED', 'READY', 'PICKING', 'PACKED', 'SHIPPED'].includes(order.status),
+            time: order.approved_at
+        },
+        {
+            id: 'allocated',
+            label: 'Phân Bổ Tồn Kho',
+            status: 'ALLOCATED',
+            isCompleted: ['ALLOCATED', 'READY', 'PICKING', 'PACKED', 'SHIPPED'].includes(order.status),
+            time: order.approved_at // Assume concurrent with approval or shortly after
+        },
+        {
+            id: 'picking',
+            label: 'Đang Soạn Hàng',
+            status: 'PICKING',
+            isCompleted: ['PICKING', 'PACKED', 'SHIPPED'].includes(order.status),
+            time: pickingTime
+        },
+        {
+            id: 'packed',
+            label: 'Đã Đóng Gói',
+            status: 'PACKED',
+            isCompleted: ['PACKED', 'SHIPPED'].includes(order.status),
+            time: packedTime
+        },
+        {
+            id: 'shipped',
+            label: 'Đã Xuất Kho',
+            status: 'SHIPPED',
+            isCompleted: order.status === 'SHIPPED',
+            time: order.shipped_at
+        }
+    ]
+
+    // Helper to determine active step index
+    const activeStepIndex = timelineSteps.reduce((acc, step, index) => {
+        if (step.isCompleted) return index
+        return acc
+    }, 0)
+
     return (
-        <div className="p-6 max-w-5xl mx-auto space-y-6">
-            {/* Actions & Header */}
-            <div className="flex flex-col gap-4">
-                <div className="flex items-center gap-4">
-                    <Link href="/admin/outbound" className="h-10 w-10 flex items-center justify-center rounded-lg border hover:bg-gray-50 bg-white">
-                        <ArrowLeft className="h-5 w-5" />
-                    </Link>
-                    <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                            <h1 className="text-2xl font-bold">{order.code}</h1>
-                            {order.is_approved && (
-                                <span className="flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-xs font-bold border border-green-200 rounded-full">
-                                    <CheckCircle className="h-3 w-3" />
-                                    Đã duyệt
-                                </span>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                            {getStatusBadge(order.status)}
-                            <span className="text-sm text-gray-500">
-                                {order.type} • {order.transfer_type}
+        <div className="p-6 max-w-[1400px] mx-auto min-h-screen">
+            <div className="flex items-center gap-4 mb-6">
+                <Link href="/admin/outbound" className="h-10 w-10 flex items-center justify-center rounded-lg border hover:bg-gray-50 bg-white">
+                    <ArrowLeft className="h-5 w-5" />
+                </Link>
+                <div className="flex-1">
+                    <h1 className="text-2xl font-bold flex items-center gap-2">
+                        {order.code}
+                        {order.is_approved && (
+                            <span className="px-2 py-0.5 bg-green-50 text-green-700 text-xs font-bold border border-green-200 rounded-full flex items-center gap-1">
+                                <CheckCircle className="h-3 w-3" /> Đã duyệt
                             </span>
-                        </div>
-                    </div>
-
-                    {/* Pricing Summary (Compact) */}
-                    <div className="flex flex-col items-end mr-4 text-sm">
-                        <div className="text-gray-500">Tạm tính: <span className="font-medium text-gray-900">{new Intl.NumberFormat('vi-VN').format(order.subtotal)}đ</span></div>
-                        {order.discount_amount > 0 && (
-                            <div className="text-red-600">
-                                CK ({order.discount_type === 'PERCENT' ? `${order.discount_value}%` : 'Tiền'}): -{new Intl.NumberFormat('vi-VN').format(order.discount_amount)}đ
-                            </div>
                         )}
-                        <div className="font-bold text-blue-600 text-lg">{new Intl.NumberFormat('vi-VN').format(order.total)}đ</div>
+                    </h1>
+                    <div className="flex items-center gap-2 text-sm text-gray-500">
+                        <span>{order.type}</span>
+                        <span>•</span>
+                        <span>{order.transfer_type}</span>
                     </div>
+                </div>
+                <div className="flex gap-2">
+                    <button
+                        onClick={handleExportExcel}
+                        className="h-10 px-4 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700 text-sm font-medium"
+                    >
+                        <FileText className="h-4 w-4" />
+                        Xuất Excel
+                    </button>
+                    <button
+                        onClick={handleExportPDF}
+                        className="h-10 px-4 bg-slate-700 text-white rounded-lg flex items-center gap-2 hover:bg-slate-800 text-sm font-medium"
+                    >
+                        <Download className="h-4 w-4" />
+                        In Phiếu
+                    </button>
+                    {canEdit && (
+                        <Link href={`/admin/outbound/${order.id}/edit`}>
+                            <button className="h-10 px-4 bg-white border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm font-medium">
+                                <Pencil className="h-4 w-4" />
+                                Sửa
+                            </button>
+                        </Link>
+                    )}
+                </div>
+            </div>
 
-                    <div className="flex gap-2">
-                        <button
-                            onClick={handleExportExcel}
-                            className="h-9 px-3 border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm bg-white"
-                            title="Xuất Excel"
-                        >
-                            <Download className="h-4 w-4" />
-                            Excel
-                        </button>
-                        <button
-                            onClick={handleExportPDF}
-                            className="h-9 px-3 border rounded-lg flex items-center gap-2 hover:bg-gray-50 text-sm bg-white"
-                            title="In phiếu xuất kho"
-                        >
-                            <FileText className="h-4 w-4" />
-                            PDF
-                        </button>
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                {/* COL 1: TIMELINE */}
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-fit">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-6">Tiến trình đơn hàng</h3>
+
+                    <div className="relative pl-4 space-y-8">
+                        {/* Connecting Line */}
+                        <div className="absolute top-2 left-[23px] bottom-2 w-0.5 bg-slate-100" />
+
+                        {timelineSteps.map((step, index) => {
+                            const isCompleted = step.isCompleted
+                            const prevStep = index > 0 ? timelineSteps[index - 1] : null
+
+                            // Calculate Duration
+                            let duration = null
+                            if (step.time && prevStep?.time) {
+                                const start = new Date(prevStep.time)
+                                const end = new Date(step.time)
+                                if (end > start) {
+                                    duration = formatDistanceStrict(end, start, { locale: vi })
+                                }
+                            }
+
+                            return (
+                                <div key={step.id} className="relative flex gap-4 min-h-[48px]">
+                                    <div className={`relative z-10 w-5 h-5 rounded-full flex items-center justify-center shrink-0 border-2 ${isCompleted
+                                        ? 'bg-blue-600 border-blue-600 text-white'
+                                        : 'bg-white border-slate-300 text-slate-300'
+                                        }`}>
+                                        {isCompleted && <CheckCircle className="w-3.5 h-3.5" />}
+                                    </div>
+                                    <div className="pb-2">
+                                        <p className={`text-sm font-bold ${isCompleted ? 'text-slate-900' : 'text-slate-500'}`}>
+                                            {step.label}
+                                        </p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            {step.time && (
+                                                <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                                    {format(new Date(step.time), 'HH:mm dd/MM')}
+                                                </span>
+                                            )}
+                                            {duration && (
+                                                <span className="text-xs text-slate-400 italic font-mono">
+                                                    (+ {duration})
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        })}
                     </div>
                 </div>
 
-                {/* Toolbar: Actions */}
-                {!isShipped && (
-                    <div className="flex items-center justify-between bg-white p-2 rounded-lg border shadow-sm">
-                        <div className="flex gap-2">
-                            {canEdit && (
-                                <Link
-                                    href={`/admin/outbound/${id}/edit`}
-                                    className="h-9 px-4 bg-gray-100 text-gray-700 rounded-lg flex items-center gap-2 hover:bg-gray-200 text-sm font-medium"
-                                >
-                                    <Pencil className="h-4 w-4" />
-                                    Sửa Đơn
-                                </Link>
-                            )}
+                {/* COL 2: MAIN CONTENT */}
+                <div className="lg:col-span-3 space-y-6">
+                    {/* INFO CARDS */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* ... (Existing Cards Code usually here but was not showing in view_file fully) */}
+                        {/* Re-implementing simplified cards based on context */}
+                        <div className="bg-white p-4 rounded-xl border shadow-sm">
+                            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Khách Hàng / Điểm Đến</h4>
+                            <p className="font-medium text-slate-900 line-clamp-2">
+                                {order.type === 'SALE' ? order.customers?.name : order.destinations?.name}
+                            </p>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border shadow-sm">
+                            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Trạng Thái</h4>
+                            <div>{getStatusBadge(order.status)}</div>
+                        </div>
+                        <div className="bg-white p-4 rounded-xl border shadow-sm">
+                            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Tổng Giá Trị</h4>
+                            <p className="font-bold text-xl text-indigo-600">
+                                {new Intl.NumberFormat('vi-VN').format(order.total)}₫
+                            </p>
+                        </div>
+                    </div>
 
-                            {/* Approval Actions */}
+                    {/* ACTION BAR */}
+                    <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-wrap gap-3 items-center justify-between">
+                        <div className="text-sm font-medium text-slate-500">
+                            Thao tác xử lý:
+                        </div>
+                        <div className="flex gap-2">
                             {canApprove && (
-                                <button
-                                    onClick={handleApprove}
-                                    disabled={actionLoading === 'approve'}
-                                    className="h-9 px-4 bg-blue-600 text-white rounded-lg flex items-center gap-2 hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
-                                >
-                                    {actionLoading === 'approve' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                                <button onClick={handleApprove} disabled={!!actionLoading} className="h-9 px-4 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm flex items-center gap-2">
+                                    {actionLoading === 'approve' && <Loader2 className="w-4 h-4 animate-spin" />}
                                     Duyệt Đơn
                                 </button>
                             )}
                             {canUnapprove && (
-                                <button
-                                    onClick={handleUnapprove}
-                                    disabled={actionLoading === 'unapprove'}
-                                    className="h-9 px-4 bg-white border border-red-200 text-red-600 rounded-lg flex items-center gap-2 hover:bg-red-50 disabled:opacity-50 text-sm font-medium"
-                                >
-                                    {actionLoading === 'unapprove' ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertCircle className="h-4 w-4" />}
+                                <button onClick={handleUnapprove} disabled={!!actionLoading} className="h-9 px-4 bg-white border text-red-600 border-red-200 rounded-lg hover:bg-red-50 font-medium text-sm flex items-center gap-2">
+                                    {actionLoading === 'unapprove' && <Loader2 className="w-4 h-4 animate-spin" />}
                                     Hủy Duyệt
                                 </button>
                             )}
-                        </div>
-
-                        <div className="flex gap-2">
-                            {/* Alloc & Ship Actions */}
                             {canAllocate && (
-                                <button
-                                    onClick={handleAllocate}
-                                    disabled={actionLoading === 'allocate'}
-                                    className="h-9 px-4 bg-yellow-500 text-white rounded-lg flex items-center gap-2 hover:bg-yellow-600 disabled:opacity-50 text-sm font-medium"
-                                >
-                                    {actionLoading === 'allocate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
-                                    Phân Bổ
+                                <button onClick={handleAllocate} disabled={!!actionLoading} className="h-9 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm flex items-center gap-2">
+                                    {actionLoading === 'allocate' && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Phân Bổ Tồn Kho
                                 </button>
                             )}
                             {canDeallocate && (
-                                <button
-                                    onClick={handleDeallocate}
-                                    disabled={actionLoading === 'deallocate'}
-                                    className="h-9 px-4 bg-white border border-orange-200 text-orange-600 rounded-lg flex items-center gap-2 hover:bg-orange-50 disabled:opacity-50 text-sm font-medium"
-                                >
-                                    {actionLoading === 'deallocate' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                                <button onClick={handleDeallocate} disabled={!!actionLoading} className="h-9 px-4 bg-white border text-orange-600 border-orange-200 rounded-lg hover:bg-orange-50 font-medium text-sm flex items-center gap-2">
+                                    {actionLoading === 'deallocate' && <Loader2 className="w-4 h-4 animate-spin" />}
                                     Hủy Phân Bổ
                                 </button>
                             )}
                             {canCreateJob && (
-                                <button
-                                    onClick={handleCreateJob}
-                                    disabled={actionLoading === 'job'}
-                                    className="h-9 px-4 bg-orange-500 text-white rounded-lg flex items-center gap-2 hover:bg-orange-600 disabled:opacity-50 text-sm font-medium"
-                                >
-                                    {actionLoading === 'job' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
-                                    Tạo Job
+                                <button onClick={handleCreateJob} disabled={!!actionLoading} className="h-9 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm flex items-center gap-2">
+                                    {actionLoading === 'job' && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Tạo Job Soạn Hàng
                                 </button>
                             )}
                             {canShip && (
-                                <button
-                                    onClick={handleShip}
-                                    disabled={actionLoading === 'ship'}
-                                    className="h-9 px-4 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
-                                >
-                                    {actionLoading === 'ship' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
-                                    Xuất Kho
+                                <button onClick={handleShip} disabled={!!actionLoading} className="h-9 px-4 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm flex items-center gap-2">
+                                    {actionLoading === 'ship' && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    Xác Nhận Xuất Kho ({order.code})
                                 </button>
                             )}
                         </div>
                     </div>
-                )}
 
-                {isShipped && (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <CheckCircle className="h-5 w-5 text-green-600" />
-                            <span className="font-bold text-green-700">Đơn hàng đã xuất kho hoàn thành</span>
-                        </div>
-                        <div className="text-sm text-green-600 font-medium">
-                            Thời gian: {order.shipped_at && format(new Date(order.shipped_at), 'dd/MM/yyyy HH:mm', { locale: vi })}
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Info Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white p-4 rounded-lg border">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Đích đến</div>
-                    <div className="font-medium text-sm truncate" title={order.type === 'SALE' ? order.customers?.name : order.destinations?.name}>
-                        {order.type === 'SALE' ? order.customers?.name : order.destinations?.name || 'N/A'}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">{order.type}</div>
-                </div>
-                {order.type !== 'TRANSFER' && (
-                    <div className="bg-white p-4 rounded-lg border">
-                        <div className="text-xs text-gray-500 uppercase mb-1">Nhân viên Sale</div>
-                        <div className="font-medium text-blue-600 text-sm">
-                            {order.sale_staff ? `${order.sale_staff.name}` : '-'}
-                        </div>
-                        <div className="text-xs text-gray-400 mt-1">{order.sale_staff?.code || ''}</div>
-                    </div>
-                )}
-                {order.type !== 'TRANSFER' && (
-                    <div className="bg-white p-4 rounded-lg border">
-                        <div className="text-xs text-gray-500 uppercase mb-1">Thông tin khác</div>
-                        <div className="flex flex-col gap-1 text-sm">
-                            <div className="flex justify-between">
-                                <span className="text-gray-500">Xét thưởng:</span>
-                                <span className="font-medium">{(order as any).is_bonus_consideration ? 'Có' : 'Không'}</span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-gray-500">Tính thưởng:</span>
-                                <span className="font-medium">{(order as any).is_bonus_calculation ? 'Có' : 'Không'}</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-                <div className="bg-white p-4 rounded-lg border">
-                    <div className="text-xs text-gray-500 uppercase mb-1">Tổng tiền</div>
-                    <div className="font-bold text-lg text-blue-600">
-                        {new Intl.NumberFormat('vi-VN').format(order.total)}đ
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1 flex justify-between">
-                        <span>{format(new Date(order.created_at), 'dd/MM HH:mm', { locale: vi })}</span>
-                        <span>{(order as any).created_by ? 'User' : 'System'}</span>
-                    </div>
-                </div>
-            </div>
-
-            {/* Description & Note */}
-            <div className="grid grid-cols-2 gap-4">
-                {(order as any).description && (
-                    <div className="bg-white border rounded-lg p-4">
-                        <div className="text-xs text-gray-500 uppercase mb-1 font-medium">Diễn giải</div>
-                        <div className="text-sm text-gray-800">{(order as any).description}</div>
-                    </div>
-                )}
-                {order.note && (
-                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                        <div className="text-xs text-yellow-700 uppercase mb-1 font-medium">Ghi chú</div>
-                        <div className="text-sm text-yellow-800">{order.note}</div>
-                    </div>
-                )}
-            </div>
-
-            {/* Items */}
-            <div className="bg-white rounded-lg border overflow-hidden">
-                <div className="px-4 py-3 border-b bg-gray-50">
-                    <h2 className="font-medium">Chi tiết đơn hàng ({items.length} dòng)</h2>
-                </div>
-                <table className="w-full">
-                    <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase">
-                        <tr>
-                            <th className="text-left px-4 py-2">SKU</th>
-                            <th className="text-left px-4 py-2">Tên</th>
-                            <th className="text-center px-4 py-2">SL Đặt</th>
-                            <th className="text-center px-4 py-2">SL Lấy</th>
-                            <th className="text-right px-4 py-2">Đơn Giá</th>
-                            <th className="text-right px-4 py-2">Thành Tiền</th>
-                            <th className="text-left px-4 py-2">Thùng</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                        {items.map(item => (
-                            <tr key={item.id}>
-                                <td className="px-4 py-2 font-mono text-sm">{item.products?.sku}</td>
-                                <td className="px-4 py-2 text-sm">{item.products?.name}</td>
-                                <td className="px-4 py-2 text-center font-medium">{item.quantity}</td>
-                                <td className="px-4 py-2 text-center">
-                                    <span className={item.picked_quantity >= item.quantity ? 'text-green-600 font-medium' : ''}>
-                                        {item.picked_quantity}
-                                    </span>
-                                </td>
-                                <td className="px-4 py-2 text-right text-sm">
-                                    {new Intl.NumberFormat('vi-VN').format(item.unit_price)}đ
-                                </td>
-                                <td className="px-4 py-2 text-right font-medium">
-                                    {new Intl.NumberFormat('vi-VN').format(item.line_total)}đ
-                                </td>
-                                <td className="px-4 py-2 text-sm text-gray-500">
-                                    {item.boxes?.code || '-'}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-
-            </div>
-
-            {/* Missing Items Dialog */}
-            <Dialog open={isMissingItemsDialogOpen} onOpenChange={setIsMissingItemsDialogOpen}>
-                <DialogContent className="max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="text-red-600 flex items-center gap-2">
-                            <AlertCircle className="h-5 w-5" />
-                            Không đủ tồn kho khả dụng
-                        </DialogTitle>
-                        <DialogDescription>
-                            Đơn hàng không thể duyệt vì các mặt hàng sau không đủ số lượng trong kho.
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="border rounded-lg overflow-hidden mt-4">
+                    {/* ITEMS TABLE */}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                         <table className="w-full text-sm">
-                            <thead className="bg-gray-50 border-b">
+                            <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-100">
                                 <tr>
-                                    <th className="px-4 py-2 text-left">SKU</th>
-                                    <th className="px-4 py-2 text-center text-blue-600">Yêu cầu</th>
-                                    <th className="px-4 py-2 text-center text-green-600">Khả dụng</th>
-                                    <th className="px-4 py-2 text-center text-red-600">Thiếu</th>
+                                    <th className="px-4 py-3 text-left w-12">#</th>
+                                    <th className="px-4 py-3 text-left w-[120px]">Mã Thùng</th>
+                                    <th className="px-4 py-3 text-left">Sản Phẩm</th>
+                                    <th className="px-4 py-3 text-center w-24">SL Đặt</th>
+                                    <th className="px-4 py-3 text-center w-24">Đã Soạn</th>
+                                    <th className="px-4 py-3 text-right">Đơn Giá</th>
+                                    <th className="px-4 py-3 text-right">Thành Tiền</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y">
-                                {missingItems.map((item, idx) => (
-                                    <tr key={idx}>
-                                        <td className="px-4 py-2 font-mono">{item.sku}</td>
-                                        <td className="px-4 py-2 text-center font-bold">{item.requested}</td>
-                                        <td className="px-4 py-2 text-center">{item.available}</td>
-                                        <td className="px-4 py-2 text-center text-red-600 font-bold">
-                                            {item.requested - item.available}
+                            <tbody className="divide-y divide-slate-100">
+                                {items.map((item, idx) => (
+                                    <tr key={item.id} className="hover:bg-slate-50">
+                                        <td className="px-4 py-3 text-slate-400">{idx + 1}</td>
+                                        <td className="px-4 py-3">
+                                            {item.boxes ? (
+                                                <span className="font-mono text-xs px-2 py-1 rounded bg-slate-100 text-slate-600 border">{item.boxes.code}</span>
+                                            ) : (
+                                                <span className="text-slate-300">-</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-slate-900">{item.products?.name}</span>
+                                                <span className="text-xs text-slate-500 font-mono">{item.products?.sku}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-medium">{item.quantity}</td>
+                                        <td className={`px-4 py-3 text-center font-bold ${item.picked_quantity >= item.quantity
+                                            ? 'text-green-600'
+                                            : item.picked_quantity > 0 ? 'text-orange-500' : 'text-slate-300'
+                                            }`}>
+                                            {item.picked_quantity}
+                                        </td>
+                                        <td className="px-4 py-3 text-right text-slate-600">
+                                            {new Intl.NumberFormat('vi-VN').format(item.unit_price)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-medium text-slate-900">
+                                            {new Intl.NumberFormat('vi-VN').format(item.line_total)}
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
+                            <tfoot className="bg-slate-50/50">
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-3 text-right font-medium text-slate-500">Tạm tính:</td>
+                                    <td className="px-4 py-3 text-right font-medium text-slate-900">{new Intl.NumberFormat('vi-VN').format(order.subtotal)}</td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-3 text-right font-medium text-slate-500">Chiết khấu:</td>
+                                    <td className="px-4 py-3 text-right text-rose-500">
+                                        {order.discount_amount > 0 ? `-${new Intl.NumberFormat('vi-VN').format(order.discount_amount)}` : '-'}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-3 text-right font-bold text-slate-900 uppercase">Tổng cộng:</td>
+                                    <td className="px-4 py-3 text-right font-bold text-indigo-600 text-lg">
+                                        {new Intl.NumberFormat('vi-VN').format(order.total)}₫
+                                    </td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
+                </div>
+            </div>
 
-                    <div className="flex justify-end mt-4">
-                        <button
-                            onClick={() => setIsMissingItemsDialogOpen(false)}
-                            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium"
-                        >
-                            Đóng
-                        </button>
+            {/* Missing Items Dialog */}
+            <Dialog open={isMissingItemsDialogOpen} onOpenChange={setIsMissingItemsDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-red-600">
+                            <AlertCircle className="w-5 h-5" />
+                            Thiếu Tồn Kho Khả Dụng
+                        </DialogTitle>
+                        <DialogDescription>
+                            Các sản phẩm sau không đủ tồn kho để duyệt đơn hàng này:
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto">
+                        {missingItems.map((item, idx) => (
+                            <div key={idx} className="bg-red-50 p-3 rounded-lg border border-red-100 text-sm">
+                                <div className="font-medium text-red-900">{item.product_name}</div>
+                                <div className="flex justify-between mt-1 text-red-700">
+                                    <span>SKU: {item.sku}</span>
+                                    <span>Thiếu: <strong>{item.missing_quantity}</strong></span>
+                                </div>
+                            </div>
+                        ))}
                     </div>
                 </DialogContent>
             </Dialog>

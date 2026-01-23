@@ -169,7 +169,7 @@ export default function ShippingDetailPage() {
     const destination = (type === 'ORDER' || type === 'TRANSFER')
         ? (data.customer?.name || data.destination?.name || data.customer_name || 'Khách lẻ / Nội bộ')
         : (type === 'MANUAL_JOB' ? 'Xuất Thủ Công' : 'Unknown')
-    const isShipped = data.status.toUpperCase() === 'SHIPPED' || (type !== 'MANUAL_JOB' && data.status.toUpperCase() === 'COMPLETED')
+    const isShipped = data.status.toUpperCase() === 'SHIPPED'
 
     return (
         <div className="p-6 max-w-5xl mx-auto space-y-6">
@@ -197,8 +197,17 @@ export default function ShippingDetailPage() {
                                 <Package className="h-5 w-5 text-indigo-600" />
                                 Danh Sách Hàng Hóa
                             </CardTitle>
-                            <Badge variant={isShipped ? "default" : "secondary"} className={isShipped ? "bg-green-100 text-green-700" : ""}>
-                                {isShipped ? "ĐÀ XUẤT KHO" : "CHỜ XUẤT"}
+                            <Badge
+                                variant={isShipped ? "default" : "secondary"}
+                                className={
+                                    isShipped ? "bg-green-600 hover:bg-green-700 text-white" :
+                                        (type === 'MANUAL_JOB' && data.status === 'COMPLETED') ? "bg-orange-100 text-orange-700" :
+                                            data.status === 'PACKED' ? "bg-blue-600 text-white" : ""
+                                }
+                            >
+                                {isShipped ? "ĐÃ XUẤT KHO (PXK)" :
+                                    (type === 'MANUAL_JOB' && data.status === 'COMPLETED') ? "ĐÃ NHẶT (SẴN SÀNG)" :
+                                        data.status === 'PACKED' ? "ĐÃ ĐÓNG HÀNG (PACKED)" : "CHỜ XUẤT"}
                             </Badge>
                         </div>
                     </CardHeader>
@@ -259,7 +268,11 @@ export default function ShippingDetailPage() {
                             <div>
                                 <label className="text-[10px] font-bold text-slate-400 uppercase">Trạng Thái</label>
                                 <div>
-                                    <Badge className={isShipped ? "bg-green-600" : "bg-blue-600"}>
+                                    <Badge className={
+                                        isShipped ? "bg-green-600 text-white" :
+                                            (type === 'MANUAL_JOB' && data.status === 'COMPLETED') ? "bg-orange-500 text-white" :
+                                                data.status === 'PACKED' ? "bg-blue-600 text-white" : "bg-slate-500"
+                                    }>
                                         {data.status.toUpperCase()}
                                     </Badge>
                                 </div>

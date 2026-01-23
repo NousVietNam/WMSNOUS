@@ -63,9 +63,9 @@ const MemoizedStack = memo(({
         <div
             onMouseDown={(e) => onMouseDown(e, stack)}
             className={`
-                absolute border-2 rounded-md shadow-md flex flex-col items-center justify-between p-1 transition-all overflow-visible
+                absolute border-2 rounded-md shadow-md flex flex-col items-center justify-between p-1 transition-all duration-500 overflow-visible
                 ${mode === 'EDIT' ? 'bg-slate-100 border-blue-600 hover:ring-2 ring-blue-300 cursor-grab active:cursor-grabbing' : getStackColor(stack)}
-                ${isDragging ? 'z-50 shadow-2xl scale-105' : 'z-auto hover:shadow-md'}
+                ${isDragging ? 'z-50 shadow-2xl scale-105 transition-none' : 'z-auto hover:shadow-md'}
                 ${isFlashing
                     ? is3D
                         ? 'bg-emerald-300 border-emerald-500 z-40' // 3D: Solid Green Top Face, No Ring/Pulse
