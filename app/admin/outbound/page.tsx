@@ -456,7 +456,7 @@ export default function OutboundListPage() {
             'ALLOCATED': 'bg-yellow-100 text-yellow-700',
             'READY': 'bg-indigo-100 text-indigo-700 font-bold',
             'PICKING': 'bg-orange-100 text-orange-700',
-            'PACKED': 'bg-blue-100 text-blue-700',
+            'PACKED': 'bg-blue-600 text-white font-bold',
             'SHIPPED': 'bg-green-100 text-green-700',
             'COMPLETED': 'bg-green-200 text-green-800',
             'CANCELLED': 'bg-red-100 text-red-700'
@@ -619,15 +619,30 @@ export default function OutboundListPage() {
                         />
                     </div>
 
-                    <span className="text-sm text-gray-500 ml-auto">
-                        {orders.length} đơn
-                    </span>
                 </div>
             </div>
 
             {/* Table */}
             <div className="bg-white rounded-lg border overflow-x-auto">
                 <table className="w-full text-sm">
+                    <thead>
+                        <tr className="bg-slate-50 border-b border-gray-200">
+                            <th colSpan={8} className="px-3 py-2 text-right text-gray-400 font-bold uppercase text-[10px]">Tổng cộng bộ lọc:</th>
+                            <th className="px-3 py-2 text-center font-black text-indigo-600 bg-indigo-50/30">
+                                {orders.reduce((sum, o) => sum + getItemCount(o), 0).toLocaleString()}
+                            </th>
+                            <th className="px-3 py-2 text-right font-black text-slate-700 bg-slate-50/50">
+                                {orders.reduce((sum, o) => sum + (o.subtotal || 0), 0).toLocaleString()}
+                            </th>
+                            <th className="px-3 py-2 text-right font-black text-rose-600 bg-rose-50/30">
+                                -{orders.reduce((sum, o) => sum + (o.discount_amount || 0), 0).toLocaleString()}
+                            </th>
+                            <th className="px-3 py-2 text-right font-black text-blue-700 bg-blue-50/30">
+                                {orders.reduce((sum, o) => sum + (o.total || 0), 0).toLocaleString()}đ
+                            </th>
+                            <th colSpan={3}></th>
+                        </tr>
+                    </thead>
                     <thead className="bg-gray-50 border-b">
                         <tr>
                             <th className="px-3 py-3 w-10">
