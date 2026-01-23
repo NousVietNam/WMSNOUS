@@ -42,7 +42,7 @@ export default function BoxDetailPage() {
 
     const fetchBox = async () => {
         // Fetch Box
-        let query = supabase.from('boxes').select('*, locations(code)')
+        let query = supabase.from('boxes').select('*, locations(code), outbound_orders(id, code, status, type, customer_id, created_at, total, discount_amount, subtotal)')
 
         // UUID check regex (loose)
         if (idOrCode.match(/^[0-9a-f]{8}-[0-9a-f]{4}-/)) {
@@ -51,15 +51,26 @@ export default function BoxDetailPage() {
             query = query.eq('code', idOrCode)
         }
 
-        const { data: boxData, error } = await query.single()
+        const { data, error } = await query.single()
 
-        if (error || !boxData) {
+        if (error || !data) {
             alert("Không tìm thấy thùng!")
             router.push('/admin/boxes')
             return
         }
 
+        const boxData = data as any
         setBox(boxData)
+
+        // Handle possible array from join
+        const orderInfo = Array.isArray(boxData.outbound_orders) ? boxData.outbound_orders[0] : boxData.outbound_orders
+        if (orderInfo) {
+            setHoldingOrder(orderInfo)
+            setHoldingSince(boxData.updated_at || boxData.created_at)
+        } else {
+            setHoldingOrder(null)
+            setHoldingSince(null)
+        }
 
         // Fetch Items in Box with last transaction info
         const { data: itemData } = await supabase
@@ -70,49 +81,8 @@ export default function BoxDetailPage() {
             `)
             .eq('box_id', boxData.id)
 
-        // For each item, fetch last transaction
         if (itemData) {
-            const enrichedItems = await Promise.all(
-                itemData.map(async (item) => {
-                    const { data: lastTx } = await supabase
-                        .from('transactions')
-                        .select('created_at, user:users(name)')
-                        .eq('inventory_item_id', item.id)
-                        .order('created_at', { ascending: false })
-                        .limit(1)
-                        .maybeSingle()
-
-                    return {
-                        ...item,
-                        last_update: lastTx?.created_at || null,
-                        last_user: lastTx?.user?.name || null
-                    }
-                })
-            )
-            setItems(enrichedItems)
-        }
-
-        // Fetch outbound order holding this box with full details
-        const { data: holdingData } = await supabase
-            .from('outbound_order_box_items')
-            .select(`
-                id, created_at,
-                outbound_orders!inner (
-                    id, code, status, type, created_at,
-                    customer, total_amount, discount, final_amount
-                )
-            `)
-            .eq('box_id', boxData.id)
-            .not('outbound_orders.status', 'eq', 'SHIPPED')
-            .limit(1)
-            .maybeSingle()
-
-        if (holdingData) {
-            setHoldingOrder(holdingData.outbound_orders)
-            setHoldingSince(holdingData.created_at)
-        } else {
-            setHoldingOrder(null)
-            setHoldingSince(null)
+            setItems(itemData)
         }
 
         // Clear selection
@@ -233,10 +203,9 @@ export default function BoxDetailPage() {
                                         {holdingOrder.code}
                                     </a>
                                     <div className="text-xs space-y-1">
-                                        <div><span className="font-medium">Khách hàng:</span> {holdingOrder.customer || '-'}</div>
-                                        <div><span className="font-medium">Thành tiền:</span> {holdingOrder.total_amount?.toLocaleString('vi-VN')} đ</div>
-                                        <div><span className="font-medium">Chiết khấu:</span> {holdingOrder.discount || 0}%</div>
-                                        <div><span className="font-medium">Sau CK:</span> {holdingOrder.final_amount?.toLocaleString('vi-VN')} đ</div>
+                                        <div><span className="font-medium">Thành tiền:</span> {holdingOrder.subtotal?.toLocaleString('vi-VN')} đ</div>
+                                        <div><span className="font-medium">Chiết khấu:</span> {holdingOrder.discount_amount?.toLocaleString('vi-VN')} đ</div>
+                                        <div><span className="font-medium">Tổng cộng:</span> {holdingOrder.total?.toLocaleString('vi-VN')} đ</div>
                                         <div className="text-orange-600 pt-1 border-t border-orange-200">
                                             Loại: {holdingOrder.type} | Trạng thái: {holdingOrder.status}
                                         </div>
@@ -280,37 +249,36 @@ export default function BoxDetailPage() {
                                         <th className="p-3">Tên Sản Phẩm</th>
                                         <th className="p-3">Barcode</th>
                                         <th className="p-3 text-right">Số Lượng</th>
-                                        <th className="p-3">Ngày Update</th>
-                                        <th className="p-3">Người Update</th>
+                                        <th className="p-3">Ghi chú</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {items.map(item => (
-                                        <tr key={item.id} className="border-t">
-                                            <td className="p-3">
-                                                <Checkbox
-                                                    checked={selectedItems.has(item.id)}
-                                                    onCheckedChange={(checked) => handleSelectItem(item.id, checked as boolean)}
-                                                />
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="font-mono text-xs font-semibold text-slate-700">{item.product?.sku || '-'}</div>
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="font-medium">{item.product?.name || '-'}</div>
-                                            </td>
-                                            <td className="p-3">
-                                                <div className="font-mono text-xs text-slate-500">{item.product?.barcode || '-'}</div>
-                                            </td>
-                                            <td className="p-3 text-right font-bold">{item.quantity}</td>
-                                            <td className="p-3 text-xs text-slate-500">
-                                                {(item as any).last_update ? new Date((item as any).last_update).toLocaleString('vi-VN') : '-'}
-                                            </td>
-                                            <td className="p-3 text-xs text-slate-600">
-                                                {(item as any).last_user || '-'}
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {items.map(item => {
+                                        const product = Array.isArray(item.product) ? item.product[0] : item.product
+                                        return (
+                                            <tr key={item.id} className="border-t">
+                                                <td className="p-3">
+                                                    <Checkbox
+                                                        checked={selectedItems.has(item.id)}
+                                                        onCheckedChange={(checked) => handleSelectItem(item.id, checked as boolean)}
+                                                    />
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="font-mono text-xs font-semibold text-slate-700">{product?.sku || '-'}</div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="font-medium">{product?.name || '-'}</div>
+                                                </td>
+                                                <td className="p-3">
+                                                    <div className="font-mono text-xs text-slate-500">{product?.barcode || '-'}</div>
+                                                </td>
+                                                <td className="p-3 text-right font-bold">{item.quantity}</td>
+                                                <td className="p-3 text-xs text-slate-500">
+                                                    {item.note || '-'}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
                                     {items.length === 0 && (
                                         <tr>
                                             <td colSpan={7} className="p-8 text-center text-muted-foreground">Thùng rỗng</td>

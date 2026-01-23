@@ -57,6 +57,9 @@ export default function OutboundListPage() {
     const [importing, setImporting] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
+    // Selection states
+    const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set())
+
     useEffect(() => {
         fetchDropdowns()
     }, [])
@@ -300,8 +303,114 @@ export default function OutboundListPage() {
         }
     }
 
+    // Selection handlers
+    const toggleSelectAll = () => {
+        if (selectedOrderIds.size === orders.length) {
+            setSelectedOrderIds(new Set())
+        } else {
+            setSelectedOrderIds(new Set(orders.map(o => o.id)))
+        }
+    }
+
+    const toggleSelectOrder = (id: string) => {
+        const next = new Set(selectedOrderIds)
+        if (next.has(id)) {
+            next.delete(id)
+        } else {
+            next.add(id)
+        }
+        setSelectedOrderIds(next)
+    }
+
+    // Export Detailed Excel
+    const handleExportDetails = async () => {
+        if (selectedOrderIds.size === 0) {
+            toast.error('Vui lòng chọn ít nhất 1 đơn hàng để xuất')
+            return
+        }
+
+        setLoading(true)
+        try {
+            // Fetch detailed items for all selected orders
+            const { data: details, error } = await supabase
+                .from('outbound_order_items')
+                .select(`
+                    id,
+                    order_id,
+                    product_id,
+                    quantity,
+                    unit_price,
+                    line_total,
+                    picked_quantity,
+                    products (sku, name),
+                    outbound_orders!inner (
+                        code,
+                        type,
+                        transfer_type,
+                        status,
+                        created_at,
+                        customers (name),
+                        destinations (name),
+                        boxes (code)
+                    )
+                `)
+                .in('order_id', Array.from(selectedOrderIds))
+
+            if (error) throw error
+            if (!details || details.length === 0) {
+                toast.error('Không tìm thấy chi tiết đơn hàng')
+                return
+            }
+
+            // Group by order to create a nice structure or just a flat list
+            const exportData = details.map(item => {
+                const order = item.outbound_orders as any
+                const product = Array.isArray(item.products) ? item.products[0] : item.products as any
+                const boxes = order.boxes || []
+                const boxCodes = Array.isArray(boxes) ? boxes.map((b: any) => b.code).join(', ') : ''
+
+                return {
+                    'Mã Đơn': order.code,
+                    'Loại': order.type,
+                    'HT Xuất': order.transfer_type === 'BOX' ? 'Theo Thùng' : 'Sản phẩm',
+                    'Mã Thùng': boxCodes,
+                    'Trạng Thái': order.status,
+                    'Ngày Tạo': format(new Date(order.created_at), 'dd/MM/yyyy HH:mm'),
+                    'Khách Hàng/Đích': order.type === 'SALE' ? order.customers?.name : order.destinations?.name,
+                    'SKU': product?.sku,
+                    'Sản Phẩm': product?.name,
+                    'Số Lượng': item.quantity,
+                    'Đã Soạn': item.picked_quantity,
+                    'Đơn Giá': item.unit_price,
+                    'Thành Tiền': item.line_total
+                }
+            })
+
+            const ws = XLSX.utils.json_to_sheet(exportData)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, 'Chi Tiết Đơn Hàng')
+
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 25 },
+                { wch: 20 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 15 }
+            ]
+
+            XLSX.writeFile(wb, `chi_tiet_xuat_kho_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`)
+            toast.success('Đã xuất file excel chi tiết!')
+        } catch (error: any) {
+            toast.error('Lỗi khi xuất file: ' + error.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
     // Delete Order
     const handleDelete = async (order: OutboundOrder) => {
+        if (order.is_approved) {
+            toast.error('Không thể xóa đơn đã duyệt')
+            return
+        }
         if (!['PENDING', 'CANCELLED'].includes(order.status)) {
             toast.error('Chỉ có thể xóa đơn Chờ Xử Lý hoặc Đã Hủy')
             return
@@ -428,6 +537,15 @@ export default function OutboundListPage() {
                         <Plus className="h-4 w-4" />
                         Tạo Mới
                     </Link>
+                    {selectedOrderIds.size > 0 && (
+                        <button
+                            onClick={handleExportDetails}
+                            className="h-10 px-4 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700 animate-in fade-in zoom-in duration-200"
+                        >
+                            <FileSpreadsheet className="h-4 w-4" />
+                            Xuất Chi Tiết ({selectedOrderIds.size})
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -512,6 +630,14 @@ export default function OutboundListPage() {
                 <table className="w-full text-sm">
                     <thead className="bg-gray-50 border-b">
                         <tr>
+                            <th className="px-3 py-3 w-10">
+                                <input
+                                    type="checkbox"
+                                    className="rounded border-gray-300"
+                                    checked={orders.length > 0 && selectedOrderIds.size === orders.length}
+                                    onChange={toggleSelectAll}
+                                />
+                            </th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Mã Đơn</th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Loại</th>
                             <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Trạng Thái</th>
@@ -540,7 +666,15 @@ export default function OutboundListPage() {
                             </tr>
                         ) : (
                             orders.map(order => (
-                                <tr key={order.id} className="hover:bg-gray-50">
+                                <tr key={order.id} className={`hover:bg-gray-50 ${selectedOrderIds.has(order.id) ? 'bg-blue-50/50' : ''}`}>
+                                    <td className="px-3 py-2 text-center">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded border-gray-300"
+                                            checked={selectedOrderIds.has(order.id)}
+                                            onChange={() => toggleSelectOrder(order.id)}
+                                        />
+                                    </td>
                                     <td className="px-3 py-2">
                                         <Link href={`/admin/outbound/${order.id}`} className="font-mono font-bold text-blue-600 hover:underline">
                                             {order.code}
@@ -590,7 +724,7 @@ export default function OutboundListPage() {
                                     </td>
                                     <td className="px-3 py-2">
                                         <div className="flex items-center justify-center">
-                                            {['PENDING', 'CANCELLED'].includes(order.status) && (
+                                            {!order.is_approved && ['PENDING', 'CANCELLED'].includes(order.status) && (
                                                 <button
                                                     onClick={() => handleDelete(order)}
                                                     className="text-red-500 hover:text-red-700"

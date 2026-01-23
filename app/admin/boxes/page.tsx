@@ -69,10 +69,30 @@ export default function BoxesPage() {
         triggerPrint(selectedBoxes)
     }
 
-    const filteredBoxes = boxes.filter(b =>
-        b.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (b.locations?.code || '').toLowerCase().includes(searchTerm.toLowerCase())
-    )
+    const filteredBoxes = boxes
+        .filter(b =>
+            b.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (b.locations?.code || '').toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .sort((a, b) => {
+            if (!sortColumn) return 0
+
+            let valA: any = a[sortColumn as keyof Box]
+            let valB: any = b[sortColumn as keyof Box]
+
+            // Handle nested properties
+            if (sortColumn === 'location') {
+                valA = a.locations?.code || ''
+                valB = b.locations?.code || ''
+            } else if (sortColumn === 'holding_order') {
+                valA = a.holding_order?.code || ''
+                valB = b.holding_order?.code || ''
+            }
+
+            if (valA < valB) return sortDirection === 'asc' ? -1 : 1
+            if (valA > valB) return sortDirection === 'asc' ? 1 : -1
+            return 0
+        })
 
     // UseEffect Trigger REMOVED
 
@@ -104,14 +124,10 @@ export default function BoxesPage() {
         if (!error && data) {
             const mapped = data.map((b: any) => {
                 // Check direct holding order
-                const activeHolding = (b.outbound_orders && b.outbound_orders.status !== 'SHIPPED')
-                    ? b.outbound_orders
-                    : null
-
                 return {
                     ...b,
                     item_count: b.inventory_items?.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0) || 0,
-                    holding_order: activeHolding
+                    holding_order: b.outbound_orders
                 }
             })
             setBoxes(mapped)
@@ -486,13 +502,27 @@ export default function BoxesPage() {
                                 <thead className="bg-white font-semibold text-slate-700 sticky top-0 z-10 shadow-sm">
                                     <tr>
                                         <th className="p-3 w-[40px] border-b"><Checkbox checked={filteredBoxes.length > 0 && selectedIds.size === filteredBoxes.length} onCheckedChange={toggleAll} /></th>
-                                        <th className="p-3 border-b">Mã Thùng</th>
-                                        <th className="p-3 border-b">Vị Trí</th>
-                                        <th className="p-3 border-b">Số Lượng</th>
-                                        <th className="p-3 border-b">Giữ Bởi Đơn</th>
-                                        <th className="p-3 border-b">Ngày Tạo</th>
-                                        <th className="p-3 border-b">Cập Nhật</th>
-                                        <th className="p-3 border-b">Trạng Thái</th>
+                                        <th className="p-3 border-b cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('code')}>
+                                            Mã Thùng {getSortIcon('code')}
+                                        </th>
+                                        <th className="p-3 border-b cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('location')}>
+                                            Vị Trí {getSortIcon('location')}
+                                        </th>
+                                        <th className="p-3 border-b cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('item_count')}>
+                                            Số Lượng {getSortIcon('item_count')}
+                                        </th>
+                                        <th className="p-3 border-b cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('holding_order')}>
+                                            Giữ Bởi Đơn {getSortIcon('holding_order')}
+                                        </th>
+                                        <th className="p-3 border-b cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('created_at')}>
+                                            Ngày Tạo {getSortIcon('created_at')}
+                                        </th>
+                                        <th className="p-3 border-b cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('updated_at')}>
+                                            Cập Nhật {getSortIcon('updated_at')}
+                                        </th>
+                                        <th className="p-3 border-b cursor-pointer hover:bg-slate-100 select-none" onClick={() => handleSort('status')}>
+                                            Trạng Thái {getSortIcon('status')}
+                                        </th>
                                         <th className="p-3 border-b text-right">Thao tác</th>
                                     </tr>
                                 </thead>

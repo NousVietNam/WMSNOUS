@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase"
 import { MapPin, Plus, Printer, Trash2, Search, Box as BoxIcon, Package, Upload, Download } from "lucide-react"
 import QRCode from "react-qr-code"
+import { toast } from "sonner"
+import * as XLSX from 'xlsx'
 
 interface Location {
     id: string
@@ -47,19 +49,23 @@ export default function LocationsPage() {
     const [editingLoc, setEditingLoc] = useState<Location | null>(null)
 
     const handleDownloadExample = () => {
-        const headers = ["code", "type", "capacity", "description"]
-        const rows = [
+        const data = [
+            ["code", "type", "capacity", "description"],
             ["A1-01", "SHELF", "100", "Kệ A1 Tầng 1"],
             ["B2-02", "FLOOR", "9999", "Khu vực sàn B2"],
         ]
-        const csvContent = "data:text/csv;charset=utf-8,"
-            + headers.join(",") + "\n"
-            + rows.map(e => e.join(",")).join("\n")
 
-        const encodedUri = encodeURI(csvContent)
+        const worksheet = XLSX.utils.aoa_to_sheet(data)
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Locations")
+
+        // Generate buffer
+        const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+        const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+
         const link = document.createElement("a")
-        link.setAttribute("href", encodedUri)
-        link.setAttribute("download", "locations_template.csv")
+        link.href = URL.createObjectURL(blob)
+        link.download = "locations_template.xlsx"
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -195,17 +201,29 @@ export default function LocationsPage() {
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
+
         const formData = new FormData()
         formData.append('file', file)
+
         setLoading(true)
-        const res = await fetch('/api/seed-locations', { method: 'POST', body: formData })
-        const data = await res.json()
-        setLoading(false)
-        if (data.success) {
-            alert(`Đã nhập thành công ${data.count} vị trí!`)
-            fetchLocations()
-        } else {
-            alert("Lỗi: " + data.error)
+        const toastId = toast.loading("Đang nhập dữ liệu...")
+
+        try {
+            const res = await fetch('/api/seed-locations', { method: 'POST', body: formData })
+            const data = await res.json()
+
+            if (data.success) {
+                toast.success(`Đã nhập thành công ${data.count} vị trí!`, { id: toastId })
+                fetchLocations()
+            } else {
+                toast.error("Lỗi: " + data.error, { id: toastId, duration: 5000 })
+            }
+        } catch (error: any) {
+            toast.error("Lỗi hệ thống khi import: " + error.message, { id: toastId })
+        } finally {
+            setLoading(false)
+            // Reset input
+            e.target.value = ''
         }
     }
 
@@ -297,9 +315,15 @@ export default function LocationsPage() {
                         <Download className="mr-2 h-4 w-4" /> File Mẫu
                     </Button>
                     <div className="relative">
-                        <Button variant="outline" className="cursor-pointer">
-                            <Upload className="mr-2 h-4 w-4" /> Import CSV
-                            <input type="file" accept=".csv" onChange={handleImport} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                        <Button variant="outline" className="cursor-pointer" disabled={loading}>
+                            <Upload className="mr-2 h-4 w-4" /> Import Excel/CSV
+                            <input
+                                type="file"
+                                accept=".xlsx,.xls,.csv"
+                                onChange={handleImport}
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                                disabled={loading}
+                            />
                         </Button>
                     </div>
                     <Dialog open={openDialog} onOpenChange={setOpenDialog}>
