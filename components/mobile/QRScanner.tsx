@@ -9,73 +9,17 @@ interface ScannerProps {
     mode?: "BARCODE" | "ALL"
 }
 
-const CAMERA_PREF_KEY = "wms_camera_pref_id"
-
 export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
     const [cameraStarted, setCameraStarted] = useState(false)
     const [error, setError] = useState<string>("")
     const scannerRef = useRef<Html5Qrcode | null>(null)
     const scannerId = "d-qr-reader"
 
-    const [cameras, setCameras] = useState<any[]>([])
-    const [selectedCameraId, setSelectedCameraId] = useState<string>("")
-    const [camerasLoaded, setCamerasLoaded] = useState(false)
-
-    const fetchCamerasAndSelectBest = async () => {
-        try {
-            // @ts-ignore
-            const devices = await Html5Qrcode.getCameras()
-            if (devices && devices.length > 0) {
-                setCameras(devices)
-
-                // Intelligent Auto-Select
-                let bestId = devices[0].id
-                const backCams = devices.filter((d: any) => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('sau'))
-
-                if (backCams.length > 0) {
-                    const mainBack = backCams.find((d: any) =>
-                        !d.label.toLowerCase().includes('wide') &&
-                        !d.label.toLowerCase().includes('rộng') &&
-                        !d.label.toLowerCase().includes('telephoto')
-                    )
-                    bestId = mainBack ? mainBack.id : backCams[0].id
-                }
-                setSelectedCameraId(bestId)
-            } else {
-                setError("Không tìm thấy camera")
-            }
-        } catch (e) {
-            console.error("Fetch cameras failed", e)
-            setError("Lỗi quyền truy cập Camera")
-        }
-    }
-
-    // 1. Initialize
-    useEffect(() => {
-        const init = async () => {
-            // Optimistic check for cached ID
-            const cachedId = localStorage.getItem(CAMERA_PREF_KEY)
-            if (cachedId) {
-                setSelectedCameraId(cachedId)
-                // NOTE: We do NOT fetch cameras here to avoid race condition with start()
-            } else {
-                fetchCamerasAndSelectBest()
-            }
-        }
-        init()
-    }, [])
-
-    // 2. Start/Restart Camera when ID changes
-    // Use useLayoutEffect to start ASAP after DOM is ready, before paint if possible
+    // 1. Start Camera
     useLayoutEffect(() => {
-        if (!selectedCameraId) return
-
         const startCamera = async () => {
             setCameraStarted(false)
-            setError("") // Clear error
-
-            // Save preference
-            localStorage.setItem(CAMERA_PREF_KEY, selectedCameraId)
+            setError("")
 
             // Cleanup previous instance
             if (scannerRef.current) {
@@ -104,17 +48,16 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                 const lastScanRef = { current: 0 }
 
                 await scanner.start(
-                    selectedCameraId,
+                    { facingMode: "environment" },
                     {
-                        fps: 20, // Boost FPS for smoothness
+                        fps: 20,
                         qrbox: qrBoxFunction,
                         disableFlip: false,
                         aspectRatio: 1.0,
                         videoConstraints: {
-                            deviceId: { exact: selectedCameraId },
+                            facingMode: "environment",
                             // @ts-ignore
                             focusMode: "continuous",
-                            // Use lower resolution for faster startup/processing
                             width: { min: 480, ideal: 720, max: 1280 },
                             height: { min: 480, ideal: 720, max: 1280 },
                         },
@@ -130,57 +73,25 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
                     (errorMessage: string) => { }
                 )
 
-                // SUCCESS
                 setCameraStarted(true)
-
-                // If we succeeded but don't have the list yet (optimistic case), fetch it now safely
-                if (cameras.length === 0) {
-                    // @ts-ignore
-                    Html5Qrcode.getCameras().then(devices => {
-                        if (devices) setCameras(devices)
-                    }).catch(e => console.warn("Bg fetch failed", e))
-                }
-
             } catch (e: any) {
                 console.error("Start failed", e)
-
-                // FAIL RECOVERY
-                // If we failed with the cached ID, we should try to reset and fetch fresh
-                const cached = localStorage.getItem(CAMERA_PREF_KEY)
-                if (cached === selectedCameraId) {
-                    console.log("Cached ID failed, retrying with fresh list...")
-                    localStorage.removeItem(CAMERA_PREF_KEY)
-                    // Trigger fallback
-                    // We must ensure we don't loop if fetchCamerasAndSelectBest picks the same broken ID
-                    // But typically ID changes or is invalid, so picking fresh is correct.
-                    fetchCamerasAndSelectBest()
-                } else {
-                    setError("Không thể khởi động camera. Hãy thử chọn camera khác.")
-                }
+                setError("Không thể khởi động camera sau. Vui lòng cấp quyền truy cập camera.")
             }
         }
 
-        // START IMMEDIATELY - No artificial delay
         startCamera()
 
         return () => {
-            // clearTimeout(t) // No timer anymore
-            // Check BEFORE accessing properties
             if (scannerRef.current) {
                 try {
-                    // Check again inside try to satisfy TS or just capture ref
                     const scanner = scannerRef.current
                     scanner.stop().then(() => scanner.clear()).catch(() => { })
                 } catch (e) { }
                 scannerRef.current = null
             }
         }
-    }, [selectedCameraId, mode])
-
-    // Manual Switch Handler
-    const handleCameraChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        setSelectedCameraId(e.target.value)
-    }
+    }, [mode])
 
     return (
         <div className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center p-4">
@@ -192,23 +103,6 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
 
                 <div className="relative w-full shrink-0 bg-black rounded-lg overflow-hidden min-h-[300px]">
                     <div id={scannerId} className="w-full h-full"></div>
-
-                    {/* Camera Select Dropdown */}
-                    {cameras.length > 1 && (
-                        <div className="absolute top-2 right-2 z-10">
-                            <select
-                                value={selectedCameraId}
-                                onChange={handleCameraChange}
-                                className="text-xs p-1.5 rounded bg-white/90 font-medium border-none shadow-sm text-black max-w-[150px] outline-none"
-                            >
-                                {cameras.map(c => (
-                                    <option key={c.id} value={c.id}>
-                                        {c.label || `Camera ${c.id.substring(0, 4)}`}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
-                    )}
 
                     {!cameraStarted && !error && (
                         <div className="absolute inset-0 flex items-center justify-center text-white text-sm bg-black/50 backdrop-blur-sm z-20">
@@ -230,7 +124,7 @@ export function QRScanner({ onScan, onClose, mode = "ALL" }: ScannerProps) {
 
                 <div className="mt-4 space-y-3 shrink-0">
                     <p className="text-center text-xs text-slate-400">
-                        {cameraStarted ? "Giữ camera ổn định để lấy nét" : "Đang chuẩn bị..."}
+                        Camera sau đang hoạt động
                     </p>
 
                     <button
