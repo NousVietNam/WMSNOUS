@@ -23,58 +23,6 @@ export default function MobileScannerInput({ value, onChange, onEnter, placehold
     const [isListening, setIsListening] = useState(false)
     const recognitionRef = useRef<any>(null)
 
-    // Initialize Speech Recognition
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-            if (SpeechRecognition) {
-                const recognition = new SpeechRecognition()
-                recognition.continuous = false
-                recognition.interimResults = false
-                recognition.lang = 'vi-VN' // Default to Vietnamese for better local number recognition
-
-                recognition.onstart = () => setIsListening(true)
-                recognition.onend = () => setIsListening(false)
-                recognition.onerror = (event: any) => {
-                    console.error("Speech Error", event)
-                    setIsListening(false)
-                    if (event.error !== 'no-speech') {
-                        toast.error("Lỗi nhận diện giọng nói: " + event.error)
-                    }
-                }
-                recognition.onresult = (event: any) => {
-                    const transcript = event.results[0][0].transcript
-                    // Clean up: remove spaces (common in dictated numbers), keep alphanumeric
-                    const cleaned = transcript.replace(/\s/g, '').toUpperCase()
-                    onChange(cleaned)
-                    toast.success(`Đã nhận diện: ${cleaned}`)
-                    if (onEnter) setTimeout(() => onEnter(), 300)
-                }
-                recognitionRef.current = recognition
-            }
-        }
-
-        return () => {
-            if (recognitionRef.current) recognitionRef.current.abort()
-        }
-    }, [onChange, onEnter])
-
-    const toggleListening = () => {
-        if (!recognitionRef.current) {
-            return toast.error("Trình duyệt không hỗ trợ nhận diện giọng nói")
-        }
-
-        if (isListening) {
-            recognitionRef.current.stop()
-        } else {
-            try {
-                recognitionRef.current.start()
-            } catch (e) {
-                console.warn("Recognition already started")
-            }
-        }
-    }
-
     // Preload Scanner Script
     useEffect(() => {
         // @ts-ignore
@@ -85,6 +33,59 @@ export default function MobileScannerInput({ value, onChange, onEnter, placehold
             document.body.appendChild(script)
         }
     }, [])
+
+    const toggleListening = () => {
+        if (typeof window === 'undefined') return
+
+        // 1. Check for HTTPS (Mandatory for Web Speech on iOS)
+        if (!window.isSecureContext) {
+            return toast.error("Nhận diện giọng nói yêu cầu kết nối bảo mật (HTTPS).")
+        }
+
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        if (!SpeechRecognition) {
+            return toast.error("Trình duyệt không hỗ trợ nhận diện giọng nói")
+        }
+
+        if (isListening) {
+            if (recognitionRef.current) recognitionRef.current.stop()
+            return
+        }
+
+        try {
+            // 2. Instantiate on-demand for iOS compatibility
+            const recognition = new SpeechRecognition()
+            recognition.continuous = false
+            recognition.interimResults = false
+            recognition.lang = 'vi-VN'
+
+            recognition.onstart = () => setIsListening(true)
+            recognition.onend = () => setIsListening(false)
+            recognition.onerror = (event: any) => {
+                console.error("Speech Error", event)
+                setIsListening(false)
+                if (event.error === 'service-not-allowed') {
+                    toast.error("Lỗi: Quyền truy cập bị chặn (Kiểm tra HTTPS hoặc quyền Micro của trình duyệt)")
+                } else if (event.error !== 'no-speech') {
+                    toast.error("Lỗi: " + event.error)
+                }
+            }
+
+            recognition.onresult = (event: any) => {
+                const transcript = event.results[0][0].transcript
+                const cleaned = transcript.replace(/\s/g, '').toUpperCase()
+                onChange(cleaned)
+                toast.success(`Đã nhận diện: ${cleaned}`)
+                if (onEnter) setTimeout(() => onEnter(), 300)
+            }
+
+            recognitionRef.current = recognition
+            recognition.start()
+        } catch (e: any) {
+            console.error("Failed to start speech", e)
+            toast.error("Không thể khởi động giọng nói")
+        }
+    }
 
     // Helper to handle scan result
     const handleScan = (code: string) => {
