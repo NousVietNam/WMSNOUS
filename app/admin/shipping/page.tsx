@@ -23,6 +23,9 @@ interface ShippingRequest {
     destination_name?: string
     created_at: string
     item_count: number
+    subtotal: number
+    discount_amount: number
+    total: number
 }
 
 export default function ShippingPage() {
@@ -48,23 +51,31 @@ export default function ShippingPage() {
         try {
             const allRequests: ShippingRequest[] = []
 
-            // 1. FETCH SHIPPED ITEMS (From outbound_shipments)
             const { data: shipments, error: shipError } = await supabase
                 .from('outbound_shipments')
-                .select('*')
+                .select(`
+                    *,
+                    outbound_orders(subtotal, discount_amount, total)
+                `)
                 .order('created_at', { ascending: false })
 
             if (shipError) throw shipError
 
             const mappedShipments: ShippingRequest[] = shipments.map(s => ({
-                id: s.source_id, // Link to source ID for detail view
-                code: s.code,    // Use PXK Code
+                id: s.source_id,
+                code: s.code,
                 type: s.source_type,
                 status: 'SHIPPED',
                 customer_name: s.metadata?.customer_name || s.metadata?.destination_name || 'Khách lẻ',
-                destination_name: s.metadata?.original_code, // Show original code (ORD-...) as secondary info
+                destination_name: s.metadata?.original_code,
                 created_at: s.created_at,
-                item_count: s.metadata?.item_count || 0
+                item_count: s.metadata?.item_count || 0,
+                // @ts-ignore
+                subtotal: s.outbound_orders?.subtotal || 0,
+                // @ts-ignore
+                discount_amount: s.outbound_orders?.discount_amount || 0,
+                // @ts-ignore
+                total: s.outbound_orders?.total || 0
             }))
 
             allRequests.push(...mappedShipments)
@@ -73,7 +84,7 @@ export default function ShippingPage() {
             if (filterStatus !== 'SHIPPED') {
                 const { data: outbounds } = await supabase
                     .from('outbound_orders')
-                    .select('id, code, status, type, customer_name, created_at, outbound_order_items(count)')
+                    .select('id, code, status, type, customer_name, created_at, subtotal, discount_amount, total, outbound_order_items(count)')
                     .eq('status', 'PACKED')
 
                 if (outbounds) {
@@ -85,7 +96,10 @@ export default function ShippingPage() {
                         customer_name: o.customer_name || (o.type === 'TRANSFER' ? 'Điều chuyển' : 'N/A'),
                         created_at: o.created_at,
                         // @ts-ignore
-                        item_count: o.outbound_order_items?.[0]?.count || 0
+                        item_count: o.outbound_order_items?.[0]?.count || 0,
+                        subtotal: o.subtotal || 0,
+                        discount_amount: o.discount_amount || 0,
+                        total: o.total || 0
                     })))
                 }
 
@@ -143,6 +157,13 @@ export default function ShippingPage() {
 
         return matchSearch && matchType && matchStatus && matchDate
     })
+
+    const totals = filtered.reduce((acc, r) => ({
+        item_count: acc.item_count + (Number(r.item_count) || 0),
+        subtotal: acc.subtotal + (Number(r.subtotal) || 0),
+        discount: acc.discount + (Number(r.discount_amount) || 0),
+        total: acc.total + (Number(r.total) || 0),
+    }), { item_count: 0, subtotal: 0, discount: 0, total: 0 })
 
     return (
         <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -221,10 +242,54 @@ export default function ShippingPage() {
                         </SelectContent>
                     </Select>
                 </div>
+            </div>
 
-                <Button variant="outline" size="icon" onClick={fetchShippingRequests} title="Làm mới">
-                    <Filter className="h-4 w-4" />
-                </Button>
+            {/* Summary Statistics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card className="bg-white border-none shadow-sm overflow-hidden">
+                    <div className="p-4 flex items-center gap-4">
+                        <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                            <Package className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <div className="text-[10px] uppercase font-bold text-slate-400">Tổng SL Hàng</div>
+                            <div className="text-xl font-black text-slate-800">{totals.item_count.toLocaleString()}</div>
+                        </div>
+                    </div>
+                </Card>
+                <Card className="bg-white border-none shadow-sm overflow-hidden">
+                    <div className="p-4 flex items-center gap-4">
+                        <div className="h-10 w-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+                            <span className="font-bold">Đ</span>
+                        </div>
+                        <div>
+                            <div className="text-[10px] uppercase font-bold text-slate-400">Trước CK</div>
+                            <div className="text-xl font-black text-slate-800">{totals.subtotal.toLocaleString()}</div>
+                        </div>
+                    </div>
+                </Card>
+                <Card className="bg-white border-none shadow-sm overflow-hidden border-l-4 border-l-rose-500">
+                    <div className="p-4 flex items-center gap-4">
+                        <div className="h-10 w-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600">
+                            <X className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <div className="text-[10px] uppercase font-bold text-slate-400">Khấu Trừ / CK</div>
+                            <div className="text-xl font-black text-rose-600">-{totals.discount.toLocaleString()}</div>
+                        </div>
+                    </div>
+                </Card>
+                <Card className="bg-indigo-600 border-none shadow-md overflow-hidden text-white">
+                    <div className="p-4 flex items-center gap-4">
+                        <div className="h-10 w-10 bg-white/20 rounded-xl flex items-center justify-center text-white">
+                            <Truck className="h-5 w-5" />
+                        </div>
+                        <div>
+                            <div className="text-[10px] uppercase font-bold text-indigo-100">Sau CK (Thanh toán)</div>
+                            <div className="text-xl font-black">{totals.total.toLocaleString()}</div>
+                        </div>
+                    </div>
+                </Card>
             </div>
 
             {/* List */}
@@ -254,14 +319,14 @@ export default function ShippingPage() {
 
                         if (isShipped) {
                             badgeVariant = 'default'
-                            badgeClass = 'bg-green-600 hover:bg-green-700'
-                            badgeText = 'Đã Xuất Kho'
+                            badgeClass = 'bg-green-600 hover:bg-green-700 text-white'
+                            badgeText = 'Đã Xuất Kho (PXK)'
                         } else if (isManualReady) {
                             badgeClass = 'bg-orange-100 text-orange-700'
-                            badgeText = 'Chờ Xuất (Đã Lấy)'
+                            badgeText = 'Đã Nhặt (Sẵn sàng)'
                         } else if (req.status === 'PACKED') {
-                            badgeClass = 'bg-blue-100 text-blue-700'
-                            badgeText = 'Đã Đóng Gói (Chờ Xuất)'
+                            badgeClass = 'bg-blue-600 text-white'
+                            badgeText = 'Đã Đóng Hàng (PACKED)'
                         }
 
                         return (
