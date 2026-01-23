@@ -309,8 +309,8 @@ export default function ShippingPage() {
                 ) : (
                     filtered.map((req) => {
                         // Display Logic
-                        const isShipped = req.status === 'SHIPPED' || req.status === 'COMPLETED'
-                        const isManualReady = req.type === 'MANUAL_JOB' && req.status === 'COMPLETED' // Picked, ready to ship
+                        const isShipped = req.status === 'SHIPPED'
+                        const isManualReady = req.type === 'MANUAL_JOB' && req.status === 'COMPLETED'
 
                         // Badge Logic
                         let badgeVariant: "default" | "secondary" | "outline" | "destructive" | null | undefined = 'secondary'
