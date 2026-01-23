@@ -40,7 +40,13 @@ export default function ShippingDetailPage() {
             if (type === 'ORDER' || type === 'TRANSFER') {
                 const { data: outbound, error } = await supabase
                     .from('outbound_orders')
-                    .select('*, outbound_order_items(*, products(*)), picking_jobs(*, picking_tasks(*, boxes:boxes!box_id(*)))')
+                    .select(`
+                        *,
+                        customer:customers(name),
+                        destination:destinations(name),
+                        outbound_order_items(*, products(*)),
+                        picking_jobs(*, picking_tasks(*, boxes:boxes!box_id(*)))
+                    `)
                     .eq('id', id)
                     .single()
                 if (error) throw error
@@ -160,7 +166,9 @@ export default function ShippingDetailPage() {
     if (!data) return <div className="p-20 text-center text-red-500">Không tìm thấy dữ liệu</div>
 
     const items = (type === 'ORDER' || type === 'TRANSFER') ? data.outbound_order_items : (type === 'MANUAL_JOB' ? data.manual_items : [])
-    const destination = (type === 'ORDER' || type === 'TRANSFER') ? data.customer_name : (type === 'MANUAL_JOB' ? 'Xuất Thủ Công' : 'Unknown')
+    const destination = (type === 'ORDER' || type === 'TRANSFER')
+        ? (data.customer?.name || data.destination?.name || data.customer_name || 'Khách lẻ / Nội bộ')
+        : (type === 'MANUAL_JOB' ? 'Xuất Thủ Công' : 'Unknown')
     const isShipped = data.status.toUpperCase() === 'SHIPPED' || (type !== 'MANUAL_JOB' && data.status.toUpperCase() === 'COMPLETED')
 
     return (
