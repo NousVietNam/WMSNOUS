@@ -55,32 +55,60 @@ export default function MobileScannerInput({ value, onChange, onEnter, placehold
         try {
             // 2. Instantiate on-demand for iOS compatibility
             const recognition = new SpeechRecognition()
-            recognition.continuous = false
-            recognition.interimResults = false
+
+            // iOS Safari often works better with these settings
+            recognition.continuous = true
+            recognition.interimResults = true
             recognition.lang = 'vi-VN'
 
             recognition.onstart = () => setIsListening(true)
             recognition.onend = () => setIsListening(false)
+
+            let finalTranscript = ''
+
             recognition.onerror = (event: any) => {
                 console.error("Speech Error", event)
                 setIsListening(false)
                 if (event.error === 'service-not-allowed') {
-                    toast.error("Lỗi: Quyền truy cập bị chặn (Kiểm tra HTTPS hoặc quyền Micro của trình duyệt)")
+                    toast.error("iOS chặn quyền: Hãy vào Cài đặt > Cài đặt chung > Bàn phím > Bật 'Đọc chính tả'.")
                 } else if (event.error !== 'no-speech') {
                     toast.error("Lỗi: " + event.error)
                 }
             }
 
             recognition.onresult = (event: any) => {
-                const transcript = event.results[0][0].transcript
-                const cleaned = transcript.replace(/\s/g, '').toUpperCase()
-                onChange(cleaned)
-                toast.success(`Đã nhận diện: ${cleaned}`)
-                if (onEnter) setTimeout(() => onEnter(), 300)
+                let currentTranscript = ''
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript
+                    } else {
+                        currentTranscript += event.results[i][0].transcript
+                    }
+                }
+
+                const textToUse = (finalTranscript || currentTranscript).replace(/\s/g, '').toUpperCase()
+                if (textToUse) {
+                    onChange(textToUse)
+                    // If we have a final result, stop and trigger search
+                    if (finalTranscript) {
+                        recognition.stop()
+                        toast.success(`Đã nhận diện: ${textToUse}`)
+                        if (onEnter) setTimeout(() => onEnter(), 300)
+                    }
+                }
             }
 
             recognitionRef.current = recognition
-            recognition.start()
+
+            // 3. Small delay to ensure clean startup context on iOS
+            setTimeout(() => {
+                try {
+                    recognition.start()
+                } catch (e) {
+                    console.error("Recognition start internal error", e)
+                }
+            }, 100)
+
         } catch (e: any) {
             console.error("Failed to start speech", e)
             toast.error("Không thể khởi động giọng nói")
