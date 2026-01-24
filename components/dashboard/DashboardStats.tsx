@@ -1,4 +1,5 @@
-import { Package, ShoppingCart, Truck, Layers, Box, Clock } from "lucide-react"
+import { Package, ShoppingCart, Truck, Layers, Box, Clock, ClipboardList, TrendingUp } from "lucide-react"
+import Link from "next/link"
 
 export function DashboardStats({ data }: { data: any }) {
     if (!data) return (
@@ -9,85 +10,100 @@ export function DashboardStats({ data }: { data: any }) {
         </div>
     )
 
-    const { orders, inventory } = data
+    const { orders, inventory, jobs } = data
 
     const stats = [
         {
             title: "Đơn Mới Hôm Nay",
             value: orders.today,
+            desc: `${orders.total} tổng đơn`,
             icon: ShoppingCart,
-            gradient: "from-blue-500 to-cyan-500"
+            gradient: "from-blue-500 to-cyan-500",
+            href: "/admin/outbound"
         },
         {
             title: "Chờ Xử Lý",
             value: orders.pending,
-            desc: "Pending / Allocated",
+            desc: `${orders.allocated} đã phân bổ`,
             icon: Clock,
-            gradient: "from-orange-500 to-amber-500"
+            gradient: "from-orange-500 to-amber-500",
+            href: "/admin/outbound"
         },
         {
-            title: "Đang Nhặt Hàng",
-            value: orders.picking,
-            icon: Layers,
-            gradient: "from-indigo-500 to-purple-500"
+            title: "Picking Jobs",
+            value: jobs?.active || 0,
+            desc: `${jobs?.completed || 0} đã xong`,
+            icon: ClipboardList,
+            gradient: "from-indigo-500 to-purple-500",
+            href: "/admin/jobs"
         },
         {
-            title: "Đã Đóng Gói / Ship",
-            value: orders.packed + orders.shipped,
-            desc: `${orders.shipped} đã ship`,
+            title: "Giao Hàng (Ship)",
+            value: orders.shipped,
+            desc: `${orders.packed} chờ xuất`,
             icon: Truck,
-            gradient: "from-emerald-500 to-green-500"
+            gradient: "from-emerald-500 to-green-500",
+            href: "/admin/shipping"
         },
         {
             title: "Tổng Mã Hàng (SKU)",
             value: inventory.skus,
             icon: Package,
-            gradient: "from-slate-500 to-slate-600"
+            gradient: "from-slate-500 to-slate-600",
+            href: "/admin/products"
         },
         {
             title: "Tổng Tồn Kho",
             value: inventory.totalItems.toLocaleString(),
             desc: "Items",
             icon: Layers,
-            gradient: "from-slate-600 to-slate-700"
+            gradient: "from-slate-600 to-slate-700",
+            href: "/admin/inventory"
         },
         {
             title: "Thùng Lưu Trữ",
             value: inventory.storageBoxes,
             desc: "Storage Boxes",
             icon: Box,
-            gradient: "from-violet-500 to-purple-500"
+            gradient: "from-violet-500 to-purple-500",
+            href: "/admin/boxes"
         },
         {
             title: "Outbox Đang Dùng",
             value: inventory.outboxes,
             desc: "Active Outboxes",
             icon: Box,
-            gradient: "from-fuchsia-500 to-pink-500"
+            gradient: "from-fuchsia-500 to-pink-500",
+            href: "/admin/outboxes"
         }
     ]
 
     return (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {stats.map((stat, i) => (
-                <div
+                <Link
+                    href={stat.href || "#"}
                     key={i}
-                    className="glass-strong rounded-xl p-6 hover:scale-105 hover:elevation-lg transition-all duration-200 animate-fade-in-up"
-                    style={{ animationDelay: `${i * 50}ms` }}
+                    className="block group"
                 >
-                    <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-semibold text-slate-700">{stat.title}</h3>
-                        <div className={`p-2.5 rounded-lg bg-gradient-to-br ${stat.gradient} elevation-md`}>
-                            <stat.icon className="h-5 w-5 text-white" />
+                    <div
+                        className="glass-strong rounded-xl p-6 group-hover:scale-105 group-hover:elevation-lg transition-all duration-200 animate-fade-in-up h-full"
+                        style={{ animationDelay: `${i * 50}ms` }}
+                    >
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-sm font-semibold text-slate-700">{stat.title}</h3>
+                            <div className={`p-2.5 rounded-lg bg-gradient-to-br ${stat.gradient} elevation-md`}>
+                                <stat.icon className="h-5 w-5 text-white" />
+                            </div>
                         </div>
+                        <div className="text-3xl font-bold gradient-text">{stat.value}</div>
+                        {stat.desc && (
+                            <p className="text-xs text-slate-600 font-medium mt-2 group-hover:text-indigo-600 transition-colors">
+                                {stat.desc}
+                            </p>
+                        )}
                     </div>
-                    <div className="text-3xl font-bold gradient-text">{stat.value}</div>
-                    {stat.desc && (
-                        <p className="text-xs text-slate-600 font-medium mt-2">
-                            {stat.desc}
-                        </p>
-                    )}
-                </div>
+                </Link>
             ))}
         </div>
     )

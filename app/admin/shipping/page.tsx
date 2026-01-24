@@ -22,6 +22,7 @@ type ShippingRequest = {
     created_at: string
     shipped_at?: string
     item_count: number
+    box_count: number
     subtotal: number
     discount_amount: number
     total: number
@@ -41,10 +42,12 @@ type DbOrder = {
     customer_id?: string
     destination_id?: string
     sale_staff_id?: string
-    customers?: { name: string } | null
     destinations?: { name: string } | null
     internal_staff?: { name: string } | null
     outbound_order_items?: { count: number }[]
+    boxes?: { id: string }[]
+    picking_jobs?: { picking_tasks: { box_id: string }[] }[]
+    outbound_shipments?: { box_count: number }[]
 }
 
 export default function ShippingPage() {
@@ -73,10 +76,15 @@ export default function ShippingPage() {
                 .from('outbound_orders')
                 .select(`
                     *,
-                    customers (name),
                     destinations (name),
                     internal_staff (name),
-                    outbound_order_items (id)
+                    outbound_order_items (id),
+                    boxes (id),
+                    picking_jobs (
+                        picking_tasks (
+                            box_id
+                        )
+                    )
                 `)
                 .in('status', ['PACKED', 'SHIPPED'])
                 .order('created_at', { ascending: false })
@@ -95,6 +103,16 @@ export default function ShippingPage() {
                     created_at: o.created_at,
                     shipped_at: o.shipped_at,
                     item_count: o.outbound_order_items?.length || 0,
+                    box_count: (() => {
+                        const uniqueBoxes = new Set<string>()
+                        o.boxes?.forEach((b: any) => uniqueBoxes.add(b.id))
+                        o.picking_jobs?.forEach((j: any) => {
+                            j.picking_tasks?.forEach((t: any) => {
+                                if (t.box_id) uniqueBoxes.add(t.box_id)
+                            })
+                        })
+                        return uniqueBoxes.size
+                    })(),
                     subtotal: o.subtotal || 0,
                     discount_amount: o.discount_amount || 0,
                     total: o.total || 0
@@ -143,10 +161,11 @@ export default function ShippingPage() {
 
     const totals = filtered.reduce((acc, r) => ({
         item_count: acc.item_count + (Number(r.item_count) || 0),
+        box_count: acc.box_count + (Number(r.box_count) || 0),
         subtotal: acc.subtotal + (Number(r.subtotal) || 0),
         discount: acc.discount + (Number(r.discount_amount) || 0),
         total: acc.total + (Number(r.total) || 0),
-    }), { item_count: 0, subtotal: 0, discount: 0, total: 0 })
+    }), { item_count: 0, box_count: 0, subtotal: 0, discount: 0, total: 0 })
 
     const getTypeBadge = (type: string) => {
         if (type === 'ORDER') return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Đơn Hàng</Badge>
@@ -256,6 +275,7 @@ export default function ShippingPage() {
                                 <th colSpan={6} className="px-4 py-3 text-right uppercase text-[11px] tracking-wider font-bold text-indigo-900">
                                     Tổng cộng ({filtered.length} đơn):
                                 </th>
+                                <th className="px-4 py-3 text-center font-bold text-indigo-700">{totals.box_count.toLocaleString()}</th>
                                 <th className="px-4 py-3 text-center font-bold text-indigo-700">{totals.item_count.toLocaleString()}</th>
                                 <th className="px-4 py-3 text-right font-bold text-slate-700">{totals.subtotal.toLocaleString()}</th>
                                 <th className="px-4 py-3 text-right font-bold text-rose-600">-{totals.discount.toLocaleString()}</th>
@@ -269,6 +289,7 @@ export default function ShippingPage() {
                                 <th className="px-4 py-3">Khách Hàng / Điểm Đích</th>
                                 <th className="px-4 py-3">NV Sale</th>
                                 <th className="px-4 py-3">Ngày Tạo</th>
+                                <th className="px-4 py-3 text-center">SL Thùng</th>
                                 <th className="px-4 py-3 text-center">SL Item</th>
                                 <th className="px-4 py-3 text-right">Trước CK</th>
                                 <th className="px-4 py-3 text-right">Chiết Khấu</th>
@@ -279,14 +300,14 @@ export default function ShippingPage() {
                         <tbody className="divide-y divide-slate-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
+                                    <td colSpan={12} className="px-4 py-12 text-center text-slate-500">
                                         <div className="animate-spin h-6 w-6 border-2 border-indigo-600 border-t-transparent rounded-full mx-auto mb-2"></div>
                                         Đang tải dữ liệu...
                                     </td>
                                 </tr>
                             ) : filtered.length === 0 ? (
                                 <tr>
-                                    <td colSpan={11} className="px-4 py-12 text-center text-slate-500">
+                                    <td colSpan={12} className="px-4 py-12 text-center text-slate-500">
                                         Không tìm thấy đơn hàng nào phù hợp bộ lọc.
                                     </td>
                                 </tr>
@@ -321,6 +342,9 @@ export default function ShippingPage() {
                                                     {format(new Date(req.shipped_at), 'dd/MM HH:mm')}
                                                 </div>
                                             )}
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-bold text-indigo-600">
+                                            {req.box_count}
                                         </td>
                                         <td className="px-4 py-3 text-center font-medium">
                                             {req.item_count}

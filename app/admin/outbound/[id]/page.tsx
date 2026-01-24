@@ -681,24 +681,93 @@ export default function OutboundDetailPage() {
                 {/* COL 2: MAIN CONTENT */}
                 <div className="lg:col-span-3 space-y-6">
                     {/* INFO CARDS */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* ... (Existing Cards Code usually here but was not showing in view_file fully) */}
-                        {/* Re-implementing simplified cards based on context */}
-                        <div className="bg-white p-4 rounded-xl border shadow-sm">
-                            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Khách Hàng / Điểm Đến</h4>
-                            <p className="font-medium text-slate-900 line-clamp-2">
-                                {order.type === 'SALE' ? order.customers?.name : order.destinations?.name}
-                            </p>
+                    {/* GENERAL INFO PANEL */}
+                    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm space-y-5">
+                        <div className="flex items-center justify-between border-b border-slate-50 pb-3">
+                            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-indigo-500" />
+                                Thông tin chung
+                            </h3>
+                            <div className="flex gap-2">
+                                {(order as any).is_bonus_consideration && (
+                                    <span className="px-2 py-0.5 bg-yellow-50 text-yellow-700 text-[10px] font-bold uppercase rounded border border-yellow-200">
+                                        Xét thưởng
+                                    </span>
+                                )}
+                                {(order as any).is_bonus_calculation && (
+                                    <span className="px-2 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-bold uppercase rounded border border-purple-200">
+                                        Tính thưởng
+                                    </span>
+                                )}
+                            </div>
                         </div>
-                        <div className="bg-white p-4 rounded-xl border shadow-sm">
-                            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Trạng Thái</h4>
-                            <div>{getStatusBadge(order.status)}</div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                            {/* Left Column */}
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">Khách Hàng / Điểm Đến</label>
+                                    <div className="font-medium text-slate-900 text-sm">
+                                        {order.type === 'SALE' ? order.customers?.name : order.destinations?.name || '-'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">Nhân Viên Kinh Doanh</label>
+                                    <div className="font-medium text-slate-900 text-sm">
+                                        {order.sale_staff?.name || '-'}
+                                        {order.sale_staff?.code && <span className="text-slate-400 font-normal ml-1">({order.sale_staff.code})</span>}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">Diễn Giải</label>
+                                    <div className="text-slate-700 text-sm whitespace-pre-wrap">
+                                        {(order as any).description || '-'}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right Column */}
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">Loại Đơn</label>
+                                        <div className="text-sm font-medium">
+                                            <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs border border-slate-200">
+                                                {order.type}
+                                            </span>
+                                            {order.transfer_type && (
+                                                <span className="ml-2 px-2 py-0.5 bg-slate-50 text-slate-500 rounded text-xs border border-slate-100">
+                                                    {order.transfer_type}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">Trạng Thái</label>
+                                        <div>{getStatusBadge(order.status)}</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-bold text-slate-400 uppercase block mb-1">Ghi Chú</label>
+                                    <div className="text-slate-700 text-sm italic bg-amber-50/50 p-2 rounded border border-amber-50/50">
+                                        {order.note || 'Không có ghi chú'}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div className="bg-white p-4 rounded-xl border shadow-sm">
-                            <h4 className="text-xs font-semibold text-slate-400 uppercase mb-2">Tổng Giá Trị</h4>
-                            <p className="font-bold text-xl text-indigo-600">
-                                {new Intl.NumberFormat('vi-VN').format(order.total)}₫
-                            </p>
+
+                        {/* Financial Footer */}
+                        <div className="pt-4 border-t border-slate-50 mt-2 flex justify-end items-center gap-6">
+                            <div className="text-right">
+                                <span className="text-xs text-slate-500 block">Tổng số lượng</span>
+                                <span className="font-medium text-slate-900">{items.reduce((s, i) => s + i.quantity, 0)}</span>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-xs text-slate-500 block">Tổng giá trị</span>
+                                <span className="text-2xl font-bold text-indigo-600">
+                                    {new Intl.NumberFormat('vi-VN').format(order.total)}₫
+                                </span>
+                            </div>
                         </div>
                     </div>
 

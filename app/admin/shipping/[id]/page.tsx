@@ -71,6 +71,24 @@ export default function ShippingDetailPage() {
 
             // 4. Fetch Linked Level 2 Info (Outboxes & Inventory)
             if (type === 'ORDER' || type === 'TRANSFER') {
+                const map: Record<string, Set<string>> = {}
+
+                // SOURCE 1: Picking Data (History)
+                // This preserves box info even after items are shipped (removed from inventory)
+                if (localData.picking_jobs) {
+                    localData.picking_jobs.forEach((job: any) => {
+                        job.picking_tasks?.forEach((task: any) => {
+                            // Check if task is linked to a box
+                            if (task.product_id && task.boxes) {
+                                if (!map[task.product_id]) map[task.product_id] = new Set()
+                                map[task.product_id].add(task.boxes.code)
+                            }
+                        })
+                    })
+                }
+
+                // SOURCE 2: Current Inventory (Live)
+                // Useful for items currently in boxes but maybe not fully picked via job yet, or manual adjustments
                 const { data: linkedBoxes } = await supabase
                     .from('boxes')
                     .select('id, code, type')
@@ -83,7 +101,6 @@ export default function ShippingDetailPage() {
                         .select('product_id, quantity, box_id')
                         .in('box_id', boxIds)
 
-                    const map: Record<string, Set<string>> = {}
                     const boxCodeById = linkedBoxes.reduce((acc: any, b: any) => {
                         acc[b.id] = b.code
                         return acc
@@ -94,8 +111,8 @@ export default function ShippingDetailPage() {
                         const code = boxCodeById[inv.box_id]
                         if (code) map[inv.product_id].add(code)
                     })
-                    setProductBoxMap(map)
                 }
+                setProductBoxMap(map)
             } else if (type === 'MANUAL_JOB') {
                 const map: Record<string, Set<string>> = {}
                 localData.manual_items?.forEach((task: any) => {

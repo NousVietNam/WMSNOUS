@@ -30,6 +30,7 @@ type Destination = {
     phone?: string
     contact_person?: string
     note?: string
+    default_discount?: number
     created_at: string
 }
 
@@ -186,9 +187,9 @@ export default function PartnersPage() {
         let template: any[] = []
 
         if (activeTab === 'CUSTOMER') {
-            template = [{ 'Tên': '', 'Mã': '', 'SĐT': '', 'Email': '', 'Địa Chỉ': '', 'Nhân viên Sale (Mã)': '', 'Ghi Chú': '' }]
+            template = [{ 'Tên': '', 'Mã': '', 'SĐT': '', 'Email': '', 'Địa Chỉ': '', 'Chiết khấu mặc định (%)': '', 'Nhân viên Sale (Mã)': '', 'Ghi Chú': '' }]
         } else if (activeTab === 'DESTINATION') {
-            template = [{ 'Tên': '', 'Mã': '', 'SĐT': '', 'Địa Chỉ': '', 'Người Liên Hệ': '', 'Ghi Chú': '' }]
+            template = [{ 'Tên': '', 'Mã': '', 'SĐT': '', 'Địa Chỉ': '', 'Người Liên Hệ': '', 'Chiết khấu mặc định (%)': '', 'Ghi Chú': '' }]
         } else {
             template = [{ 'Mã NV': '', 'Họ Tên': '', 'Phòng Ban': '', 'SĐT': '', 'Email': '', 'Ghi Chú': '' }]
         }
@@ -242,6 +243,7 @@ export default function PartnersPage() {
                         phone: row['SĐT'] || row['phone'],
                         email: row['Email'] || row['email'],
                         address: row['Địa Chỉ'] || row['address'],
+                        default_discount: row['Chiết khấu mặc định (%)'] || row['default_discount'],
                         sale_staff_id: saleStaffId,
                         note: row['Ghi Chú'] || row['note']
                     })
@@ -251,6 +253,7 @@ export default function PartnersPage() {
                         code: row['Mã'] || row['code'],
                         phone: row['SĐT'] || row['phone'],
                         address: row['Địa Chỉ'] || row['address'],
+                        default_discount: row['Chiết khấu mặc định (%)'] || row['default_discount'],
                         contact_person: row['Người Liên Hệ'] || row['contact_person'],
                         note: row['Ghi Chú'] || row['note']
                     })

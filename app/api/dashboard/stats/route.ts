@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
+export const dynamic = 'force-dynamic'
+
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -8,39 +10,54 @@ const supabase = createClient(
 
 export async function GET() {
     try {
-        // 1. Order Stats
-        const { data: orders } = await supabase.from('orders').select('id, status, created_at')
+        // 1. Order Stats (from outbound_orders)
+        const { data: orders } = await supabase
+            .from('outbound_orders')
+            .select('id, status, created_at, code')
+
+        const todayStr = new Date().toDateString()
 
         const orderStats = {
             total: orders?.length || 0,
-            today: orders?.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString()).length || 0,
-            pending: orders?.filter(o => ['PENDING', 'ALLOCATED'].includes(o.status)).length || 0,
-            picking: orders?.filter(o => o.status === 'PICKING').length || 0,
-            packed: orders?.filter(o => o.status === 'PACKED').length || 0,
-            shipped: orders?.filter(o => o.status === 'SHIPPED').length || 0,
-            completed: orders?.filter(o => o.status === 'COMPLETED').length || 0,
+            today: orders?.filter(o => new Date(o.created_at).toDateString() === todayStr).length || 0,
+            pending: orders?.filter(o => ['PENDING'].includes(o.status)).length || 0,
+            allocated: orders?.filter(o => ['ALLOCATED'].includes(o.status)).length || 0,
+            ready: orders?.filter(o => ['READY'].includes(o.status)).length || 0,
+            picking: orders?.filter(o => ['PICKING'].includes(o.status)).length || 0,
+            packed: orders?.filter(o => ['PACKED'].includes(o.status)).length || 0,
+            shipped: orders?.filter(o => ['SHIPPED'].includes(o.status)).length || 0,
         }
 
-        // 2. Inventory Stats
+        // 2. Job Stats (from picking_jobs)
+        const { data: jobs } = await supabase
+            .from('picking_jobs')
+            .select('id, status, created_at')
+
+        const jobStats = {
+            total: jobs?.length || 0,
+            active: jobs?.filter(j => ['PLANNED', 'IN_PROGRESS'].includes(j.status)).length || 0,
+            completed: jobs?.filter(j => j.status === 'COMPLETED').length || 0
+        }
+
+        // 3. Inventory Stats
         const { count: skuCount } = await supabase.from('products').select('*', { count: 'exact', head: true })
-        const { data: inventory } = await supabase.from('inventory_items').select('quantity, box_id')
+        const { data: inventory } = await supabase.from('inventory_items').select('quantity')
 
         const totalItems = inventory?.reduce((sum, item) => sum + item.quantity, 0) || 0
 
-        // 3. Box Stats
+        // 4. Box Stats
         const { data: boxes } = await supabase.from('boxes').select('type')
         const storageBoxes = boxes?.filter(b => b.type === 'STORAGE').length || 0
         const outboxes = boxes?.filter(b => b.type === 'OUTBOX').length || 0
 
-        // 4. Recent Activity (Transactions)
+        // 5. Recent Activity (Transactions)
         const { data: recentActivity } = await supabase
             .from('transactions')
             .select('*')
             .order('timestamp', { ascending: false })
             .limit(10)
 
-        // 5. Activity Trend (Last 7 Days)
-        // Group transactions by date
+        // 6. Activity Trend (Last 7 Days)
         const today = new Date()
         const last7Days = Array.from({ length: 7 }, (_, i) => {
             const d = new Date()
@@ -58,7 +75,7 @@ export async function GET() {
             return {
                 date: date.split('-').slice(1).join('/'), // MM/DD
                 inbound: dayTx?.filter(tx => tx.type === 'IMPORT').length || 0,
-                outbound: dayTx?.filter(tx => ['PACK', 'SHIP'].includes(tx.type)).length || 0
+                outbound: dayTx?.filter(tx => ['PACK', 'SHIP', 'EXPORT'].includes(tx.type)).length || 0
             }
         })
 
@@ -66,6 +83,7 @@ export async function GET() {
             success: true,
             data: {
                 orders: orderStats,
+                jobs: jobStats,
                 inventory: {
                     skus: skuCount || 0,
                     totalItems,
@@ -78,7 +96,7 @@ export async function GET() {
         })
 
     } catch (e: any) {
-        console.error(e)
+        console.error("Dashboard API Error:", e)
         return NextResponse.json({ success: false, error: e.message }, { status: 500 })
     }
 }
