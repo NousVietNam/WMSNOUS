@@ -36,7 +36,7 @@ export default function AuditPage() {
         try {
             const { data: box, error: boxError } = await supabase
                 .from('boxes')
-                .select('id, order_id, status')
+                .select('id, outbound_order_id, status')
                 .ilike('code', boxCode.trim())
                 .single()
 
@@ -58,7 +58,7 @@ export default function AuditPage() {
 
             if (box.status !== 'OPEN') {
                 if (box.status === 'SHIPPED') alert("CẢNH BÁO: Thùng hàng này ĐÃ XUẤT KHO (SHIPPED)! Không thể kiểm kê.")
-                else if (box.status === 'LOCKED' || box.order_id) alert("CẢNH BÁO: Thùng hàng đang bị KHÓA (LOCKED) theo đơn hàng! Vui lòng hoàn thành đơn hoặc hủy trước khi kiểm kê.")
+                else if (box.status === 'LOCKED' || box.outbound_order_id) alert("CẢNH BÁO: Thùng hàng đang bị KHÓA (LOCKED) theo đơn hàng! Vui lòng hoàn thành đơn hoặc hủy trước khi kiểm kê.")
                 else alert(`CẢNH BÁO: Trạng thái thùng không hợp lệ (${box.status}). Chỉ có thể kiểm kê thùng OPEN.`)
 
                 setLoading(false)

@@ -28,7 +28,7 @@ export default function TransferPage() {
             .select(`
                 id, 
                 code, 
-                order_id,
+                outbound_order_id,
                 status,
                 locations (id, code)
             `)
@@ -48,7 +48,7 @@ export default function TransferPage() {
             return
         }
 
-        if (box.order_id || box.status === 'LOCKED') {
+        if (box.outbound_order_id || box.status === 'LOCKED') {
             alert("THÙNG ĐÃ BỊ KHÓA!\nThùng này đã được gán vào một đơn hàng. Không thể di chuyển thủ công.")
             setLoading(false)
             return
