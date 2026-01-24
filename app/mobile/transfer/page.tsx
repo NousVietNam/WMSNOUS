@@ -29,9 +29,10 @@ export default function TransferPage() {
                 id, 
                 code, 
                 order_id,
+                status,
                 locations (id, code)
             `)
-            .eq('code', sourceCode)
+            .ilike('code', sourceCode.trim())
             .single()
 
         if (error || !box) {
@@ -40,9 +41,15 @@ export default function TransferPage() {
             return
         }
 
-        // NEW: Check if box is assigned to an order (LOCKED)
-        if (box.order_id) {
-            alert("THÙNG ĐÃ BỊ KHÓA!\nThùng này đã được gán vào một đơn hàng và đang chờ xuất. Không thể di chuyển thùng này.")
+        // NEW: Check if box is assigned to an order (LOCKED) or SHIPPED
+        if (box.status === 'SHIPPED') {
+            alert("CẢNH BÁO: Thùng hàng này ĐÃ XUẤT KHO (SHIPPED)! Không thể di chuyển.")
+            setLoading(false)
+            return
+        }
+
+        if (box.order_id || box.status === 'LOCKED') {
+            alert("THÙNG ĐÃ BỊ KHÓA!\nThùng này đã được gán vào một đơn hàng. Không thể di chuyển thủ công.")
             setLoading(false)
             return
         }
@@ -66,7 +73,7 @@ export default function TransferPage() {
 
         try {
             // Find Dest Location
-            const { data: location } = await supabase.from('locations').select('id').eq('code', destCode).single()
+            const { data: location } = await supabase.from('locations').select('id').ilike('code', destCode.trim()).single()
             if (!location) {
                 alert("Vị trí đích không tồn tại!")
                 setLoading(false)

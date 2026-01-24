@@ -36,18 +36,31 @@ export default function AuditPage() {
         try {
             const { data: box, error: boxError } = await supabase
                 .from('boxes')
-                .select('id, order_id')
-                .eq('code', boxCode)
+                .select('id, order_id, status')
+                .ilike('code', boxCode.trim())
                 .single()
 
+            if (boxError) {
+                console.error("Box fetch error:", boxError)
+                // Ignore "Row not found" error (PGRST116) as we handle !box below
+                if (boxError.code !== 'PGRST116') {
+                    alert(`Lỗi hệ thống: ${boxError.message}`)
+                    setLoading(false)
+                    return
+                }
+            }
+
             if (!box) {
-                alert("Không tìm thấy Box!")
+                alert(`Không tìm thấy Box mã "${boxCode}"!`)
                 setLoading(false)
                 return
             }
 
-            if (box.order_id) {
-                alert("BOX ĐÃ BỊ KHÓA!\nThùng này đã được chọn vào đơn hàng. Không thể thực hiện kiểm kê.")
+            if (box.status !== 'OPEN') {
+                if (box.status === 'SHIPPED') alert("CẢNH BÁO: Thùng hàng này ĐÃ XUẤT KHO (SHIPPED)! Không thể kiểm kê.")
+                else if (box.status === 'LOCKED' || box.order_id) alert("CẢNH BÁO: Thùng hàng đang bị KHÓA (LOCKED) theo đơn hàng! Vui lòng hoàn thành đơn hoặc hủy trước khi kiểm kê.")
+                else alert(`CẢNH BÁO: Trạng thái thùng không hợp lệ (${box.status}). Chỉ có thể kiểm kê thùng OPEN.`)
+
                 setLoading(false)
                 return
             }

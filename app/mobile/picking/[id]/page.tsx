@@ -513,7 +513,7 @@ export default function DoPickingPage() {
             </main>
 
             {!activeBoxId && !loading && allTasks.length > 0 && allTasks.every(t => t.status === 'COMPLETED') && (
-                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-slate-200 shadow-xl z-20">
+                <div className="fixed bottom-16 left-0 right-0 p-4 bg-white border-t border-slate-200 shadow-xl z-30">
                     <button onClick={handleCompleteJob} className="w-full h-14 bg-green-600 text-white font-black text-xl rounded-xl shadow-lg active:scale-95 transition-all">
                         HOÀN THÀNH JOB
                     </button>
