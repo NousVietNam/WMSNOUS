@@ -21,6 +21,7 @@ type ShippingRequest = {
     sale_staff_name?: string
     created_at: string
     shipped_at?: string
+    packed_at?: string
     item_count: number
     box_count: number
     subtotal: number
@@ -46,7 +47,7 @@ type DbOrder = {
     internal_staff?: { name: string } | null
     outbound_order_items?: { count: number }[]
     boxes?: { id: string }[]
-    picking_jobs?: { picking_tasks: { box_id: string }[] }[]
+    picking_jobs?: { completed_at: string, picking_tasks: { box_id: string }[] }[]
     outbound_shipments?: { box_count: number }[]
 }
 
@@ -76,11 +77,13 @@ export default function ShippingPage() {
                 .from('outbound_orders')
                 .select(`
                     *,
+                    customers (name),
                     destinations (name),
                     internal_staff (name),
                     outbound_order_items (id),
                     boxes (id),
                     picking_jobs (
+                        completed_at,
                         picking_tasks (
                             box_id
                         )
@@ -102,6 +105,7 @@ export default function ShippingPage() {
                     sale_staff_name: o.internal_staff?.name,
                     created_at: o.created_at,
                     shipped_at: o.shipped_at,
+                    packed_at: o.picking_jobs?.[0]?.completed_at,
                     item_count: o.outbound_order_items?.length || 0,
                     box_count: (() => {
                         const uniqueBoxes = new Set<string>()
@@ -125,9 +129,12 @@ export default function ShippingPage() {
             // If there's a manual job without an order, it's an edge case we might want to fix upstream.
             // For now, let's focus on the Order table as the single source for Shipping.
 
-            setRequests(allRequests.sort((a, b) =>
-                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-            ))
+            setRequests(allRequests.sort((a, b) => {
+                // Priority: PACKED > SHIPPED
+                if (a.status === 'PACKED' && b.status !== 'PACKED') return -1
+                if (a.status !== 'PACKED' && b.status === 'PACKED') return 1
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+            }))
 
         } catch (e: any) {
             console.error(e)
@@ -168,14 +175,14 @@ export default function ShippingPage() {
     }), { item_count: 0, box_count: 0, subtotal: 0, discount: 0, total: 0 })
 
     const getTypeBadge = (type: string) => {
-        if (type === 'ORDER') return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Đơn Hàng</Badge>
-        if (type === 'TRANSFER') return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">Điều Chuyển</Badge>
+        if (type === 'ORDER') return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">ORDER</Badge>
+        if (type === 'TRANSFER') return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">TRANSFER</Badge>
         return <Badge variant="outline">{type}</Badge>
     }
 
     const getStatusBadge = (status: string) => {
-        if (status === 'SHIPPED') return <Badge className="bg-green-600 hover:bg-green-700"><Truck className="w-3 h-3 mr-1" /> Đã Xuất Kho</Badge>
-        if (status === 'PACKED') return <Badge className="bg-blue-600 hover:bg-blue-700"><Package className="w-3 h-3 mr-1" /> Đã Đóng Hàng</Badge>
+        if (status === 'SHIPPED') return <Badge className="bg-green-600 hover:bg-green-700"><Truck className="w-3 h-3 mr-1" /> SHIPPED</Badge>
+        if (status === 'PACKED') return <Badge className="bg-blue-600 hover:bg-blue-700"><Package className="w-3 h-3 mr-1" /> PACKED</Badge>
         return <Badge variant="secondary">{status}</Badge>
     }
 
@@ -289,6 +296,7 @@ export default function ShippingPage() {
                                 <th className="px-4 py-3">Khách Hàng / Điểm Đích</th>
                                 <th className="px-4 py-3">NV Sale</th>
                                 <th className="px-4 py-3">Ngày Tạo</th>
+                                <th className="px-4 py-3">Ngày Đóng</th>
                                 <th className="px-4 py-3 text-center">SL Thùng</th>
                                 <th className="px-4 py-3 text-center">SL Item</th>
                                 <th className="px-4 py-3 text-right">Trước CK</th>
@@ -342,6 +350,14 @@ export default function ShippingPage() {
                                                     {format(new Date(req.shipped_at), 'dd/MM HH:mm')}
                                                 </div>
                                             )}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-600 space-y-1">
+                                            {req.packed_at ? (
+                                                <div className="flex items-center gap-1 text-[11px] text-blue-600 font-medium">
+                                                    <Package className="w-3 h-3" />
+                                                    {format(new Date(req.packed_at), 'dd/MM HH:mm')}
+                                                </div>
+                                            ) : '-'}
                                         </td>
                                         <td className="px-4 py-3 text-center font-bold text-indigo-600">
                                             {req.box_count}

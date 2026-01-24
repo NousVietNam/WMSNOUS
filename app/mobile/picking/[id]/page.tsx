@@ -159,6 +159,8 @@ export default function DoPickingPage() {
                 .from('picking_jobs')
                 .select(`
                     type, 
+                    type, 
+                    created_at,
                     started_at,
                     completed_at,
                     outbound_order:outbound_orders!outbound_order_id (
@@ -171,7 +173,8 @@ export default function DoPickingPage() {
 
             if (jobInfo) {
                 setJobType(jobInfo.type)
-                setStartedAt(jobInfo.started_at)
+                setJobType(jobInfo.type)
+                setStartedAt(jobInfo.started_at || jobInfo.created_at)
                 setCompletedAt(jobInfo.completed_at)
 
                 let type: string | undefined = undefined;
@@ -473,7 +476,7 @@ export default function DoPickingPage() {
                         </div>
                     </div>
                     {startedAt && (
-                        <div className="text-[10px] text-slate-400">Bắt đầu: {new Date(startedAt).toLocaleString('vi-VN')}</div>
+                        <div className="text-[10px] text-slate-400">Tạo: {new Date(startedAt).toLocaleString('vi-VN')}</div>
                     )}
                     <div className="flex justify-between items-center text-sm pt-2 border-t font-medium">
                         <div className="text-slate-600">Tiến độ: <b>{jobStats.pickedItems}/{jobStats.totalItems}</b></div>
@@ -485,7 +488,7 @@ export default function DoPickingPage() {
             <main className="flex-1 p-4 overflow-y-auto">
                 {loading ? <div className="text-center py-8">Đang tải...</div> : (
                     activeBoxId ? renderActiveBox() : (
-                        <div className="space-y-6 pb-24">
+                        <div className="space-y-6 pb-32">
                             {groups.map((loc, idx) => (
                                 <div key={idx} className="space-y-2">
                                     <h3 className="text-xs font-bold text-slate-400 uppercase border-b pb-1">📍 {loc.locationCode}</h3>
@@ -494,7 +497,7 @@ export default function DoPickingPage() {
                                             <div key={box.boxId} onClick={() => setActiveBoxId(box.boxId)} className={`rounded-xl border p-4 flex items-center justify-between ${box.status === 'COMPLETED' ? 'bg-green-50 opacity-60 border-green-200' : 'bg-white shadow-sm'}`}>
                                                 <div>
                                                     <div className="font-bold text-slate-800">{box.boxCode}</div>
-                                                    <div className="text-[10px] text-slate-500">{box.tasks.length} mã hā̀ng</div>
+                                                    <div className="text-[10px] text-slate-500">{box.tasks.length} mã sản phẩm</div>
                                                 </div>
                                                 <div className={`font-bold ${box.status === 'COMPLETED' ? 'text-green-600' : 'text-blue-600'}`}>
                                                     {box.pickedItems}/{box.totalItems}
