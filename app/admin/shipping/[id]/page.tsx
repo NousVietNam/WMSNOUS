@@ -79,9 +79,10 @@ export default function ShippingDetailPage() {
                     localData.picking_jobs.forEach((job: any) => {
                         job.picking_tasks?.forEach((task: any) => {
                             // Check if task is linked to a box
-                            if (task.product_id && task.boxes) {
+                            const code = task.outbox_code || task.boxes?.code
+                            if (task.product_id && code) {
                                 if (!map[task.product_id]) map[task.product_id] = new Set()
-                                map[task.product_id].add(task.boxes.code)
+                                map[task.product_id].add(code)
                             }
                         })
                     })

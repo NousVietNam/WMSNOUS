@@ -62,6 +62,10 @@ export default function OutboundDetailPage() {
     const [missingItems, setMissingItems] = useState<any[]>([])
     const [isMissingItemsDialogOpen, setIsMissingItemsDialogOpen] = useState(false)
 
+    // Allocation Dialog State
+    const [allocationJob, setAllocationJob] = useState<any>(null)
+    const [isAllocationDialogOpen, setIsAllocationDialogOpen] = useState(false)
+
     // State for job info
     const [pickingTime, setPickingTime] = useState<string | null>(null)
     const [packedTime, setPackedTime] = useState<string | null>(null)
@@ -90,10 +94,23 @@ export default function OutboundDetailPage() {
             .select(`*, products (id, sku, name, barcode), boxes:from_box_id (id, code)`)
             .eq('order_id', id)
 
-        // Fetch Picking Job info for Timestamps
+        // Fetch Picking Job info for Timestamps AND Allocation Details
         const { data: jobs } = await supabase
             .from('picking_jobs')
-            .select('created_at, completed_at, status')
+            .select(`
+                created_at, 
+                completed_at, 
+                status,
+                picking_tasks (
+                    id,
+                    quantity,
+                    box_id,
+                    location_id,
+                    products (sku, name),
+                    boxes (code),
+                    locations (code)
+                )
+            `)
             .or(`order_id.eq.${id},outbound_order_id.eq.${id}`)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -103,6 +120,8 @@ export default function OutboundDetailPage() {
             if (jobs[0].status === 'COMPLETED') {
                 setPackedTime(jobs[0].completed_at)
             }
+            // Store full job data for detailed view
+            setAllocationJob(jobs[0])
         }
 
         setOrder(orderData)
@@ -546,7 +565,7 @@ export default function OutboundDetailPage() {
             label: 'Phân Bổ Tồn Kho',
             status: 'ALLOCATED',
             isCompleted: ['ALLOCATED', 'READY', 'PICKING', 'PACKED', 'SHIPPED'].includes(order.status),
-            time: order.approved_at // Assume concurrent with approval or shortly after
+            time: ['ALLOCATED', 'READY', 'PICKING', 'PACKED', 'SHIPPED'].includes(order.status) ? order.approved_at : null
         },
         {
             id: 'picking',
@@ -801,6 +820,12 @@ export default function OutboundDetailPage() {
                                     Hủy Phân Bổ
                                 </button>
                             )}
+                            {(isAllocated || ['READY', 'PICKING', 'PACKED', 'SHIPPED'].includes(order.status)) && allocationJob && (
+                                <button onClick={() => setIsAllocationDialogOpen(true)} className="h-9 px-4 bg-white border text-blue-600 border-blue-200 rounded-lg hover:bg-blue-50 font-medium text-sm flex items-center gap-2">
+                                    <FileText className="w-4 h-4" />
+                                    Xem Phân Bổ
+                                </button>
+                            )}
                             {canCreateJob && (
                                 <button onClick={handleCreateJob} disabled={!!actionLoading} className="h-9 px-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium text-sm flex items-center gap-2">
                                     {actionLoading === 'job' && <Loader2 className="w-4 h-4 animate-spin" />}
@@ -885,6 +910,57 @@ export default function OutboundDetailPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Allocation Details Dialog */}
+            <Dialog open={isAllocationDialogOpen} onOpenChange={setIsAllocationDialogOpen}>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Chi Tiết Phân Bổ Tồn Kho</DialogTitle>
+                        <DialogDescription>
+                            Danh sách các vị trí và thùng hàng được hệ thống chỉ định lấy hàng.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {allocationJob?.picking_tasks?.length > 0 ? (
+                        <div className="border rounded-lg overflow-hidden">
+                            <table className="w-full text-sm">
+                                <thead className="bg-slate-50 border-b">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left font-medium text-slate-500">Sản Phẩm</th>
+                                        <th className="px-4 py-3 text-center font-medium text-slate-500">SL Cần Lấy</th>
+                                        <th className="px-4 py-3 text-left font-medium text-slate-500">Từ Thùng</th>
+                                        <th className="px-4 py-3 text-left font-medium text-slate-500">Tại Vị Trí</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    {allocationJob.picking_tasks.map((task: any) => (
+                                        <tr key={task.id} className="hover:bg-slate-50/50">
+                                            <td className="px-4 py-3">
+                                                <div className="font-medium text-slate-900">{task.products?.sku}</div>
+                                                <div className="text-xs text-slate-500 truncate max-w-[200px]">{task.products?.name}</div>
+                                            </td>
+                                            <td className="px-4 py-3 text-center font-bold text-indigo-600">
+                                                {task.quantity}
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-700">
+                                                <div className="flex items-center gap-2">
+                                                    <Package className="w-4 h-4 text-slate-400" />
+                                                    {task.boxes?.code || 'Hàng lẻ'}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-slate-700 font-mono text-xs">
+                                                {task.locations?.code || 'N/A'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-slate-500">Chưa có dữ liệu phân bổ.</div>
+                    )}
+                </DialogContent>
+            </Dialog>
 
             {/* Missing Items Dialog */}
             <Dialog open={isMissingItemsDialogOpen} onOpenChange={setIsMissingItemsDialogOpen}>

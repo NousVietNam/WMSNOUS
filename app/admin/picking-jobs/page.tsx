@@ -1,15 +1,14 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { Search, Trash2, Package, Loader2, RefreshCw, Upload, Download, AlertTriangle, X } from "lucide-react"
+import { Search, Trash2, Package, Loader2, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
-import * as XLSX from "xlsx"
 
 import { JobDetailDialog } from "./job-detail-dialog"
 
@@ -19,79 +18,10 @@ export default function PickingJobsPage() {
     const [filterStatus, setFilterStatus] = useState("ALL")
     const [searchTerm, setSearchTerm] = useState("")
     const [deletingId, setDeletingId] = useState<string | null>(null)
-    const [uploading, setUploading] = useState(false)
-    const fileInputRef = useRef<HTMLInputElement>(null)
 
     // Detail Dialog State
     const [detailId, setDetailId] = useState<string | null>(null)
     const [showDetail, setShowDetail] = useState(false)
-
-    // Upload Error State
-    const [uploadErrors, setUploadErrors] = useState<string[]>([])
-    const [showErrorDialog, setShowErrorDialog] = useState(false)
-
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0]
-        if (!file) return
-
-        setUploading(true)
-        setUploadErrors([])
-        try {
-            const data = await file.arrayBuffer()
-            const wb = XLSX.read(data)
-            const ws = wb.Sheets[wb.SheetNames[0]]
-            const rows = XLSX.utils.sheet_to_json<{ 'Box Code': string; SKU: string; Quantity: number }>(ws)
-
-            if (rows.length === 0) {
-                toast.error("File rỗng hoặc không đúng định dạng")
-                return
-            }
-
-            // Map to API format
-            const items = rows.map(r => ({
-                boxCode: String(r['Box Code']).trim(),
-                sku: String(r['SKU']).trim(),
-                quantity: Number(r['Quantity'])
-            })).filter(i => i.boxCode && i.sku && i.quantity > 0)
-
-            if (items.length === 0) {
-                toast.error("Không có dòng hợp lệ để xử lý")
-                return
-            }
-
-            // Call API
-            const res = await fetch('/api/picking-jobs/upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ items })
-            })
-
-            const result = await res.json()
-            if (!res.ok) {
-                // If API returns structured errors even on 400/500
-                if (result.errors?.length > 0) {
-                    setUploadErrors(result.errors)
-                    setShowErrorDialog(true)
-                } else {
-                    throw new Error(result.error || 'Lỗi tạo job')
-                }
-                return
-            }
-
-            toast.success(`Đã tạo Picking Job với ${result.tasksCreated} task(s)`)
-            if (result.errors?.length > 0) {
-                toast.warning(`Cảnh báo: ${result.errors.length} dòng lỗi`)
-                setUploadErrors(result.errors)
-                setShowErrorDialog(true)
-            }
-            fetchJobs()
-        } catch (error: any) {
-            toast.error("Lỗi: " + error.message)
-        } finally {
-            setUploading(false)
-            if (fileInputRef.current) fileInputRef.current.value = ''
-        }
-    }
 
     useEffect(() => {
         fetchJobs()
@@ -151,18 +81,10 @@ export default function PickingJobsPage() {
 
     const filteredJobs = jobs.filter(job => {
         const matchStatus = filterStatus === 'ALL' || job.status === filterStatus
-
-        // Consolidated logic since picking_jobs links to ONE outbound_orders
-        // But for clarity in UI, we check both order/transfer which actually point to same relation
-        // In unified schema: picking_jobs -> outbound_orders
         const orderCode = job.outbound_order?.code || ''
         const customerName = job.outbound_order?.customer?.name || ''
-        // For transfer, destination logic might need careful check if not fetched via outbound_orders relation
-        // Assuming outbound_orders has destination_id -> destination(name) relation if we updated query
-
         const search = searchTerm.toLowerCase()
         const matchSearch = orderCode.toLowerCase().includes(search) || customerName.toLowerCase().includes(search)
-
         return matchStatus && matchSearch
     })
 
@@ -208,37 +130,6 @@ export default function PickingJobsPage() {
                     <p className="text-sm text-muted-foreground">Theo dõi và quản lý công việc lấy hàng</p>
                 </div>
                 <div className="flex gap-2 w-full md:w-auto">
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileUpload}
-                        accept=".csv,.xlsx,.xls"
-                        className="hidden"
-                    />
-                    <Button
-                        variant="default"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading}
-                    >
-                        {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                        Upload Danh Sách
-                    </Button>
-                    <Button
-                        variant="outline"
-                        onClick={() => {
-                            const template = [
-                                ['Box Code', 'SKU', 'Quantity'],
-                                ['BOX-0001', 'ABC-123-XL', 2],
-                                ['BOX-0002', 'DEF-456-M', 1]
-                            ]
-                            const ws = XLSX.utils.aoa_to_sheet(template)
-                            const wb = XLSX.utils.book_new()
-                            XLSX.utils.book_append_sheet(wb, ws, 'Template')
-                            XLSX.writeFile(wb, 'picking_upload_template.xlsx')
-                        }}
-                    >
-                        <Download className="h-4 w-4 mr-2" /> Tải File Mẫu
-                    </Button>
                     <Button variant="outline" onClick={fetchJobs}><RefreshCw className="h-4 w-4 mr-2" /> Tải lại</Button>
                 </div>
             </div>
@@ -296,12 +187,11 @@ export default function PickingJobsPage() {
                                 const isManual = job.type === 'MANUAL_PICK'
                                 const isTransfer = order?.type === 'TRANSFER' || order?.type === 'INTERNAL'
                                 const code = isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : `PICK-${order?.code || 'N/A'}`
-                                const link = `/admin/outbound/${job.outbound_order_id || ''}` // Unified link
+                                const link = `/admin/outbound/${job.outbound_order_id || ''}`
                                 const info = isManual
                                     ? 'Upload thủ công'
-                                    : (order?.customer?.name || 'N/A') // Simplify for now, can add destination logic if fetched
+                                    : (order?.customer?.name || 'N/A')
 
-                                // Calculate task statistics
                                 const tasks = (job as any).picking_tasks || []
                                 const totalTasks = tasks.length
                                 const completedTasks = tasks.filter((t: any) => t.status === 'COMPLETED').length
@@ -316,7 +206,6 @@ export default function PickingJobsPage() {
                                                     }`}>
                                                     {isManual ? 'THỦ CÔNG' : (isTransfer ? 'TRANSFER' : 'ORDER')}
                                                 </span>
-                                                {/* Make Code Clickable for Detail View */}
                                                 <button
                                                     className="hover:underline text-blue-600 font-bold"
                                                     onClick={() => {
@@ -326,8 +215,6 @@ export default function PickingJobsPage() {
                                                 >
                                                     {code}
                                                 </button>
-
-                                                {/* Optional: Link to Source for non-manual */}
                                                 {!isManual && (
                                                     <Link href={link} className="text-xs text-slate-400 hover:text-slate-600 ml-1">
                                                         [Source]
@@ -345,7 +232,6 @@ export default function PickingJobsPage() {
                                             )}
                                         </td>
                                         <td className="p-3 text-slate-600">{info}</td>
-                                        {/* New columns for task statistics */}
                                         <td className="p-3 text-center">
                                             <span className="text-sm font-medium text-slate-700">{totalTasks}</span>
                                         </td>
@@ -405,35 +291,6 @@ export default function PickingJobsPage() {
                 open={showDetail}
                 onOpenChange={setShowDetail}
             />
-
-            {showErrorDialog && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[80vh] flex flex-col">
-                        <div className="p-4 border-b flex justify-between items-center">
-                            <h3 className="font-bold text-red-600 flex items-center gap-2">
-                                <AlertTriangle className="h-5 w-5" />
-                                Lỗi Upload ({uploadErrors.length})
-                            </h3>
-                            <button onClick={() => setShowErrorDialog(false)} className="text-slate-400 hover:text-slate-600">
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-                        <div className="p-4 overflow-y-auto flex-1 bg-slate-50">
-                            <ul className="space-y-2 text-sm font-mono text-slate-700">
-                                {uploadErrors.map((err, i) => (
-                                    <li key={i} className="bg-white p-2 border rounded border-red-100 flex gap-2">
-                                        <span className="text-red-500 font-bold">•</span>
-                                        {err}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                        <div className="p-4 border-t bg-slate-50 rounded-b-lg text-right">
-                            <Button onClick={() => setShowErrorDialog(false)}>Đóng</Button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     )
 }

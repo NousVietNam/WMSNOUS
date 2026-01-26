@@ -28,6 +28,23 @@ export async function POST(request: Request) {
         })
 
         if (error) {
+            // Check for Foreign Key Violation (likely Invalid User ID)
+            // Error code 23503 is foreign_key_violation
+            if (error.code === '23503') {
+                console.warn("Retrying confirm_picking_batch with NULL userId due to FK violation")
+                const { data: retryData, error: retryError } = await supabase.rpc('confirm_picking_batch', {
+                    p_task_ids: taskIds,
+                    p_outbox_id: outboxId,
+                    p_user_id: null
+                })
+
+                if (retryError) {
+                    console.error("RPC Retry Error:", retryError)
+                    return NextResponse.json({ success: false, error: retryError.message }, { status: 500 })
+                }
+                return NextResponse.json(retryData)
+            }
+
             console.error("RPC Error:", error)
             return NextResponse.json({ success: false, error: error.message }, { status: 500 })
         }
