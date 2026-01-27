@@ -72,13 +72,10 @@ export default function BoxDetailPage() {
             setHoldingSince(null)
         }
 
-        // Fetch Items in Box with last transaction info
+        // Fetch Items in Box (Unified Piece + Bulk)
         const { data: itemData } = await supabase
-            .from('inventory_items')
-            .select(`
-                *,
-                product:products(sku, name, barcode)
-            `)
+            .from('view_box_contents_unified')
+            .select('*')
             .eq('box_id', boxData.id)
 
         if (itemData) {
@@ -254,7 +251,6 @@ export default function BoxDetailPage() {
                                 </thead>
                                 <tbody>
                                     {items.map(item => {
-                                        const product = Array.isArray(item.product) ? item.product[0] : item.product
                                         return (
                                             <tr key={item.id} className="border-t">
                                                 <td className="p-3">
@@ -264,13 +260,13 @@ export default function BoxDetailPage() {
                                                     />
                                                 </td>
                                                 <td className="p-3">
-                                                    <div className="font-mono text-xs font-semibold text-slate-700">{product?.sku || '-'}</div>
+                                                    <div className="font-mono text-xs font-semibold text-slate-700">{item.sku || '-'}</div>
                                                 </td>
                                                 <td className="p-3">
-                                                    <div className="font-medium">{product?.name || '-'}</div>
+                                                    <div className="font-medium">{item.product_name || '-'}</div>
                                                 </td>
                                                 <td className="p-3">
-                                                    <div className="font-mono text-xs text-slate-500">{product?.barcode || '-'}</div>
+                                                    <div className="font-mono text-xs text-slate-500">{item.barcode || '-'}</div>
                                                 </td>
                                                 <td className="p-3 text-right font-bold">{item.quantity}</td>
                                                 <td className="p-3 text-xs text-slate-500">

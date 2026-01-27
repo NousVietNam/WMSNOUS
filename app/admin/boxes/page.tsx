@@ -52,6 +52,7 @@ export default function BoxesPage() {
     // Stats State - Separate from Boxes Data
     const [statsPiece, setStatsPiece] = useState({ total: 0, empty: 0, small: 0, medium: 0, large: 0 })
     const [statsBulk, setStatsBulk] = useState({ total: 0, empty: 0, small: 0, medium: 0, large: 0 })
+    const [maxCodes, setMaxCodes] = useState({ piece: 'N/A', bulk: 'N/A' })
 
     useEffect(() => {
         setPage(1) // Reset page on filter change
@@ -98,18 +99,17 @@ export default function BoxesPage() {
     useEffect(() => {
         fetchBoxes()
         fetchStats()
+        fetchMaxCodes()
     }, [page, statusFilter, searchTerm, sortColumn, sortDirection])
 
     const fetchBoxes = async () => {
         setLoading(true)
 
-        // Base Query
+        // Base Query using Unified View
         let query = supabase
-            .from('boxes')
+            .from('view_boxes_with_counts')
             .select(`
                 *, 
-                locations(code), 
-                inventory_items(quantity),
                 outbound_orders(id, code, status)
             `, { count: 'exact' })
 
@@ -143,7 +143,8 @@ export default function BoxesPage() {
             const mapped = data.map((b: any) => {
                 return {
                     ...b,
-                    item_count: b.inventory_items?.reduce((sum: number, i: any) => sum + (i.quantity || 0), 0) || 0,
+                    item_count: b.total_item_count,
+                    locations: { code: b.location_code },
                     holding_order: b.outbound_orders
                 }
             })
@@ -154,30 +155,54 @@ export default function BoxesPage() {
     }
 
     const fetchStats = async () => {
-        const fetchStatForType = async (type: 'PIECE' | 'BULK') => {
-            let query = supabase.from('boxes').select('id, inventory_items(quantity)')
-            query = query.eq('inventory_type', type)
-            if (statusFilter !== 'ALL') query = query.eq('status', statusFilter)
+        let query = supabase.from('view_boxes_with_counts').select('inventory_type, total_item_count')
 
-            const { data } = await query.limit(2000)
-            if (data) {
-                const boxesWithCount = data.map((b: any) => ({
-                    count: b.inventory_items?.reduce((s: number, i: any) => s + (i.quantity || 0), 0) || 0
-                }))
-                return {
-                    total: data.length,
-                    empty: boxesWithCount.filter(b => b.count === 0).length,
-                    small: boxesWithCount.filter(b => b.count > 0 && b.count < 50).length,
-                    medium: boxesWithCount.filter(b => b.count >= 50 && b.count < 100).length,
-                    large: boxesWithCount.filter(b => b.count >= 100).length
-                }
-            }
-            return { total: 0, empty: 0, small: 0, medium: 0, large: 0 }
+        // 1. Status Filter
+        if (statusFilter !== 'ALL') {
+            query = query.eq('status', statusFilter)
         }
 
-        const [p, b] = await Promise.all([fetchStatForType('PIECE'), fetchStatForType('BULK')])
-        setStatsPiece(p as any)
-        setStatsBulk(b as any)
+        // 2. Search
+        if (searchTerm) {
+            query = query.ilike('code', `%${searchTerm}%`)
+        }
+
+        const { data } = await query
+
+        if (data) {
+            const getStats = (type: string) => {
+                const filtered = data.filter((b: any) => b.inventory_type === type)
+                return {
+                    total: filtered.length,
+                    empty: filtered.filter((b: any) => b.total_item_count === 0).length,
+                    small: filtered.filter((b: any) => b.total_item_count > 0 && b.total_item_count < 50).length,
+                    medium: filtered.filter((b: any) => b.total_item_count >= 50 && b.total_item_count < 100).length,
+                    large: filtered.filter((b: any) => b.total_item_count >= 100).length
+                }
+            }
+            setStatsPiece(getStats('PIECE') as any)
+            setStatsBulk(getStats('BULK') as any)
+        }
+    }
+
+    const fetchMaxCodes = async () => {
+        const now = new Date()
+        const month = (now.getMonth() + 1).toString().padStart(2, '0')
+        const year = now.getFullYear().toString().slice(-2)
+
+        const getMax = async (prefix: string) => {
+            const { data } = await supabase.from('boxes')
+                .select('code')
+                .ilike('code', `${prefix}%`)
+                .order('code', { ascending: false })
+                .limit(1)
+            return data && data.length > 0 ? data[0].code : 'Chưa có'
+        }
+
+        const maxPiece = await getMax(`BOX-${month}${year}-`)
+        const maxBulk = await getMax(`INB-${month}${year}-`)
+
+        setMaxCodes({ piece: maxPiece, bulk: maxBulk })
     }
 
     // Inventory Type State
@@ -339,8 +364,8 @@ export default function BoxesPage() {
     // Drill down
     const handleViewItems = async (box: Box) => {
         setSelectedBox(box)
-        const { data } = await supabase.from('inventory_items')
-            .select('*, products(name, sku, barcode)')
+        const { data } = await supabase.from('view_box_contents_unified')
+            .select('*')
             .eq('box_id', box.id)
             .gt('quantity', 0)
         if (data) setBoxItems(data)
@@ -433,7 +458,7 @@ export default function BoxesPage() {
                                 />
                             </div>
 
-                            <div className="space-y-1">
+                            <div className="space-y-1 pt-6">
                                 <Label className="text-xs text-muted-foreground">Lọc Trạng Thái</Label>
                                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                                     <SelectTrigger>
@@ -548,6 +573,11 @@ export default function BoxesPage() {
                                 <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 col-span-2">
                                     <div className="text-2xl font-bold text-blue-700">{statsPiece.total}</div>
                                     <div className="text-xs text-blue-600 font-medium">Tổng Thùng</div>
+                                    <div className="mt-2 pt-2 border-t border-blue-200">
+                                        <div className="text-[10px] text-blue-500 uppercase font-bold">Mã lớn nhất (Tháng này)</div>
+                                        <div className="text-sm font-mono font-bold text-blue-800">{maxCodes.piece}</div>
+                                    </div>
+
                                 </div>
                                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                                     <div className="text-xl font-bold text-slate-700">{statsPiece.empty}</div>
@@ -578,6 +608,10 @@ export default function BoxesPage() {
                                 <div className="bg-purple-50 p-3 rounded-xl border border-purple-100 col-span-2">
                                     <div className="text-2xl font-bold text-purple-700">{statsBulk.total}</div>
                                     <div className="text-xs text-purple-600 font-medium">Tổng Thùng</div>
+                                    <div className="mt-2 pt-2 border-t border-purple-200">
+                                        <div className="text-[10px] text-purple-500 uppercase font-bold">Mã lớn nhất (Tháng này)</div>
+                                        <div className="text-sm font-mono font-bold text-purple-800">{maxCodes.bulk}</div>
+                                    </div>
                                 </div>
                                 <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                                     <div className="text-xl font-bold text-slate-700">{statsBulk.empty}</div>
@@ -747,14 +781,14 @@ export default function BoxesPage() {
                                                     <Package className="h-5 w-5 text-slate-500" />
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <div className="font-bold text-sm truncate">{item.products?.name || 'Sản phẩm không tên'}</div>
+                                                    <div className="font-bold text-sm truncate">{item.product_name || 'Sản phẩm không tên'}</div>
                                                     <div className="text-xs text-slate-500 flex flex-wrap gap-2 mt-0.5">
                                                         <span className="bg-slate-100 px-1.5 py-0.5 rounded font-mono text-slate-700 border">
-                                                            SKU: {item.products?.sku || '-'}
+                                                            SKU: {item.sku || '-'}
                                                         </span>
-                                                        {item.products?.barcode && (
+                                                        {item.barcode && (
                                                             <span className="bg-blue-50 px-1.5 py-0.5 rounded font-mono text-blue-700 border border-blue-100">
-                                                                BC: {item.products?.barcode}
+                                                                BC: {item.barcode}
                                                             </span>
                                                         )}
                                                     </div>
@@ -793,6 +827,6 @@ export default function BoxesPage() {
                     ))}
                 </div>
             </div>
-        </div >
+        </div>
     )
 }
