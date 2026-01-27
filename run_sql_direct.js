@@ -9,7 +9,12 @@ const supabase = createClient(
 
 async function run() {
     console.log("Reading SQL file...");
-    const sqlPath = 'database/migrations/migration_fix_box_flow_logic.sql';
+    const args = process.argv.slice(2);
+    const sqlPath = args[0] || 'database/migrations/migration_add_box_id_to_bulk_inventory.sql';
+    if (!fs.existsSync(sqlPath)) {
+        console.error(`File not found: ${sqlPath}`);
+        return;
+    }
     const sqlContent = fs.readFileSync(sqlPath, 'utf8');
 
     console.log("Executing SQL...");
