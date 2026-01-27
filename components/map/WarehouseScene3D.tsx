@@ -3,7 +3,7 @@
 
 import React, { useMemo, useRef, useState, useEffect } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { OrbitControls, Text, Html } from '@react-three/drei'
+import { OrbitControls, Text, Html, Billboard } from '@react-three/drei'
 import { EffectComposer, N8AO, Bloom } from '@react-three/postprocessing'
 import * as THREE from 'three'
 
@@ -45,15 +45,18 @@ interface WarehouseSceneProps {
     is3D: boolean
     highlightedIds: Set<string>
     selectedIds?: Set<string>
+    showEmptySlots?: boolean
+    employees?: Employee[]
     onStackClick: (stackId: string, isMultiSelect: boolean) => void
     onClearSelection?: () => void
 }
 
-const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick }: {
+const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, showEmptySlots, onStackClick }: {
     stacks: StackNode[],
     GRID_SIZE: number,
     highlightedIds: Set<string>
     selectedIds: Set<string>
+    showEmptySlots?: boolean
     onStackClick: (id: string, isMultiSelect: boolean) => void
 }) => {
     const meshRef = useRef<THREE.InstancedMesh>(null)
@@ -88,6 +91,9 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick 
 
     // Base Colors Ref to avoid re-calculating everything
     const baseColors = useRef<Float32Array | null>(null)
+
+    // NEW ref to track time for animation
+    const timeRef = useRef(0)
 
     // Initial Color Calculation (Run once or when stacks change)
     useEffect(() => {
@@ -150,11 +156,53 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick 
 
     }, [stacks, GRID_SIZE, highlightedIds, totalLevels, tempObject]) // Removed hoveredStackIdx
 
+    // Flashing Animation Logic
+    useFrame((state, delta) => {
+        if (!meshRef.current || !baseColors.current) return
+
+        // Only run if we actually show empty slots
+        if (showEmptySlots) {
+            timeRef.current += delta * 12 // Even faster flash
+            const flashIntensity = (Math.sin(timeRef.current) + 1) / 2 // 0 to 1
+
+            let idx = 0
+            let needsUpdate = false
+            const baseColor = new THREE.Color('#cbd5e1')
+            const targetColor = new THREE.Color('#ef4444') // RED
+            const flashColor = new THREE.Color()
+
+            stacks.forEach((s) => {
+                const levels = s.levels.length || 1
+
+                // Allow flashing for empty stacks OR specific empty logic you want
+                // Ensure we don't flash specialized types like OFFICE
+                const isSpecial = ['OFFICE', 'SHIPPING', 'RECEIVING'].includes(s.levels[0]?.type || '')
+                const isEmpty = !isSpecial && (s.total_boxes === 0)
+
+                if (isEmpty) {
+                    // Update color for these instances
+                    // Interpolate
+                    flashColor.copy(baseColor).lerp(targetColor, flashIntensity)
+
+                    for (let i = 0; i < levels; i++) {
+                        meshRef.current!.setColorAt(idx + i, flashColor)
+                    }
+                    needsUpdate = true
+                }
+                idx += levels
+            })
+
+            if (needsUpdate) {
+                if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
+            }
+        }
+    })
+
     useEffect(() => {
         if (!meshRef.current || !baseColors.current) return
 
-        // 1. Reset ALL instances to base colors
-        // This ensures unselected/unhovered items revert to their original state
+        // 1. Reset ALL instances to base colors FIRST
+        // This ensures unselected/unhovered/non-flashing items revert to their original state
         const count = totalLevels
         for (let i = 0; i < count; i++) {
             const r = baseColors.current[i * 3 + 0]
@@ -193,17 +241,11 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick 
             })
         }
 
+        // Force update immediately upon effect (toggle off empty slots, hover change, etc)
         if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
+        if (meshRef.current) meshRef.current.computeBoundingSphere()
 
-        // No need for prevHoveredRef logic anymore since we brute-force reset. 
-        // Performance should be fine for <10k instances.
-
-        // CRITICAL: Compute bounding sphere for Raycasting to work!
-        if (meshRef.current) {
-            meshRef.current.computeBoundingSphere()
-        }
-
-    }, [hoveredStackIdx, stacks, selectedIds, totalLevels])
+    }, [hoveredStackIdx, stacks, selectedIds, totalLevels, showEmptySlots]) // showEmptySlots dependency ensures reset when turned off
 
 
     return (
@@ -317,6 +359,79 @@ const Labels = ({ stacks, GRID_SIZE }: { stacks: StackNode[], GRID_SIZE: number 
     )
 }
 
+// --- Employee Markers ---
+export interface Employee {
+    id: string
+    name: string
+    locationCode: string
+    avatar?: string
+    lastActive: string
+}
+
+const EmployeeMarkers = ({ employees, stacks, GRID_SIZE }: { employees?: Employee[], stacks: StackNode[], GRID_SIZE: number }) => {
+    if (!employees || employees.length === 0) return null
+
+    return (
+        <group>
+            {employees.map((emp, i) => {
+                // Find location (Stack)
+                const stack = stacks.find(s => s.baseCode === emp.locationCode.split('-')[0] || s.levels.some(l => l.code === emp.locationCode))
+                if (!stack) return null
+
+                const x = (stack.pos_x * GRID_SIZE) + (stack.width * GRID_SIZE) / 2
+                const y = -((stack.pos_y * GRID_SIZE) + (stack.height * GRID_SIZE) / 2)
+
+                // Offset slightly to aisle (assuming aisle is 'front' of stack, typically y-1 or depending on rotation)
+                // For simplicity, just float above or near center
+                const z = (stack.levels.length * 80) + 40 // Float above stack
+
+                return (
+                    <group key={emp.id} position={[x, y, z]}>
+                        {/* Animated Marker (Dot) */}
+                        <mesh position={[0, 0, 0]}>
+                            <sphereGeometry args={[15, 16, 16]} />
+                            <meshStandardMaterial color="#ec4899" emissive="#ec4899" emissiveIntensity={0.5} />
+                        </mesh>
+
+                        {/* Name Tag */}
+                        <Billboard
+                            follow={true}
+                            lockX={false}
+                            lockY={false}
+                            lockZ={false} // Lock to prevent rolling
+                            position={[0, 0, 25]}
+                        >
+                            <Text
+                                fontSize={24}
+                                color="#ffffff"
+                                outlineWidth={2}
+                                outlineColor="#000000"
+                                anchorX="center"
+                                anchorY="bottom"
+                            >
+                                {emp.name}
+                            </Text>
+                            <Text
+                                position={[0, -12, 0]}
+                                fontSize={14}
+                                color="#e2e8f0"
+                                outlineWidth={1}
+                                outlineColor="#000000"
+                                anchorX="center"
+                                anchorY="top"
+                            >
+                                {emp.locationCode}
+                            </Text>
+                        </Billboard>
+                    </group>
+                )
+            })}
+        </group>
+    )
+}
+
+
+
 // --- Main Scene Component ---
 export default function WarehouseScene3D({
     stacks,
@@ -324,6 +439,8 @@ export default function WarehouseScene3D({
     GRID_SIZE,
     highlightedIds,
     selectedIds,
+    showEmptySlots,
+    employees, // Added this line
     onStackClick,
     onClearSelection
 }: WarehouseSceneProps) {
@@ -390,6 +507,9 @@ export default function WarehouseScene3D({
 
                     {/* Labels */}
                     <Labels stacks={stacks} GRID_SIZE={GRID_SIZE} />
+
+                    {/* Employee Markers */}
+                    <EmployeeMarkers employees={employees} stacks={stacks} GRID_SIZE={GRID_SIZE} />
 
                     {/* Walls/Doors (Simple Box Geometries) */}
                     {mapElements.map(el => {

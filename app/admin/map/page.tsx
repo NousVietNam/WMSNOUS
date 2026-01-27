@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import MemoizedStack from '@/components/map/MemoizedStack'
 import Link from "next/link"
-import { Save, ZoomIn, ZoomOut, Move, Grid, Layers, Loader2, MousePointer2, Info, Box, ArrowUp, ArrowDown, Search, X as SearchX, Home, Plus, Square, DoorOpen, Trash2, LayoutGrid } from "lucide-react"
+import { Grid, Layers, MousePointer2, ZoomIn, ZoomOut, Save, Search, MoreHorizontal, Info, Square, Link as LinkIcon, DoorOpen, Home, Box, LayoutGrid, Users, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
 import ShelfStacksLayer from '@/components/map/ShelfStacksLayer'
 import MapElementsLayer from '@/components/map/MapElementsLayer'
 import { Button } from "@/components/ui/button"
@@ -144,6 +144,28 @@ export default function WarehouseMap() {
             setLoading(false)
         }
     }, [])
+
+    // Employee Tracking
+    const [showEmployees, setShowEmployees] = useState(false)
+    const [employees, setEmployees] = useState<any[]>([]) // Using any[] to avoid strict type dependency hell, relying on passthrough
+
+    useEffect(() => {
+        if (!showEmployees || !is3D) return
+
+        const fetchEmployees = async () => {
+            try {
+                const res = await fetch('/api/map/employees')
+                const json = await res.json()
+                if (json.employees) setEmployees(json.employees)
+            } catch (e) {
+                console.error("Failed to fetch employees", e)
+            }
+        }
+
+        fetchEmployees()
+        const interval = setInterval(fetchEmployees, 15000) // Poll every 15s
+        return () => clearInterval(interval)
+    }, [showEmployees, is3D])
 
     useEffect(() => {
         fetchData()
@@ -583,6 +605,12 @@ export default function WarehouseMap() {
                             <span>Trống</span>
                         </button>
                     </div>
+                    <div className="flex glass-strong p-1 rounded-lg ml-2">
+                        <button onClick={() => setShowEmployees(!showEmployees)} className={`px-3 py-2 rounded-md text-sm font-semibold transition-all flex items-center gap-2 ${showEmployees ? 'bg-pink-500 text-white' : 'text-white/80 hover:bg-white/10'}`}>
+                            <Users size={18} />
+                            <span>Nhân Sự</span>
+                        </button>
+                    </div>
                     {mode === 'EDIT' && (
                         <div className="flex bg-white/10 p-1 rounded-lg ml-2 gap-1">
                             <button onMouseDown={(e) => { e.preventDefault(); setDrawMode(drawMode === 'WALL' ? 'NONE' : 'WALL') }} className={`p-2 rounded transition-colors ${drawMode === 'WALL' ? 'bg-white text-indigo-600' : 'text-white hover:bg-white/20'}`} title="Vẽ Tường"><Square size={18} /></button>
@@ -616,7 +644,7 @@ export default function WarehouseMap() {
 
                 {is3D && (
                     <div className="absolute inset-0 z-0">
-                        <WarehouseScene3D stacks={stacks} mapElements={mapElements} GRID_SIZE={GRID_SIZE} scale={scale} is3D={is3D} highlightedIds={highlightedIds} selectedIds={selectedIds}
+                        <WarehouseScene3D stacks={stacks} mapElements={mapElements} GRID_SIZE={GRID_SIZE} scale={scale} is3D={is3D} highlightedIds={highlightedIds} selectedIds={selectedIds} showEmptySlots={showEmptySlots} employees={showEmployees ? employees : undefined}
                             onStackClick={(id, isMultiSelect) => {
                                 setSelectedIds(prev => {
                                     const n = new Set(isMultiSelect ? prev : [])
