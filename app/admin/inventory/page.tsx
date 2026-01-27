@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
-import { Download, Package, Search, ChevronLeft, ChevronRight, Filter, X, ChevronDown, Check } from "lucide-react"
+import { Download, Package, Search, ChevronLeft, ChevronRight, Filter, X, ChevronDown, Check, Container, BoxIcon } from "lucide-react"
 import Barcode from 'react-barcode'
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
@@ -65,6 +65,7 @@ export default function InventoryPage() {
     const [searchTerm, setSearchTerm] = useState("")
     const [page, setPage] = useState(0)
     const [total, setTotal] = useState(0)
+    const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK'>('PIECE')
 
 
 
@@ -206,7 +207,7 @@ export default function InventoryPage() {
         fetchGlobalTotals()
 
         updateAvailableFilterOptions()
-    }, [searchTerm, filterWarehouse, filterLocation, filterBox, filterBrand, filterTarget, filterProductGroup, filterSeason, filterMonth, viewMode])
+    }, [searchTerm, filterWarehouse, filterLocation, filterBox, filterBrand, filterTarget, filterProductGroup, filterSeason, filterMonth, viewMode, inventoryType])
 
     const fetchWarehouses = async () => {
         const { data } = await supabase.from('warehouses').select('id, name, code').order('name')
@@ -312,74 +313,169 @@ export default function InventoryPage() {
 
     const fetchInventory = async () => {
         setLoading(true)
+        console.log("Fetching Inventory...", { inventoryType, viewMode, page, filters: { filterWarehouse, filterBox } })
 
         if (viewMode === 'SUMMARY') {
-            // CALL RPC FOR SUMMARY
-            const { data, error } = await supabase.rpc('get_inventory_grouped', {
-                p_page: page,
-                p_page_size: ITEMS_PER_PAGE,
-                p_warehouse_id: filterWarehouse !== "all" ? filterWarehouse : null,
-                p_location_code: filterLocation !== "all" ? filterLocation : null,
-                p_box_code: filterBox !== "all" ? filterBox : null,
-                p_brand: filterBrand !== "all" ? filterBrand : null,
-                p_target_audience: filterTarget !== "all" ? filterTarget : null,
-                p_product_group: filterProductGroup !== "all" ? filterProductGroup : null,
-                p_season: filterSeason !== "all" ? filterSeason : null,
-                p_launch_month: filterMonth !== "all" ? filterMonth : null,
-                p_search: searchTerm || null
-            })
+            if (inventoryType === 'BULK') {
+                // Fetch from bulk_inventory directly to satisfy user requirement (source = table)
+                let query = supabase
+                    .from('bulk_inventory')
+                    .select(`
+                        product_id,
+                        quantity,
+                        allocated_quantity,
+                        products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
+                        boxes!inner (code, locations (code))
+                    `)
 
-            if (error) {
-                console.error("Fetch Inventory Grouped Error:", error)
-                setGroupedItems([])
-                setTotal(0)
+                // Apply Product Filters
+                if (filterBrand !== "all") query = query.eq('products.brand', filterBrand)
+                if (filterTarget !== "all") query = query.eq('products.target_audience', filterTarget)
+                if (filterProductGroup !== "all") query = query.eq('products.product_group', filterProductGroup)
+                if (filterSeason !== "all") query = query.eq('products.season', filterSeason)
+                if (filterMonth !== "all") query = query.eq('products.launch_month', filterMonth)
+
+                // Apply Primary Filters (Warehouse/Box)
+                // Note: Warehouse filtering removed for Bulk as schema lacks the column on boxes/locations
+                if (filterBox !== "all") query = query.eq('boxes.code', filterBox)
+
+                if (searchTerm) {
+                    const s = searchTerm.toLowerCase()
+                    query = query.or(`sku.ilike.%${s}%,name.ilike.%${s}%,barcode.ilike.%${s}%`, { foreignTable: 'products' })
+                }
+
+                // Note: We fetch a larger chunk to aggregate in JS because we can't GROUP BY in Supabase
+                const { data, error } = await query.limit(1000)
+
+                if (error) {
+                    console.error("Fetch Bulk Inventory Error:", error)
+                    setGroupedItems([])
+                    setTotal(0)
+                } else {
+                    // Aggregate JS
+                    const map = new Map<string, any>()
+                    data?.forEach((row: any) => {
+                        if (filterLocation !== "all" && row.boxes?.locations?.code !== filterLocation) return
+
+                        const pid = row.product_id
+                        const existing = map.get(pid)
+                        if (existing) {
+                            existing.total_quantity += row.quantity
+                            existing.total_allocated += row.allocated_quantity
+                            existing.available_quantity = Math.max(0, existing.total_quantity - existing.total_allocated)
+                            // Add location detail if unique
+                            const locKey = `${row.boxes?.code}-${row.boxes?.locations?.code}`
+                            if (!existing.location_keys?.has(locKey)) {
+                                existing.location_details.push({
+                                    quantity: row.quantity,
+                                    boxes: { code: row.boxes?.code, locations: { code: row.boxes?.locations?.code } }
+                                })
+                                existing.location_keys.add(locKey)
+                            } else {
+                                // Update quantity in existing location detail
+                                const found = existing.location_details.find((d: any) => d.boxes?.code === row.boxes?.code)
+                                if (found) found.quantity += row.quantity
+                            }
+                        } else {
+                            map.set(pid, {
+                                ...row.products,
+                                product_id: pid,
+                                total_quantity: row.quantity,
+                                total_allocated: row.allocated_quantity,
+                                available_quantity: Math.max(0, row.quantity - row.allocated_quantity),
+                                location_keys: new Set([`${row.boxes?.code}-${row.boxes?.locations?.code}`]),
+                                location_details: [{
+                                    quantity: row.quantity,
+                                    boxes: { code: row.boxes?.code, locations: { code: row.boxes?.locations?.code } }
+                                }]
+                            })
+                        }
+                    })
+
+                    const items = Array.from(map.values())
+                    setGroupedItems(items)
+                    setTotal(items.length)
+                }
             } else {
-                setGroupedItems(data || [])
-                // Set total from the first item (all items have same total_count)
-                setTotal(data && data.length > 0 ? Number(data[0].total_count) : 0)
+                // PIECE INVENTORY (Existing RPC)
+                const { data, error } = await supabase.rpc('get_inventory_grouped', {
+                    p_page: page,
+                    p_page_size: ITEMS_PER_PAGE,
+                    p_warehouse_id: filterWarehouse !== "all" ? filterWarehouse : null,
+                    p_location_code: filterLocation !== "all" ? filterLocation : null,
+                    p_box_code: filterBox !== "all" ? filterBox : null,
+                    p_brand: filterBrand !== "all" ? filterBrand : null,
+                    p_target_audience: filterTarget !== "all" ? filterTarget : null,
+                    p_product_group: filterProductGroup !== "all" ? filterProductGroup : null,
+                    p_season: filterSeason !== "all" ? filterSeason : null,
+                    p_launch_month: filterMonth !== "all" ? filterMonth : null,
+                    p_search: searchTerm || null
+                })
+
+                if (error) {
+                    console.error("Fetch Inventory Grouped Error:", error)
+                    setGroupedItems([])
+                    setTotal(0)
+                } else {
+                    setGroupedItems(data || [])
+                    setTotal(data && data.length > 0 ? Number(data[0].total_count) : 0)
+                }
             }
         } else {
-            // DETAILED VIEW (Existing Logic)
-            // Dynamic Select: Use !inner for boxes if filtering by box to ensure correct filtering
-            let selectQuery = `
-                id, quantity, allocated_quantity, created_at, box_id, location_id, warehouse_id,
-                products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
-                locations (code)
-            `
-            if (filterBox !== "all") {
-                selectQuery += `, boxes!inner (code, locations (code))`
+            // DETAILED VIEW
+            let query
+
+            if (inventoryType === 'BULK') {
+                // BULK DETAIL VIEW
+                query = supabase
+                    .from('bulk_inventory')
+                    .select(`
+                        id, quantity, allocated_quantity, created_at, box_id,
+                        products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
+                        boxes!inner (code, locations (code))
+                    `, { count: 'exact' })
             } else {
-                selectQuery += `, boxes (code, locations (code))`
+                // PIECE DETAIL VIEW (Existing)
+                let selectQuery = `
+                    id, quantity, allocated_quantity, created_at, box_id, location_id, warehouse_id,
+                    products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
+                    locations (code)
+                `
+                if (filterBox !== "all") {
+                    selectQuery += `, boxes!inner (code, locations (code))`
+                } else {
+                    selectQuery += `, boxes (code, locations (code))`
+                }
+
+                query = supabase
+                    .from('inventory_items')
+                    .select(selectQuery, { count: 'exact' })
             }
 
-            let query = supabase
-                .from('inventory_items')
-                .select(selectQuery, { count: 'exact' })
-                .gt('quantity', 0)
+            query = query.gt('quantity', 0)
 
             // SERVER-SIDE FILTERS
-            if (filterWarehouse !== "all") query = query.eq('warehouse_id', filterWarehouse)
+            // Note: Field names must differ slightly between bulk_inventory and inventory_items logic?
+            // Actually, products.* is same. boxes.* is same.
+            // warehouse_id is direct in inventory_items, but via boxes in bulk_inventory.
+
+            if (filterWarehouse !== "all" && inventoryType !== 'BULK') {
+                query = query.eq('warehouse_id', filterWarehouse)
+            }
+
             if (filterBrand !== "all") query = query.eq('products.brand', filterBrand)
             if (filterTarget !== "all") query = query.eq('products.target_audience', filterTarget)
             if (filterProductGroup !== "all") query = query.eq('products.product_group', filterProductGroup)
             if (filterSeason !== "all") query = query.eq('products.season', filterSeason)
             if (filterMonth !== "all") query = query.eq('products.launch_month', filterMonth)
-            if (filterBox !== "all") query = query.eq('boxes.code', filterBox)
 
-            // Search Logic
-            if (searchTerm) {
-                // Note: Simple ILIKE on joined tables is hard without RPC or complex query.
-                // We will rely on Client-Side filtering for Search in Detailed Mode (as originally implemented)
-                // OR we accept that Pagination + Search on DB is better.
-                // For now, let's keep original behavior: Fetch page, then filter? 
-                // Original Code: "isGlobalSearch" check.
-                // But wait, "query = query.range()" was conditional.
-
-                // Re-implementing simplified search for DB side or keeping hybrid:
-                // The original code fetched ALL data if search was active. That's slow.
-                // Let's stick to the previous hybrid logic for Detailed View to minimize regression.
+            // Box Filter
+            if (filterBox !== "all") {
+                // If BULK, boxes is joined !inner above? Yes.
+                query = query.eq('boxes.code', filterBox)
             }
 
+            // Search Logic (Client side mostly, or full scan? kept existing logic)
             const isGlobalSearch = searchTerm.length > 0 || filterLocation !== "all";
 
             if (!isGlobalSearch) {
@@ -405,23 +501,11 @@ export default function InventoryPage() {
                         item.products?.barcode?.toLowerCase().includes(s)
                     ))
                     setTotal(inventoryItems.length)
-
-                    // Manually paginate the filtered result for display?
-                    // Previous code just displayed "filteredItems". 
-                    // We need to set 'items' to the full filtered list? 
-                    // No, 'items' is used for display.
-                    // If isGlobalSearch, we have ALL items.
-                    // The Table uses 'filteredItems' variable which further filters 'items'.
-                    // If we fetch ALL here, 'items' = ALL. 'filteredItems' will re-filter (redundant but safe).
                 } else {
                     setTotal(count || 0)
                 }
 
                 setItems(inventoryItems)
-
-                // Fetch View Data for these items (for soft allocation in Detail View?)
-                // Detail view doesn't usually show Soft Allocation per item/row, only Summary does.
-                // But we keep it if needed.
             }
         }
         setLoading(false)
@@ -431,68 +515,84 @@ export default function InventoryPage() {
         setCalculatingTotals(true)
 
         try {
-            // Updated optimization: Call Database RPC
-            // Passes current filters to server for calculation
-            const { data, error } = await supabase.rpc('get_inventory_summary', {
-                p_warehouse_id: filterWarehouse !== "all" ? filterWarehouse : null,
-                p_location_code: filterLocation !== "all" ? filterLocation : null,
-                p_box_code: filterBox !== "all" ? filterBox : null,
-                p_brand: filterBrand !== "all" ? filterBrand : null,
-                p_target_audience: filterTarget !== "all" ? filterTarget : null,
-                p_product_group: filterProductGroup !== "all" ? filterProductGroup : null,
-                p_season: filterSeason !== "all" ? filterSeason : null,
-                p_launch_month: filterMonth !== "all" ? filterMonth : null,
-                p_search: searchTerm || null
-            })
+            if (inventoryType === 'BULK') {
+                // Fetch from view_product_availability_bulk
+                let query = supabase
+                    .from('view_product_availability_bulk')
+                    .select('total_quantity, hard_allocated, soft_booked_sale, soft_booked_gift, soft_booked_internal, soft_booked_transfer')
 
-            if (error) {
-                console.error("RPC Error (falling back to client-side calc):", error)
-                setTotals({
-                    quantity: 0,
-                    allocated: 0,
-                    available: 0,
-                    approved_sale: 0,
-                    approved_gift: 0,
-                    approved_internal: 0,
-                    approved_transfer: 0
-                })
-            } else if (data && data.length > 0) {
-                const result = data[0]
+                // Apply Product-level Filters (Warehouse not currently in View schema cache)
+                if (filterBrand !== "all") query = query.eq('brand', filterBrand)
+                if (filterTarget !== "all") query = query.eq('target_audience', filterTarget)
+                if (filterProductGroup !== "all") query = query.eq('product_group', filterProductGroup)
+                if (filterSeason !== "all") query = query.eq('season', filterSeason)
+                if (filterMonth !== "all") query = query.eq('launch_month', filterMonth)
 
-                // Use pre-calculated values from database
-                // Detail Tab: available_detail = Total - Hard
-                // Summary Tab: available_summary = Total - Hard - Soft
-                setTotals({
-                    quantity: Number(result.total_quantity || 0),
-                    allocated: Number(result.total_allocated || 0),
-                    approved_sale: Number(result.total_approved_sale || 0),
-                    approved_gift: Number(result.total_approved_gift || 0),
-                    approved_internal: Number(result.total_approved_internal || 0),
-                    approved_transfer: Number(result.total_approved_transfer || 0),
-                    available: Number(viewMode === 'DETAILED'
-                        ? (result.available_detail || 0)
-                        : (result.available_summary || 0))
-                })
+                if (searchTerm) {
+                    const s = searchTerm.toLowerCase()
+                    query = query.or(`sku.ilike.%${s}%,name.ilike.%${s}%,barcode.ilike.%${s}%`)
+                }
+
+                const { data, error } = await query
+
+                if (error) {
+                    console.error("Fetch Bulk View Totals Error:", error)
+                    setTotals({ quantity: 0, allocated: 0, available: 0, approved_sale: 0, approved_gift: 0, approved_internal: 0, approved_transfer: 0 })
+                } else {
+                    // Reduce to sums
+                    const sums = (data || []).reduce((acc: any, curr: any) => ({
+                        qty: acc.qty + Number(curr.total_quantity || 0),
+                        hard: acc.hard + Number(curr.hard_allocated || 0),
+                        sale: acc.sale + Number(curr.soft_booked_sale || 0),
+                        gift: acc.gift + Number(curr.soft_booked_gift || 0),
+                        internal: acc.internal + Number(curr.soft_booked_internal || 0),
+                        transfer: acc.transfer + Number(curr.soft_booked_transfer || 0)
+                    }), { qty: 0, hard: 0, sale: 0, gift: 0, internal: 0, transfer: 0 })
+
+                    setTotals({
+                        quantity: sums.qty,
+                        allocated: sums.hard,
+                        approved_sale: sums.sale,
+                        approved_gift: sums.gift,
+                        approved_internal: sums.internal,
+                        approved_transfer: sums.transfer,
+                        available: Math.max(0, sums.qty - sums.hard - sums.sale - sums.gift - sums.internal - sums.transfer)
+                    })
+                }
+
             } else {
-                // If RPC returns no data (e.g., no items match filters), set totals to zero
-                setTotals({
-                    quantity: 0,
-                    allocated: 0,
-                    approved: 0,
-                    available: 0
+                // PIECE INVENTORY (Existing RPC)
+                const { data, error } = await supabase.rpc('get_inventory_summary', {
+                    p_warehouse_id: filterWarehouse !== "all" ? filterWarehouse : null,
+                    p_location_code: filterLocation !== "all" ? filterLocation : null,
+                    p_box_code: filterBox !== "all" ? filterBox : null,
+                    p_brand: filterBrand !== "all" ? filterBrand : null,
+                    p_target_audience: filterTarget !== "all" ? filterTarget : null,
+                    p_product_group: filterProductGroup !== "all" ? filterProductGroup : null,
+                    p_season: filterSeason !== "all" ? filterSeason : null,
+                    p_launch_month: filterMonth !== "all" ? filterMonth : null,
+                    p_search: searchTerm || null
                 })
+
+                if (error) {
+                    console.error("RPC Error (falling back to client-side calc):", error)
+                    setTotals({ quantity: 0, allocated: 0, available: 0, approved_sale: 0, approved_gift: 0, approved_internal: 0, approved_transfer: 0 })
+                } else if (data && data.length > 0) {
+                    const result = data[0]
+                    setTotals({
+                        quantity: Number(result.total_quantity || 0),
+                        allocated: Number(result.total_allocated || 0),
+                        approved_sale: Number(result.total_approved_sale || 0),
+                        approved_gift: Number(result.total_approved_gift || 0),
+                        approved_internal: Number(result.total_approved_internal || 0),
+                        approved_transfer: Number(result.total_approved_transfer || 0),
+                        available: Number(viewMode === 'DETAILED' ? (result.available_detail || 0) : (result.available_summary || 0))
+                    })
+                }
             }
         } catch (err) {
             console.error(err)
-            setTotals({
-                quantity: 0,
-                allocated: 0,
-                available: 0,
-                approved_sale: 0,
-                approved_gift: 0,
-                approved_internal: 0,
-                approved_transfer: 0
-            })
+            setTotals({ quantity: 0, allocated: 0, available: 0, approved_sale: 0, approved_gift: 0, approved_internal: 0, approved_transfer: 0 })
         }
         setCalculatingTotals(false)
     }
@@ -541,16 +641,35 @@ export default function InventoryPage() {
 
     const handleExport = async () => {
         try {
-            toast.info("Đang tải dữ liệu toàn hệ thống...")
-            const { data, error } = await supabase
-                .from('inventory_items')
-                .select(`
-                    id, quantity, allocated_quantity, created_at,
-                    products!inner (sku, name, barcode, brand, target_audience, product_group, season, launch_month),
-                    boxes (code, locations (code)),
-                    locations (code)
-                `)
-                .order('created_at', { ascending: false })
+            toast.info(`Đang tải dữ liệu ${inventoryType === 'BULK' ? 'Kho Sỉ' : 'Kho Lẻ'}...`)
+
+            let data: any[] | null = null
+            let error: any = null
+
+            if (inventoryType === 'BULK') {
+                const { data: bulkData, error: bulkError } = await supabase
+                    .from('bulk_inventory')
+                    .select(`
+                        id, quantity, allocated_quantity, created_at,
+                        products!inner (sku, name, barcode, brand, target_audience, product_group, season, launch_month),
+                        boxes (code, locations (code))
+                    `)
+                    .order('created_at', { ascending: false })
+                data = bulkData
+                error = bulkError
+            } else {
+                const { data: pieceData, error: pieceError } = await supabase
+                    .from('inventory_items')
+                    .select(`
+                        id, quantity, allocated_quantity, created_at,
+                        products!inner (sku, name, barcode, brand, target_audience, product_group, season, launch_month),
+                        boxes (code, locations (code)),
+                        locations (code)
+                    `)
+                    .order('created_at', { ascending: false })
+                data = pieceData
+                error = pieceError
+            }
 
             if (error) throw error
             if (!data) return
@@ -568,15 +687,18 @@ export default function InventoryPage() {
                 'Hàng Giữ': item.allocated_quantity || 0,
                 'Khả Dụng': Math.max(0, item.quantity - (item.allocated_quantity || 0)),
                 'Thùng': item.boxes?.code || '-',
-                'Vị Trí': item.boxes?.locations?.code || item.locations?.code || '-'
+                'Vị Trí': inventoryType === 'BULK'
+                    ? (item.boxes?.locations?.code || '-')
+                    : (item.boxes?.locations?.code || item.locations?.code || '-')
             }))
 
             const ws = XLSX.utils.json_to_sheet(exportData)
             const wb = XLSX.utils.book_new()
-            XLSX.utils.book_append_sheet(wb, ws, "Ton_Kho_Full")
+            XLSX.utils.book_append_sheet(wb, ws, inventoryType === 'BULK' ? "Kho_Si_Full" : "Kho_Le_Full")
 
             // Direct XLSX export (most compatible)
-            XLSX.writeFile(wb, `Inventory_Full_${new Date().toISOString().slice(0, 10)}.xlsx`)
+            const fileName = `Inventory_${inventoryType}_${new Date().toISOString().slice(0, 10)}.xlsx`
+            XLSX.writeFile(wb, fileName)
 
             toast.success("Xuất dữ liệu thành công!")
         } catch (error: any) {
@@ -606,7 +728,8 @@ export default function InventoryPage() {
         filterProductGroup !== "all",
         filterSeason !== "all",
         filterMonth !== "all",
-        searchTerm !== ""
+        searchTerm !== "",
+        inventoryType // Include this to confirm filter changes
     ].filter(Boolean).length
 
     return (
@@ -620,19 +743,38 @@ export default function InventoryPage() {
                         Tồn Kho ({total})
                     </h1>
 
-                    {/* WAREHOUSE FILTER UI HERE */}
-                    <div className="w-[180px]">
-                        <Select value={filterWarehouse} onValueChange={setFilterWarehouse}>
-                            <SelectTrigger className="h-10 bg-white border-2 border-primary/20 hover:border-primary/50 text-slate-900 font-medium">
-                                <SelectValue placeholder="Chọn Kho hàng" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all" className="font-bold">Tất cả kho</SelectItem>
-                                {warehouses.map(wh => (
-                                    <SelectItem key={wh.id} value={wh.id}>{wh.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                    {/* INVENTORY TYPE TOGGLE - Replaces Warehouse Filter */}
+                    <div className="bg-slate-100 p-1 rounded-md flex border">
+                        <button
+                            onClick={() => {
+                                setInventoryType('PIECE')
+                                setPage(0)
+                            }}
+                            className={cn(
+                                "px-4 py-2 text-sm font-medium rounded-sm transition-all flex items-center gap-2",
+                                inventoryType === 'PIECE'
+                                    ? "bg-white text-primary shadow-sm font-bold"
+                                    : "text-slate-500 hover:text-slate-900"
+                            )}
+                        >
+                            <BoxIcon className="w-4 h-4" />
+                            Kho Lẻ
+                        </button>
+                        <button
+                            onClick={() => {
+                                setInventoryType('BULK')
+                                setPage(0)
+                            }}
+                            className={cn(
+                                "px-4 py-2 text-sm font-medium rounded-sm transition-all flex items-center gap-2",
+                                inventoryType === 'BULK'
+                                    ? "bg-white text-purple-600 shadow-sm font-bold"
+                                    : "text-slate-500 hover:text-slate-900"
+                            )}
+                        >
+                            <Container className="w-4 h-4" />
+                            Kho Sỉ
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-2 w-full md:w-auto">
@@ -696,6 +838,13 @@ export default function InventoryPage() {
                 {/* FILTERS - Compact (Removed 'Bộ Lọc' header) */}
                 <div className="bg-white p-3 rounded-md border shadow-sm">
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                        {/* WAREHOUSE FILTER REMOVED - Replaced by Top Toggle */}
+                        {/* If we want to keep it as an option inside 'Bulk', we can add it back conditionally, 
+                            but user asked to REPLACE it. 
+                            If 'Bulk' supports filtering by Warehouse, we might need it back later? 
+                            For now, we strictly follow: "Replace filter with toggle".
+                        */}
+
                         <SearchableFilter
                             label="Vị trí"
                             placeholder="Vị trí"
