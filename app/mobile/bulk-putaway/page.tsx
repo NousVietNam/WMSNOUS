@@ -18,12 +18,95 @@ function BulkPutAwayContent() {
     const [items, setItems] = useState<{ sku: string, qty: number, productId?: string, name: string, barcode?: string }[]>([])
     const [existingItems, setExistingItems] = useState<any[]>([])
 
+    const [selectedHistory, setSelectedHistory] = useState<any>(null)
+
+    const getLocalDate = () => {
+        const d = new Date()
+        d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+        return d.toISOString().split('T')[0]
+    }
+    const [historyDate, setHistoryDate] = useState(getLocalDate())
+    const [dailyHistory, setDailyHistory] = useState<any[]>([])
+
     // Temp inputs
     const [sku, setSku] = useState("")
     const [qty, setQty] = useState("1")
     const [loading, setLoading] = useState(false)
     const [scannedProduct, setScannedProduct] = useState<{ id: string, name: string, sku: string, barcode?: string } | null>(null)
     const [recapData, setRecapData] = useState<{ boxCode: string, totalQty: number, itemsCount: number } | null>(null)
+
+    useEffect(() => {
+        if (session?.user?.id) fetchHistory()
+    }, [session, historyDate])
+
+    const fetchHistory = async () => {
+        const start = historyDate + 'T00:00:00'
+        const end = historyDate + 'T23:59:59'
+
+        // Check if user is admin
+        const { data: profile } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', session?.user?.id)
+            .single()
+
+        let query = supabase
+            .from('transactions')
+            .select('created_at, sku, quantity, to_box:to_box_id(code), user_id, users!user_id(name)')
+            .eq('type', 'IMPORT')
+            .eq('entity_type', 'BULK')
+            .gte('created_at', start)
+            .lte('created_at', end)
+            .order('created_at', { ascending: false })
+
+        if (profile?.role !== 'admin') {
+            query = query.eq('user_id', session?.user?.id)
+        }
+
+        const { data } = await query
+
+        if (data) {
+            const skus = [...new Set(data.map((t: any) => t.sku).filter(Boolean))]
+            const { data: products } = await supabase
+                .from('products')
+                .select('sku, name, barcode')
+                .in('sku', skus)
+
+            const productMap = new Map(products?.map(p => [p.sku, p]) || [])
+
+            const history = data.reduce((acc: any[], curr: any) => {
+                const time = new Date(curr.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+                const boxCode = curr.to_box?.code || 'Unknown'
+                const qty = curr.quantity || 0
+                const sku = curr.sku || 'Unknown'
+                const product = productMap.get(sku)
+                const name = product?.name || 'Sản phẩm'
+                const barcode = product?.barcode || sku
+
+                const existing = acc.find(h => h.boxCode === boxCode && h.time === time)
+                if (existing) {
+                    existing.totalQty += qty
+                    const existingItem = existing.items.find((i: any) => i.sku === sku)
+                    if (existingItem) {
+                        existingItem.qty += qty
+                    } else {
+                        existing.items.push({ sku, name, barcode, qty })
+                    }
+                    existing.skuCount = existing.items.length
+                } else {
+                    acc.push({
+                        time,
+                        boxCode,
+                        totalQty: qty,
+                        skuCount: 1,
+                        items: [{ sku, name, barcode, qty }]
+                    })
+                }
+                return acc
+            }, [])
+            setDailyHistory(history)
+        }
+    }
 
     // Step 1: Scan Box
     const handleScanBox = async () => {
@@ -176,6 +259,9 @@ function BulkPutAwayContent() {
             const totalQty = items.reduce((a, b) => a + b.qty, 0)
             setRecapData({ boxCode, totalQty, itemsCount: items.length })
 
+            // Refresh history
+            fetchHistory()
+
             // Reset
             setStep(1)
             setItems([])
@@ -199,24 +285,63 @@ function BulkPutAwayContent() {
 
             <main className="p-4 space-y-4">
                 {step === 1 && (
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-4">
-                        <div className="text-center font-bold text-lg text-slate-800">Bước 1: Quét Thùng INB</div>
-                        <MobileScannerInput
-                            autoFocus
-                            placeholder="Quét mã Thùng (INB-...)"
-                            value={boxCode}
-                            onChange={setBoxCode}
-                            onEnter={handleScanBox}
-                            className="h-14 text-lg text-center font-bold border-amber-300"
-                        />
-                        <button
-                            className="w-full h-12 bg-amber-600 text-white rounded-lg font-bold shadow-md active:scale-95 transition-transform disabled:opacity-50"
-                            onClick={handleScanBox}
-                            disabled={loading}
-                        >
-                            {loading ? 'Đang Kiểm Tra...' : 'Bắt Đầu Nhập Tồn'}
-                        </button>
-                    </div>
+                    <>
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-4">
+                            <div className="text-center font-bold text-lg text-slate-800">Bước 1: Quét Thùng INB</div>
+                            <MobileScannerInput
+                                autoFocus
+                                placeholder="Quét mã Thùng (INB-...)"
+                                value={boxCode}
+                                onChange={setBoxCode}
+                                onEnter={handleScanBox}
+                                className="h-14 text-lg text-center font-bold border-amber-300"
+                            />
+                            <button
+                                className="w-full h-12 bg-amber-600 text-white rounded-lg font-bold shadow-md active:scale-95 transition-transform disabled:opacity-50"
+                                onClick={handleScanBox}
+                                disabled={loading}
+                            >
+                                {loading ? 'Đang Kiểm Tra...' : 'Bắt Đầu Nhập Tồn'}
+                            </button>
+                        </div>
+
+                        {/* Daily History */}
+                        <div className="mt-8">
+                            <div className="flex justify-between items-end mb-2 px-1">
+                                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Lịch sử</h3>
+                                <input
+                                    type="date"
+                                    value={historyDate}
+                                    onChange={(e) => setHistoryDate(e.target.value)}
+                                    className="text-xs bg-white border border-slate-200 rounded px-2 py-1 font-medium text-slate-600 focus:outline-none focus:border-blue-400"
+                                />
+                            </div>
+                            {dailyHistory.length === 0 ? (
+                                <div className="text-center py-8 text-slate-400 text-sm bg-white rounded-xl border border-dashed">
+                                    Chưa có hoạt động nào
+                                </div>
+                            ) : (
+                                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                    {dailyHistory.map((h, i) => (
+                                        <div
+                                            key={i}
+                                            className="flex items-center justify-between p-3 border-b border-slate-100 last:border-0 active:bg-slate-50 transition-colors cursor-pointer"
+                                            onClick={() => setSelectedHistory(h)}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="text-xs font-mono text-slate-400">{h.time}</div>
+                                                <div>
+                                                    <div className="font-bold text-slate-700">{h.boxCode}</div>
+                                                    <div className="text-[10px] text-slate-500 font-medium">{h.skuCount} mã hàng</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-sm font-semibold text-amber-600">+{h.totalQty} SP</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </>
                 )}
 
                 {step === 2 && (
@@ -328,9 +453,61 @@ function BulkPutAwayContent() {
                     </div>
                 </div>
             )}
+
+            {/* Detail History Modal */}
+            {selectedHistory && (
+                <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 animate-in fade-in">
+                    <div className="bg-white w-full rounded-t-2xl p-4 shadow-2xl animate-in slide-in-from-bottom h-[80vh] flex flex-col">
+                        <div className="flex justify-between items-center mb-4 border-b pb-4">
+                            <div>
+                                <div className="text-xs text-amber-400 font-bold uppercase text-amber-600">Chi Tiết Nhập Tồn Sỉ</div>
+                                <div className="text-2xl font-black text-slate-800">{selectedHistory.boxCode}</div>
+                                <div className="text-xs text-slate-500">{selectedHistory.time}</div>
+                            </div>
+                            <button
+                                onClick={() => setSelectedHistory(null)}
+                                className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto space-y-3">
+                            {selectedHistory.items?.map((item: any, i: number) => (
+                                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                    <div className="flex-1 mr-4">
+                                        <div className="font-bold text-slate-800 text-sm line-clamp-2">{item.name}</div>
+                                        <div className="flex gap-2 mt-1 flex-wrap">
+                                            <div className="text-xs font-mono text-slate-500 bg-white inline-block px-1.5 py-0.5 rounded border border-slate-200">
+                                                <span className="text-slate-400">SKU:</span> {item.sku}
+                                            </div>
+                                            {item.barcode && item.barcode !== item.sku && (
+                                                <div className="text-xs font-mono text-amber-600 bg-amber-50 inline-block px-1.5 py-0.5 rounded border border-amber-200">
+                                                    <span className="text-amber-400">BC:</span> {item.barcode}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="font-bold text-amber-600 bg-amber-50 px-3 py-2 rounded-lg text-lg min-w-[3rem] text-center">
+                                        x{item.qty}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-slate-100">
+                            <div className="flex justify-between items-center bg-slate-900 text-white p-4 rounded-xl">
+                                <div className="text-sm font-medium opacity-80">Tổng cộng</div>
+                                <div className="text-xl font-bold">{selectedHistory.totalQty} sản phẩm</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
+
 
 export default function BulkPutAwayPage() {
     return (
