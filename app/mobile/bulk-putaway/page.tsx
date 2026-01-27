@@ -163,7 +163,7 @@ function BulkPutAwayContent() {
         try {
             const { data, error } = await supabase.rpc('process_bulk_putaway', {
                 p_box_code: boxCode,
-                p_items: items.map(i => ({ productId: i.productId, qty: i.qty, sku: i.sku })),
+                p_items: items.map(i => ({ product_id: i.productId, qty: i.qty, sku: i.sku })),
                 p_user_id: session?.user?.id,
                 p_reference: 'Ton_dau_ky'
             })
