@@ -317,84 +317,28 @@ export default function InventoryPage() {
 
         if (viewMode === 'SUMMARY') {
             if (inventoryType === 'BULK') {
-                // Fetch from bulk_inventory directly to satisfy user requirement (source = table)
-                let query = supabase
-                    .from('bulk_inventory')
-                    .select(`
-                        product_id,
-                        quantity,
-                        allocated_quantity,
-                        products!inner (id, sku, name, barcode, image_url, brand, target_audience, product_group, season, launch_month),
-                        boxes!inner (code, locations (code))
-                    `)
-
-                // Apply Product Filters
-                if (filterBrand !== "all") query = query.eq('products.brand', filterBrand)
-                if (filterTarget !== "all") query = query.eq('products.target_audience', filterTarget)
-                if (filterProductGroup !== "all") query = query.eq('products.product_group', filterProductGroup)
-                if (filterSeason !== "all") query = query.eq('products.season', filterSeason)
-                if (filterMonth !== "all") query = query.eq('products.launch_month', filterMonth)
-
-                // Apply Primary Filters (Warehouse/Box)
-                // Note: Warehouse filtering removed for Bulk as schema lacks the column on boxes/locations
-                if (filterBox !== "all") query = query.eq('boxes.code', filterBox)
-
-                if (searchTerm) {
-                    const s = searchTerm.toLowerCase()
-                    query = query.or(`sku.ilike.%${s}%,name.ilike.%${s}%,barcode.ilike.%${s}%`, { foreignTable: 'products' })
-                }
-
-                // Note: We fetch a larger chunk to aggregate in JS because we can't GROUP BY in Supabase
-                const { data, error } = await query.limit(1000)
+                // UNIFIED LOGIC: Call dedicated Bulk RPC (Identical to Piece RPC structure)
+                const { data, error } = await supabase.rpc('get_inventory_bulk_grouped', {
+                    p_page: page,
+                    p_page_size: ITEMS_PER_PAGE,
+                    p_warehouse_id: filterWarehouse !== "all" ? filterWarehouse : null,
+                    p_location_code: filterLocation !== "all" ? filterLocation : null,
+                    p_box_code: filterBox !== "all" ? filterBox : null,
+                    p_brand: filterBrand !== "all" ? filterBrand : null,
+                    p_target_audience: filterTarget !== "all" ? filterTarget : null,
+                    p_product_group: filterProductGroup !== "all" ? filterProductGroup : null,
+                    p_season: filterSeason !== "all" ? filterSeason : null,
+                    p_launch_month: filterMonth !== "all" ? filterMonth : null,
+                    p_search: searchTerm || null
+                })
 
                 if (error) {
-                    console.error("Fetch Bulk Inventory Error:", error)
+                    console.error("Fetch Bulk Inventory RPC Error:", error)
                     setGroupedItems([])
                     setTotal(0)
                 } else {
-                    // Aggregate JS
-                    const map = new Map<string, any>()
-                    data?.forEach((row: any) => {
-                        if (filterLocation !== "all" && row.boxes?.locations?.code !== filterLocation) return
-
-                        const pid = row.product_id
-                        const existing = map.get(pid)
-                        if (existing) {
-                            existing.total_quantity += row.quantity
-                            existing.total_allocated += row.allocated_quantity
-                            existing.available_quantity = Math.max(0, existing.total_quantity - existing.total_allocated)
-                            // Add location detail if unique
-                            const locKey = `${row.boxes?.code}-${row.boxes?.locations?.code}`
-                            if (!existing.location_keys?.has(locKey)) {
-                                existing.location_details.push({
-                                    quantity: row.quantity,
-                                    boxes: { code: row.boxes?.code, locations: { code: row.boxes?.locations?.code } }
-                                })
-                                existing.location_keys.add(locKey)
-                            } else {
-                                // Update quantity in existing location detail
-                                const found = existing.location_details.find((d: any) => d.boxes?.code === row.boxes?.code)
-                                if (found) found.quantity += row.quantity
-                            }
-                        } else {
-                            map.set(pid, {
-                                ...row.products,
-                                product_id: pid,
-                                total_quantity: row.quantity,
-                                total_allocated: row.allocated_quantity,
-                                available_quantity: Math.max(0, row.quantity - row.allocated_quantity),
-                                location_keys: new Set([`${row.boxes?.code}-${row.boxes?.locations?.code}`]),
-                                location_details: [{
-                                    quantity: row.quantity,
-                                    boxes: { code: row.boxes?.code, locations: { code: row.boxes?.locations?.code } }
-                                }]
-                            })
-                        }
-                    })
-
-                    const items = Array.from(map.values())
-                    setGroupedItems(items)
-                    setTotal(items.length)
+                    setGroupedItems(data || [])
+                    setTotal(data && data.length > 0 ? Number(data[0].total_count) : 0)
                 }
             } else {
                 // PIECE INVENTORY (Existing RPC)
@@ -515,80 +459,34 @@ export default function InventoryPage() {
         setCalculatingTotals(true)
 
         try {
-            if (inventoryType === 'BULK') {
-                // Fetch from view_product_availability_bulk
-                let query = supabase
-                    .from('view_product_availability_bulk')
-                    .select('total_quantity, hard_allocated, soft_booked_sale, soft_booked_gift, soft_booked_internal, soft_booked_transfer')
+            const rpcName = inventoryType === 'BULK' ? 'get_inventory_bulk_summary' : 'get_inventory_summary'
 
-                // Apply Product-level Filters (Warehouse not currently in View schema cache)
-                if (filterBrand !== "all") query = query.eq('brand', filterBrand)
-                if (filterTarget !== "all") query = query.eq('target_audience', filterTarget)
-                if (filterProductGroup !== "all") query = query.eq('product_group', filterProductGroup)
-                if (filterSeason !== "all") query = query.eq('season', filterSeason)
-                if (filterMonth !== "all") query = query.eq('launch_month', filterMonth)
+            const { data, error } = await supabase.rpc(rpcName, {
+                p_warehouse_id: filterWarehouse !== "all" ? filterWarehouse : null,
+                p_location_code: filterLocation !== "all" ? filterLocation : null,
+                p_box_code: filterBox !== "all" ? filterBox : null,
+                p_brand: filterBrand !== "all" ? filterBrand : null,
+                p_target_audience: filterTarget !== "all" ? filterTarget : null,
+                p_product_group: filterProductGroup !== "all" ? filterProductGroup : null,
+                p_season: filterSeason !== "all" ? filterSeason : null,
+                p_launch_month: filterMonth !== "all" ? filterMonth : null,
+                p_search: searchTerm || null
+            })
 
-                if (searchTerm) {
-                    const s = searchTerm.toLowerCase()
-                    query = query.or(`sku.ilike.%${s}%,name.ilike.%${s}%,barcode.ilike.%${s}%`)
-                }
-
-                const { data, error } = await query
-
-                if (error) {
-                    console.error("Fetch Bulk View Totals Error:", error)
-                    setTotals({ quantity: 0, allocated: 0, available: 0, approved_sale: 0, approved_gift: 0, approved_internal: 0, approved_transfer: 0 })
-                } else {
-                    // Reduce to sums
-                    const sums = (data || []).reduce((acc: any, curr: any) => ({
-                        qty: acc.qty + Number(curr.total_quantity || 0),
-                        hard: acc.hard + Number(curr.hard_allocated || 0),
-                        sale: acc.sale + Number(curr.soft_booked_sale || 0),
-                        gift: acc.gift + Number(curr.soft_booked_gift || 0),
-                        internal: acc.internal + Number(curr.soft_booked_internal || 0),
-                        transfer: acc.transfer + Number(curr.soft_booked_transfer || 0)
-                    }), { qty: 0, hard: 0, sale: 0, gift: 0, internal: 0, transfer: 0 })
-
-                    setTotals({
-                        quantity: sums.qty,
-                        allocated: sums.hard,
-                        approved_sale: sums.sale,
-                        approved_gift: sums.gift,
-                        approved_internal: sums.internal,
-                        approved_transfer: sums.transfer,
-                        available: Math.max(0, sums.qty - sums.hard - sums.sale - sums.gift - sums.internal - sums.transfer)
-                    })
-                }
-
-            } else {
-                // PIECE INVENTORY (Existing RPC)
-                const { data, error } = await supabase.rpc('get_inventory_summary', {
-                    p_warehouse_id: filterWarehouse !== "all" ? filterWarehouse : null,
-                    p_location_code: filterLocation !== "all" ? filterLocation : null,
-                    p_box_code: filterBox !== "all" ? filterBox : null,
-                    p_brand: filterBrand !== "all" ? filterBrand : null,
-                    p_target_audience: filterTarget !== "all" ? filterTarget : null,
-                    p_product_group: filterProductGroup !== "all" ? filterProductGroup : null,
-                    p_season: filterSeason !== "all" ? filterSeason : null,
-                    p_launch_month: filterMonth !== "all" ? filterMonth : null,
-                    p_search: searchTerm || null
+            if (error) {
+                console.error(`${rpcName} Error:`, error)
+                setTotals({ quantity: 0, allocated: 0, available: 0, approved_sale: 0, approved_gift: 0, approved_internal: 0, approved_transfer: 0 })
+            } else if (data && data.length > 0) {
+                const result = data[0]
+                setTotals({
+                    quantity: Number(result.total_quantity || 0),
+                    allocated: Number(result.total_allocated || 0),
+                    approved_sale: Number(result.total_approved_sale || 0),
+                    approved_gift: Number(result.total_approved_gift || 0),
+                    approved_internal: Number(result.total_approved_internal || 0),
+                    approved_transfer: Number(result.total_approved_transfer || 0),
+                    available: Number(viewMode === 'DETAILED' ? (result.available_detail || 0) : (result.available_summary || 0))
                 })
-
-                if (error) {
-                    console.error("RPC Error (falling back to client-side calc):", error)
-                    setTotals({ quantity: 0, allocated: 0, available: 0, approved_sale: 0, approved_gift: 0, approved_internal: 0, approved_transfer: 0 })
-                } else if (data && data.length > 0) {
-                    const result = data[0]
-                    setTotals({
-                        quantity: Number(result.total_quantity || 0),
-                        allocated: Number(result.total_allocated || 0),
-                        approved_sale: Number(result.total_approved_sale || 0),
-                        approved_gift: Number(result.total_approved_gift || 0),
-                        approved_internal: Number(result.total_approved_internal || 0),
-                        approved_transfer: Number(result.total_approved_transfer || 0),
-                        available: Number(viewMode === 'DETAILED' ? (result.available_detail || 0) : (result.available_summary || 0))
-                    })
-                }
             }
         } catch (err) {
             console.error(err)

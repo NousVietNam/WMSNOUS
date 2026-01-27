@@ -1,0 +1,25 @@
+
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config({ path: '.env.local' });
+
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+);
+
+async function run() {
+    console.log("Reading schema info...");
+    const { data, error } = await supabase.from('debug_schema_info').select('*').order('id');
+
+    if (error) {
+        console.error("Error reading table:", error);
+    } else {
+        console.log("--- SCHEMA INFO START ---");
+        data.forEach(row => {
+            console.log(row.content);
+        });
+        console.log("--- SCHEMA INFO END ---");
+    }
+}
+
+run();

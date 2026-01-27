@@ -163,6 +163,29 @@ export default function RestrictedInventoryPage() {
                             {loading ? "Đang xử lý..." : "Bắt đầu Import"}
                             <Upload className="ml-2 h-4 w-4" />
                         </Button>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                const csv = Papa.unparse(items.map(i => ({
+                                    sku: i.sku,
+                                    barcode: i.barcode || '',
+                                    current_stock: i.current_stock,
+                                    reason: i.reason || ''
+                                })))
+                                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+                                const link = document.createElement("a")
+                                const url = URL.createObjectURL(blob)
+                                link.setAttribute("href", url)
+                                link.setAttribute("download", `restricted_inventory_${new Date().toISOString().split('T')[0]}.csv`)
+                                link.style.visibility = 'hidden'
+                                document.body.appendChild(link)
+                                link.click()
+                                document.body.removeChild(link)
+                            }}
+                            disabled={items.length === 0}
+                        >
+                            Xuất Excel (CSV)
+                        </Button>
                     </div>
 
                     {result && (

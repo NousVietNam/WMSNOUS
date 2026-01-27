@@ -156,9 +156,26 @@ export default function MobileMenu() {
                                         <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600 mb-3">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3v12" /><path d="m8 11 4 4 4-4" /><path d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4" /></svg>
                                         </div>
-                                        <div className="font-bold text-slate-800 text-lg">Nhập Kho</div>
+                                        <div className="font-bold text-slate-800 text-lg">Nhập Kho Lẻ</div>
                                     </div>
                                     <div className="text-xs text-slate-400 font-medium">Inbound</div>
+                                </div>
+                            </Link>
+                        )}
+
+                        {session?.user && (permissions?.MOBILE_IMPORT || permissions.ALL) && (
+                            <Link href="/mobile/bulk-putaway" className="group">
+                                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 active:scale-[0.98] transition-all h-full flex flex-col justify-between relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" x2="12" y1="22.08" y2="12" /></svg>
+                                    </div>
+                                    <div className="mb-4">
+                                        <div className="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 mb-3">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
+                                        </div>
+                                        <div className="font-bold text-slate-800 text-lg">Nhập Tồn Sỉ</div>
+                                    </div>
+                                    <div className="text-xs text-slate-400 font-medium">Bulk Inbound</div>
                                 </div>
                             </Link>
                         )}
