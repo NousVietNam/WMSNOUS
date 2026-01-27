@@ -45,7 +45,8 @@ interface WarehouseSceneProps {
     is3D: boolean
     highlightedIds: Set<string>
     selectedIds?: Set<string>
-    onStackClick: (stackId: string) => void
+    onStackClick: (stackId: string, isMultiSelect: boolean) => void
+    onClearSelection?: () => void
 }
 
 const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick }: {
@@ -53,7 +54,7 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick 
     GRID_SIZE: number,
     highlightedIds: Set<string>
     selectedIds: Set<string>
-    onStackClick: (id: string) => void
+    onStackClick: (id: string, isMultiSelect: boolean) => void
 }) => {
     const meshRef = useRef<THREE.InstancedMesh>(null)
     const [hoveredInstance, setHoveredInstance] = useState<number | null>(null)
@@ -118,10 +119,10 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick 
                 tempObject.updateMatrix()
                 meshRef.current!.setMatrixAt(instanceIdx, tempObject.matrix)
 
-                // Color Logic
-                const boxCount = stack.total_boxes || 0
-                const totalCapacity = stack.levels.reduce((sum, l) => sum + (l.capacity || 10), 0)
-                const util = totalCapacity > 0 ? (boxCount / totalCapacity) * 100 : 0
+                // Color Logic (Per Level)
+                const boxCount = level.stats?.box_count || 0
+                const capacity = level.capacity || 10
+                const util = capacity > 0 ? (boxCount / capacity) * 100 : 0
 
                 let c = '#cbd5e1' // Slate-300
                 if (util > 0) {
@@ -149,72 +150,60 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick 
 
     }, [stacks, GRID_SIZE, highlightedIds, totalLevels, tempObject]) // Removed hoveredStackIdx
 
-    // Better Optimization:
-    // Just modify the ONE stack that is hovered.
-    const prevHoveredRef = useRef<number | null>(null)
-
     useEffect(() => {
         if (!meshRef.current || !baseColors.current) return
 
-        // Restore previous
-        if (prevHoveredRef.current !== null) {
-            const stackIdx = prevHoveredRef.current
-            // Find all instances for this stack
-            // We need a helper for this lookup. 
-            // Re-calculating instance indices is fast?
-            let idx = 0
-            stacks.forEach((s, sIdx) => {
-                const count = s.levels.length || 1
-                if (sIdx === stackIdx) {
-                    for (let i = 0; i < count; i++) {
-                        const baseR = baseColors.current![(idx + i) * 3 + 0]
-                        const baseG = baseColors.current![(idx + i) * 3 + 1]
-                        const baseB = baseColors.current![(idx + i) * 3 + 2]
-                        meshRef.current!.setColorAt(idx + i, new THREE.Color(baseR, baseG, baseB))
-                    }
-                }
-                idx += count
-            })
+        // 1. Reset ALL instances to base colors
+        // This ensures unselected/unhovered items revert to their original state
+        const count = totalLevels
+        for (let i = 0; i < count; i++) {
+            const r = baseColors.current[i * 3 + 0]
+            const g = baseColors.current[i * 3 + 1]
+            const b = baseColors.current[i * 3 + 2]
+            meshRef.current.setColorAt(i, new THREE.Color(r, g, b))
         }
 
-        // Highlight new
+        // 2. Apply Hover Highlight
         if (hoveredStackIdx !== null) {
             let idx = 0
             stacks.forEach((s, sIdx) => {
-                const count = s.levels.length || 1
+                const levels = s.levels.length || 1
                 if (sIdx === hoveredStackIdx) {
-                    for (let i = 0; i < count; i++) {
+                    for (let i = 0; i < levels; i++) {
                         meshRef.current!.setColorAt(idx + i, new THREE.Color('#38bdf8')) // Sky-400
                     }
                 }
-                idx += count
+                idx += levels
             })
         }
 
-        // Highlight Selected (Darker Blue or distinct?)
+        // 3. Apply Selection Highlight
+        // Note: Selection overrides hover if we want, or blends. 
+        // Here we let selection override hover if both exist on same (unlikely if single select, but possible)
         if (selectedIds && selectedIds.size > 0) {
             let idx = 0
             stacks.forEach((s, sIdx) => {
-                const count = s.levels.length || 1
-                if (selectedIds.has(s.id) && sIdx !== hoveredStackIdx) { // Hover takes precedence or blend?
-                    for (let i = 0; i < count; i++) {
+                const levels = s.levels.length || 1
+                if (selectedIds.has(s.id)) {
+                    for (let i = 0; i < levels; i++) {
                         meshRef.current!.setColorAt(idx + i, new THREE.Color('#4f46e5')) // Indigo-600
                     }
                 }
-                idx += count
+                idx += levels
             })
         }
 
         if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
-        prevHoveredRef.current = hoveredStackIdx
+
+        // No need for prevHoveredRef logic anymore since we brute-force reset. 
+        // Performance should be fine for <10k instances.
 
         // CRITICAL: Compute bounding sphere for Raycasting to work!
-        // Without this, the raycaster might skip the mesh because it thinks it has 0 radius.
         if (meshRef.current) {
             meshRef.current.computeBoundingSphere()
         }
 
-    }, [hoveredStackIdx, stacks, selectedIds])
+    }, [hoveredStackIdx, stacks, selectedIds, totalLevels])
 
 
     return (
@@ -224,11 +213,14 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, onStackClick 
                 args={[undefined, undefined, totalLevels]}
                 frustumCulled={false} // Prevent culling issues when rotating
                 onClick={(e) => {
+                    e.stopPropagation() // Stop triggering onPointerMissed
                     const instanceId = e.instanceId
 
                     if (instanceId !== undefined && instanceToStackMap[instanceId] !== undefined) {
                         const stackId = stacks[instanceToStackMap[instanceId]].id
-                        onStackClick(stackId)
+                        // Check for modifier keys from the native event
+                        const isMultiSelect = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey || e.nativeEvent.shiftKey
+                        onStackClick(stackId, isMultiSelect)
                     }
                 }}
                 onPointerOver={(e) => {
@@ -332,7 +324,8 @@ export default function WarehouseScene3D({
     GRID_SIZE,
     highlightedIds,
     selectedIds,
-    onStackClick
+    onStackClick,
+    onClearSelection
 }: WarehouseSceneProps) {
 
     // Calculate center for camera
@@ -357,6 +350,11 @@ export default function WarehouseScene3D({
                 shadows
                 camera={{ position: [center[0], center[1] - 2000, 2000], fov: 50, near: 1, far: 500000, up: [0, 0, 1] }}
                 style={{ width: '100%', height: '100%' }}
+                onPointerMissed={(e) => {
+                    if (e.type === 'click') {
+                        onClearSelection?.()
+                    }
+                }}
             >
                 <ambientLight intensity={0.5} />
                 <hemisphereLight intensity={0.5} groundColor="#f0f2f5" />

@@ -616,10 +616,24 @@ export default function WarehouseMap() {
 
                 {is3D && (
                     <div className="absolute inset-0 z-0">
-                        <WarehouseScene3D stacks={stacks} mapElements={mapElements} GRID_SIZE={GRID_SIZE} scale={scale} is3D={is3D} highlightedIds={highlightedIds} selectedIds={selectedIds} onStackClick={(id) => {
-                            const n = new Set(selectedIds); if (n.has(id)) n.delete(id); else { n.clear(); n.add(id) }; setSelectedIds(n)
-                            const s = stacks.find(st => st.id === id); setSelectedStack(s || null)
-                        }} />
+                        <WarehouseScene3D stacks={stacks} mapElements={mapElements} GRID_SIZE={GRID_SIZE} scale={scale} is3D={is3D} highlightedIds={highlightedIds} selectedIds={selectedIds}
+                            onStackClick={(id, isMultiSelect) => {
+                                setSelectedIds(prev => {
+                                    const n = new Set(isMultiSelect ? prev : [])
+                                    if (n.has(id)) n.delete(id)
+                                    else n.add(id)
+                                    return n
+                                })
+                                // Stack Panel logic - Show last selected or null
+                                const s = stacks.find(st => st.id === id)
+                                // If we toggled OFF, check if there are others. But roughly:
+                                setSelectedStack(prev => prev?.id === id ? null : (s || null))
+                            }}
+                            onClearSelection={() => {
+                                setSelectedIds(new Set())
+                                setSelectedStack(null)
+                            }}
+                        />
                     </div>
                 )}
 
