@@ -264,24 +264,26 @@ function PutAwayContent() {
             return
         }
 
-        // NEW: Check restricted inventory
-        const { data: restricted } = await supabase
-            .from('restricted_inventory')
-            .select('*')
-            .or(`sku.eq.${product.sku},barcode.eq.${sku}`)
-            .single()
+        // NEW: Check restricted inventory (Skip if box starts with BOX-00031)
+        if (!boxCode.toUpperCase().startsWith('BOX-00031')) {
+            const { data: restricted } = await supabase
+                .from('restricted_inventory')
+                .select('*')
+                .or(`sku.eq.${product.sku},barcode.eq.${sku}`)
+                .single()
 
-        if (restricted) {
-            alert(
-                `⚠️ CẢNH BÁO: Không được nhập mã này vào thùng!\n\n` +
-                `Mã hàng: ${restricted.sku}\n` +
-                `Tồn kho hiện tại: ${restricted.current_stock.toLocaleString()}\n` +
-                `Lý do: ${restricted.reason || 'Không có ghi chú'}`
-            )
-            playErrorSound()
-            setSku('')
-            setScannedProduct(null)
-            return
+            if (restricted) {
+                alert(
+                    `⚠️ CẢNH BÁO: Không được nhập mã này vào thùng!\n\n` +
+                    `Mã hàng: ${restricted.sku}\n` +
+                    `Tồn kho hiện tại: ${restricted.current_stock.toLocaleString()}\n` +
+                    `Lý do: ${restricted.reason || 'Không có ghi chú'}`
+                )
+                playErrorSound()
+                setSku('')
+                setScannedProduct(null)
+                return
+            }
         }
 
 

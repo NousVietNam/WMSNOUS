@@ -195,20 +195,22 @@ function BulkPutAwayContent() {
             return
         }
 
-        // REVERSE RESTRICTED LOGIC: ONLY accept if it IS restricted
-        const { data: restricted } = await supabase
-            .from('restricted_inventory')
-            .select('*')
-            .eq('sku', product.sku)
-            .single()
+        // REVERSE RESTRICTED LOGIC: ONLY accept if it IS restricted (Skip if box starts with BOX-00031)
+        if (!boxCode.toUpperCase().startsWith('BOX-00031')) {
+            const { data: restricted } = await supabase
+                .from('restricted_inventory')
+                .select('*')
+                .eq('sku', product.sku)
+                .single()
 
-        if (!restricted) {
-            playErrorSound()
-            alert(`⚠️ LỖI: Sản phẩm ${product.sku} KHÔNG thuộc diện Kho Sỉ!\n\nChỉ những sản phẩm nằm trong danh sách Restricted mới được nhập vào Kho Sỉ theo luồng này.`)
-            setSku('')
-            setScannedProduct(null)
-            setLoading(false)
-            return
+            if (!restricted) {
+                playErrorSound()
+                alert(`⚠️ LỖI: Sản phẩm ${product.sku} KHÔNG thuộc diện Kho Sỉ!\n\nChỉ những sản phẩm nằm trong danh sách Restricted mới được nhập vào Kho Sỉ theo luồng này.`)
+                setSku('')
+                setScannedProduct(null)
+                setLoading(false)
+                return
+            }
         }
 
         const quantity = parseInt(qty)
