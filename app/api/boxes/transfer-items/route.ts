@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
         // 2. Find destination box by code
         const { data: destBox, error: destError } = await supabaseAdmin
             .from('boxes')
-            .select('id, code')
+            .select('id, code, inventory_type')
             .eq('code', destinationBoxCode)
             .single()
 
@@ -45,10 +45,32 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Thùng nguồn và thùng đích không thể giống nhau!' }, { status: 400 })
         }
 
-        // 3. Verify all inventory items belong to source box
+        // 2b. Find source box
+        const { data: srcBox, error: srcError } = await supabaseAdmin
+            .from('boxes')
+            .select('id, code, inventory_type')
+            .eq('id', sourceBoxId)
+            .single()
+
+        if (srcError || !srcBox) {
+            return NextResponse.json({ error: 'Không tìm thấy thùng nguồn' }, { status: 404 })
+        }
+
+        // 2c. Restriction: Only allow transfer between same inventory types
+        const srcType = srcBox.inventory_type || 'PIECE'
+        const destType = destBox.inventory_type || 'PIECE'
+
+        if (srcType !== destType) {
+            return NextResponse.json({
+                error: 'TYPE_MISMATCH',
+                message: `Chỉ có thể chuyển hàng giữa các thùng cùng loại! (Nguồn: ${srcType}, Đích: ${destType})`
+            }, { status: 400 })
+        }
+
+        // 3. Verify all items belong to source box and get their type
         const { data: itemsToMove, error: itemsError } = await supabaseAdmin
-            .from('inventory_items')
-            .select('id, box_id, quantity, products(sku)')
+            .from('view_box_contents_unified')
+            .select('id, box_id, quantity, sku, inventory_source')
             .in('id', inventoryItemIds)
 
         if (itemsError) throw itemsError
@@ -58,13 +80,25 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Một số sản phẩm không thuộc thùng nguồn' }, { status: 400 })
         }
 
-        // 4. Update inventory items to new box
-        const { error: updateError } = await supabaseAdmin
-            .from('inventory_items')
-            .update({ box_id: destBox.id })
-            .in('id', inventoryItemIds)
+        // 4. Update items to new box based on their source (Piece or Bulk)
+        const pieceIds = itemsToMove?.filter(i => i.inventory_source === 'PIECE').map(i => i.id) || []
+        const bulkIds = itemsToMove?.filter(i => i.inventory_source === 'BULK').map(i => i.id) || []
 
-        if (updateError) throw updateError
+        if (pieceIds.length > 0) {
+            const { error: pErr } = await supabaseAdmin
+                .from('inventory_items')
+                .update({ box_id: destBox.id })
+                .in('id', pieceIds)
+            if (pErr) throw pErr
+        }
+
+        if (bulkIds.length > 0) {
+            const { error: bErr } = await supabaseAdmin
+                .from('bulk_inventory')
+                .update({ box_id: destBox.id })
+                .in('id', bulkIds)
+            if (bErr) throw bErr
+        }
 
         // 5. Create MOVE_BOX transactions for each item
         const transactions = itemsToMove?.map(item => ({
@@ -74,7 +108,7 @@ export async function POST(req: NextRequest) {
             quantity: item.quantity,
             from_box_id: sourceBoxId,
             to_box_id: destBox.id,
-            sku: (item as any).products?.sku,
+            sku: item.sku,
             user_id: userId || null,
             created_at: new Date().toISOString()
         })) || []
@@ -86,7 +120,6 @@ export async function POST(req: NextRequest) {
 
             if (txError) {
                 console.error('Transaction log error:', txError)
-                // Don't fail the whole operation if logging fails
             }
         }
 

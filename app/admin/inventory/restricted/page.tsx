@@ -7,7 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
 import Papa from "papaparse"
-import { Upload, AlertCircle, CheckCircle, Trash2, ShieldAlert } from "lucide-react"
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
+import { Upload, AlertCircle, CheckCircle, Trash2, ShieldAlert, FileDown } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { toast } from "sonner"
 
@@ -137,6 +139,9 @@ export default function RestrictedInventoryPage() {
                     <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
                         <ShieldAlert className="h-8 w-8 text-red-600" />
                         Hàng Bị Hạn Chế Nhập Kho
+                        <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded animate-pulse">
+                            V3 - 11:05 AM
+                        </span>
                     </h1>
                     <p className="text-slate-600">
                         Quản lý danh sách hàng không được phép thêm vào thùng khi Put-away.
@@ -166,25 +171,24 @@ export default function RestrictedInventoryPage() {
                         <Button
                             variant="outline"
                             onClick={() => {
-                                const csv = Papa.unparse(items.map(i => ({
-                                    sku: i.sku,
-                                    barcode: i.barcode || '',
-                                    current_stock: i.current_stock,
-                                    reason: i.reason || ''
+                                const worksheet = XLSX.utils.json_to_sheet(items.map(i => ({
+                                    'Mã Hàng (SKU)': i.sku,
+                                    'Barcode': i.barcode || '',
+                                    'Số Tồn Hiện Tại': i.current_stock,
+                                    'Lý Do Hạn Chế': i.reason || ''
                                 })))
-                                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-                                const link = document.createElement("a")
-                                const url = URL.createObjectURL(blob)
-                                link.setAttribute("href", url)
-                                link.setAttribute("download", `restricted_inventory_${new Date().toISOString().split('T')[0]}.csv`)
-                                link.style.visibility = 'hidden'
-                                document.body.appendChild(link)
-                                link.click()
-                                document.body.removeChild(link)
+                                const workbook = XLSX.utils.book_new()
+                                XLSX.utils.book_append_sheet(workbook, worksheet, 'Restricted')
+
+                                // Direct XLSX export
+                                const fileName = `restricted_inventory_${new Date().toISOString().split('T')[0]}.xlsx`
+                                XLSX.writeFile(workbook, fileName)
+                                toast.success("Đang tải file Excel (.xlsx)...")
                             }}
                             disabled={items.length === 0}
                         >
-                            Xuất Excel (CSV)
+                            <FileDown className="mr-2 h-4 w-4" />
+                            TẢI FILE EXCEL (.XLSX)
                         </Button>
                     </div>
 

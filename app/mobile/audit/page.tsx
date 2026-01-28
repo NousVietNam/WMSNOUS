@@ -25,6 +25,7 @@ export default function AuditPage() {
     const router = useRouter()
     const [boxId, setBoxId] = useState("")
     const [boxCode, setBoxCode] = useState("")
+    const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK'>('PIECE')
     const [loading, setLoading] = useState(false)
     const [isScanning, setIsScanning] = useState(true)
     const [items, setItems] = useState<AuditItem[]>([])
@@ -36,7 +37,7 @@ export default function AuditPage() {
         try {
             const { data: box, error: boxError } = await supabase
                 .from('boxes')
-                .select('id, outbound_order_id, status')
+                .select('id, outbound_order_id, status, inventory_type')
                 .ilike('code', boxCode.trim())
                 .single()
 
@@ -65,9 +66,13 @@ export default function AuditPage() {
                 return
             }
             setBoxId(box.id)
+            const type = box.inventory_type || 'PIECE'
+            setInventoryType(type)
+
+            const table = type === 'BULK' ? 'bulk_inventory' : 'inventory_items'
 
             const { data: inventory, error: invError } = await supabase
-                .from('inventory_items')
+                .from(table)
                 .select(`
                 id,
                 quantity,
@@ -110,11 +115,13 @@ export default function AuditPage() {
         if (!confirm("Xác nhận cập nhật tồn kho theo số liệu thực tế?")) return
         setLoading(true)
         try {
+            const table = inventoryType === 'BULK' ? 'bulk_inventory' : 'inventory_items'
+
             // Update each item
             for (const item of items) {
                 if (item.actual_qty !== item.expected_qty) {
                     await supabase
-                        .from('inventory_items')
+                        .from(table)
                         .update({ quantity: item.actual_qty })
                         .eq('id', item.id)
 
