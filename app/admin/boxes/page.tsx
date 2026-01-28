@@ -49,6 +49,13 @@ export default function BoxesPage() {
     const PAGE_SIZE = 50
     const [statusFilter, setStatusFilter] = useState<string>('OPEN')
 
+    // Return Goods State
+    const [customers, setCustomers] = useState<{ code: string, name: string }[]>([])
+    const [returnCustomer, setReturnCustomer] = useState<string>('')
+    const [customerSearch, setCustomerSearch] = useState<string>('')
+    const [returnStart, setReturnStart] = useState<string>('1')
+    const [returnEnd, setReturnEnd] = useState<string>('1')
+
     // Stats State - Separate from Boxes Data
     const [statsPiece, setStatsPiece] = useState({ total: 0, empty: 0, small: 0, medium: 0, large: 0 })
     const [statsBulk, setStatsBulk] = useState({ total: 0, empty: 0, small: 0, medium: 0, large: 0 })
@@ -100,7 +107,47 @@ export default function BoxesPage() {
         fetchBoxes()
         fetchStats()
         fetchMaxCodes()
+        fetchCustomers()
     }, [page, statusFilter, searchTerm, sortColumn, sortDirection])
+
+    const fetchCustomers = async () => {
+        const { data } = await supabase.from('customers').select('code, name').order('name')
+        if (data) setCustomers(data)
+    }
+
+    const handleCreateReturn = async () => {
+        if (!returnCustomer) return alert("Vui lòng chọn khách hàng")
+        const start = parseInt(returnStart)
+        const end = parseInt(returnEnd)
+
+        if (isNaN(start) || isNaN(end) || start > end) {
+            return alert("Vui lòng nhập khoảng số thứ tự hợp lệ")
+        }
+
+        setLoading(true)
+        try {
+            const res = await fetch('/api/boxes/generate-return', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    customerCode: returnCustomer,
+                    startNum: start,
+                    endNum: end
+                })
+            })
+
+            const data = await res.json()
+            if (!res.ok) throw new Error(data.error || 'Failed to create')
+
+            alert(`Đã tạo thành công ${data.count} thùng hàng trả lại!`)
+            setOpenDialog(false)
+            fetchBoxes()
+        } catch (e: any) {
+            alert("Lỗi: " + e.message)
+        } finally {
+            setLoading(false)
+        }
+    }
 
     const fetchBoxes = async () => {
         setLoading(true)
@@ -207,6 +254,7 @@ export default function BoxesPage() {
 
     // Inventory Type State
     const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK'>('PIECE')
+    const [createMode, setCreateMode] = useState<'standard' | 'return'>('standard')
 
     const getLocationReceivingId = async () => {
         try {
@@ -475,83 +523,198 @@ export default function BoxesPage() {
                             </div>
                             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
                                 <DialogTrigger asChild><Button className="w-full"><Plus className="mr-2 h-4 w-4" /> Tạo Mới</Button></DialogTrigger>
-                                <DialogContent>
+                                <DialogContent className="max-w-xl">
                                     <DialogHeader><DialogTitle>Tạo Thùng Mới</DialogTitle></DialogHeader>
+
+                                    {/* Create Mode Selection */}
+                                    <div className="flex p-1 bg-slate-100 rounded-lg">
+                                        <button
+                                            className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${createMode === 'standard' ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            onClick={() => setCreateMode('standard')}
+                                        >
+                                            Thùng Tiêu Chuẩn
+                                        </button>
+                                        <button
+                                            className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${createMode === 'return' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            onClick={() => setCreateMode('return')}
+                                        >
+                                            Hàng Trả Lại (HTL)
+                                        </button>
+                                    </div>
+
                                     <div className="py-4 space-y-6">
-                                        <div className="space-y-4">
-                                            <label className="text-sm font-medium block">Loại Thùng (Inventory Type)</label>
-                                            <div className="flex gap-4">
-                                                <div
-                                                    className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${inventoryType === 'PIECE' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'hover:bg-slate-50'}`}
-                                                    onClick={() => setInventoryType('PIECE')}
-                                                >
-                                                    <div className="font-bold">PIECE</div>
-                                                    <div className="text-xs opacity-75">Hàng Lẻ</div>
-                                                </div>
-                                                <div
-                                                    className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${inventoryType === 'BULK' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'hover:bg-slate-50'}`}
-                                                    onClick={() => setInventoryType('BULK')}
-                                                >
-                                                    <div className="font-bold">BULK</div>
-                                                    <div className="text-xs opacity-75">Hàng Sỉ/Inbound</div>
-                                                </div>
-                                            </div>
-                                        </div>
 
-                                        <div className="space-y-4 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
-                                            <div className="space-y-3">
-                                                <label className="text-sm font-medium block">Tạo 1 thùng lẻ</label>
-                                                <div className="flex gap-2">
-                                                    <Input
-                                                        placeholder="VD: BOX-VIP-01"
-                                                        value={customCode}
-                                                        onChange={(e) => setCustomCode(e.target.value)}
-                                                        className="bg-white"
-                                                    />
-                                                    <Button onClick={handleCreateCustom} disabled={loading} size="sm">
-                                                        Tạo
-                                                    </Button>
-                                                </div>
-                                                <p className="text-[10px] text-slate-500 italic">* Tùy chỉnh</p>
-                                            </div>
-                                            <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t border-blue-200" /></div><div className="relative flex justify-center text-[10px] uppercase"><span className="bg-[#f8fafc] px-2 text-blue-400 font-bold">Hoặc</span></div></div>
-                                            <Button size="sm" onClick={handleCreateAuto} className="w-full" variant="outline">
-                                                Tạo Mã Kế Tiếp ({inventoryType === 'PIECE' ? 'BOX-...' : 'INB-...'})
-                                            </Button>
-                                        </div>
-
-                                        <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-muted-foreground">Hoặc tạo hàng loạt</span></div></div>
-
-                                        <div className="space-y-4 bg-slate-50 p-4 rounded-lg border">
-                                            <div className="grid grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <label className="text-xs font-bold uppercase text-slate-500">Số lượng</label>
-                                                    <input
-                                                        type="number" min="1" max="100"
-                                                        className="w-full h-10 px-3 rounded border"
-                                                        placeholder="VD: 50"
-                                                        value={bulkQty}
-                                                        onChange={(e) => setBulkQty(e.target.value)}
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-xs font-bold uppercase text-slate-500">Mẫu Mã</label>
-                                                    <div className="text-xs text-slate-600 font-mono bg-white p-2 rounded border truncate">
-                                                        {inventoryType === 'PIECE' ? 'BOX-MMYY-XXXX' : 'INB-MMYY-XXXX'}
+                                        {createMode === 'standard' ? (
+                                            <>
+                                                <div className="space-y-4">
+                                                    <label className="text-sm font-medium block">Loại Thùng (Inventory Type)</label>
+                                                    <div className="flex gap-4">
+                                                        <div
+                                                            className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${inventoryType === 'PIECE' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'hover:bg-slate-50'}`}
+                                                            onClick={() => setInventoryType('PIECE')}
+                                                        >
+                                                            <div className="font-bold">PIECE</div>
+                                                            <div className="text-xs opacity-75">Hàng Lẻ</div>
+                                                        </div>
+                                                        <div
+                                                            className={`flex-1 p-3 border rounded-lg cursor-pointer text-center transition-colors ${inventoryType === 'BULK' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'hover:bg-slate-50'}`}
+                                                            onClick={() => setInventoryType('BULK')}
+                                                        >
+                                                            <div className="font-bold">BULK</div>
+                                                            <div className="text-xs opacity-75">Hàng Sỉ/Inbound</div>
+                                                        </div>
                                                     </div>
                                                 </div>
+
+                                                <div className="space-y-4 bg-blue-50/50 p-4 rounded-lg border border-blue-100">
+                                                    <div className="space-y-3">
+                                                        <label className="text-sm font-medium block">Tạo 1 thùng lẻ</label>
+                                                        <div className="flex gap-2">
+                                                            <Input
+                                                                placeholder="VD: BOX-VIP-01"
+                                                                value={customCode}
+                                                                onChange={(e) => setCustomCode(e.target.value)}
+                                                                className="bg-white"
+                                                            />
+                                                            <Button onClick={handleCreateCustom} disabled={loading} size="sm">
+                                                                Tạo
+                                                            </Button>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-500 italic">* Tùy chỉnh</p>
+                                                    </div>
+                                                    <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t border-blue-200" /></div><div className="relative flex justify-center text-[10px] uppercase"><span className="bg-[#f8fafc] px-2 text-blue-400 font-bold">Hoặc</span></div></div>
+                                                    <Button size="sm" onClick={handleCreateAuto} className="w-full" variant="outline">
+                                                        Tạo Mã Kế Tiếp ({inventoryType === 'PIECE' ? 'BOX-...' : 'INB-...'})
+                                                    </Button>
+                                                </div>
+
+                                                <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div><div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-muted-foreground">Hoặc tạo hàng loạt</span></div></div>
+
+                                                <div className="space-y-4 bg-slate-50 p-4 rounded-lg border">
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <label className="text-xs font-bold uppercase text-slate-500">Số lượng</label>
+                                                            <input
+                                                                type="number" min="1" max="100"
+                                                                className="w-full h-10 px-3 rounded border"
+                                                                placeholder="VD: 50"
+                                                                value={bulkQty}
+                                                                onChange={(e) => setBulkQty(e.target.value)}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-xs font-bold uppercase text-slate-500">Mẫu Mã</label>
+                                                            <div className="text-xs text-slate-600 font-mono bg-white p-2 rounded border truncate">
+                                                                {inventoryType === 'PIECE' ? 'BOX-MMYY-XXXX' : 'INB-MMYY-XXXX'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <Button onClick={() => {
+                                                        const qty = parseInt(bulkQty)
+                                                        if (qty > 0) handleCreateBulk(qty)
+                                                        else alert("Vui lòng nhập số lượng hợp lệ")
+                                                    }} className="w-full" disabled={loading}>
+                                                        {loading ? 'Đang tạo...' : 'Tạo Hàng Loạt'}
+                                                    </Button>
+                                                    <p className="text-[10px] text-slate-400 text-center">
+                                                        *Hệ thống sẽ tạo mã liên tục tiếp theo
+                                                    </p>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            /* RETURN GOODS MODE */
+                                            <div className="space-y-4">
+                                                <div className="space-y-2">
+                                                    <label className="text-sm font-medium">Khách Hàng</label>
+
+                                                    {/* Searchable Customer Selection */}
+                                                    <div className="border rounded-md p-3 bg-slate-50 space-y-2">
+                                                        <Input
+                                                            placeholder="🔍 Tìm tên hoặc mã khách hàng..."
+                                                            className="bg-white"
+                                                            onChange={(e) => {
+                                                                // Simple local filtering
+                                                                const term = e.target.value.toLowerCase()
+                                                                // We'll filter in the render or separate state. 
+                                                                // Better to filter the list directly below.
+                                                                // Use a data attribute or class to hide/show? No, React state is cleaner.
+                                                                // But here we need to insert state logic. 
+                                                                // Since replace_file is limited, I'll rely on a new state added below or use a simplified approach.
+                                                                // Wait, I can't add state here easily without replacing the whole file header.
+                                                                // Strategy: Add the state in a separate replace call first, then use it here?
+                                                                // Or just use a simple state I add now. I'll add `customerSearch` state in the header later/now.
+                                                                setCustomerSearch(e.target.value)
+                                                            }}
+                                                            value={customerSearch}
+                                                        />
+
+                                                        <div className="max-h-40 overflow-y-auto border rounded bg-white shadow-sm space-y-1 p-1">
+                                                            {customers
+                                                                .filter(c =>
+                                                                    !customerSearch ||
+                                                                    c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
+                                                                    c.code.toLowerCase().includes(customerSearch.toLowerCase())
+                                                                )
+                                                                .map(c => (
+                                                                    <div
+                                                                        key={c.code}
+                                                                        className={`px-2 py-1.5 text-sm cursor-pointer rounded flex justify-between items-center ${returnCustomer === c.code ? 'bg-blue-50 text-blue-700 font-bold' : 'hover:bg-slate-100'}`}
+                                                                        onClick={() => setReturnCustomer(c.code)}
+                                                                    >
+                                                                        <span>{c.name}</span>
+                                                                        <span className="text-xs text-slate-400 font-mono bg-slate-50 px-1 rounded border">{c.code}</span>
+                                                                    </div>
+                                                                ))}
+                                                            {customers.length === 0 && <div className="p-2 text-xs text-center text-slate-400">Đang tải danh sách...</div>}
+                                                        </div>
+                                                        {returnCustomer && (
+                                                            <div className="text-xs text-blue-600 font-medium pt-1">
+                                                                Đã chọn: <span className="font-bold">{customers.find(c => c.code === returnCustomer)?.name} ({returnCustomer})</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <label className="text-sm font-medium">Từ Số (Start)</label>
+                                                        <Input
+                                                            type="number"
+                                                            min="1"
+                                                            value={returnStart}
+                                                            onChange={e => setReturnStart(e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-sm font-medium">Đến Số (End)</label>
+                                                        <Input
+                                                            type="number"
+                                                            min="1"
+                                                            value={returnEnd}
+                                                            onChange={e => setReturnEnd(e.target.value)}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="bg-orange-50 p-4 rounded border border-orange-100 text-sm text-orange-800 space-y-2">
+                                                    <div className="font-bold">Xem trước mã thùng:</div>
+                                                    <div className="font-mono bg-white p-2 border rounded text-slate-700">
+                                                        HTL-{returnCustomer || 'XXX'}-{returnStart.padStart(3, '0')}
+                                                        <span className="mx-2">...</span>
+                                                        HTL-{returnCustomer || 'XXX'}-{returnEnd.padStart(3, '0')}
+                                                    </div>
+                                                    <p className="text-xs opacity-75">* Hệ thống sẽ tự động bỏ qua nếu mã đã tồn tại</p>
+                                                </div>
+
+                                                <Button
+                                                    onClick={handleCreateReturn}
+                                                    disabled={loading}
+                                                    className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                                                >
+                                                    {loading ? 'Đang tạo...' : 'Tạo Thùng Hàng Trả Lại'}
+                                                </Button>
                                             </div>
-                                            <Button onClick={() => {
-                                                const qty = parseInt(bulkQty)
-                                                if (qty > 0) handleCreateBulk(qty)
-                                                else alert("Vui lòng nhập số lượng hợp lệ")
-                                            }} className="w-full" disabled={loading}>
-                                                {loading ? 'Đang tạo...' : 'Tạo Hàng Loạt'}
-                                            </Button>
-                                            <p className="text-[10px] text-slate-400 text-center">
-                                                *Hệ thống sẽ tạo mã liên tục tiếp theo
-                                            </p>
-                                        </div>
+                                        )}
                                     </div>
                                 </DialogContent>
                             </Dialog>

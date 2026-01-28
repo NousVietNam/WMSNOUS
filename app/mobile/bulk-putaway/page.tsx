@@ -195,8 +195,8 @@ function BulkPutAwayContent() {
             return
         }
 
-        // REVERSE RESTRICTED LOGIC: ONLY accept if it IS restricted (Skip if box starts with BOX-00031)
-        if (!boxCode.toUpperCase().startsWith('BOX-00031')) {
+        // REVERSE RESTRICTED LOGIC: ONLY accept if it IS restricted (Skip if box starts with BOX-00031 OR HTL-)
+        if (!boxCode.toUpperCase().startsWith('BOX-00031') && !boxCode.toUpperCase().startsWith('HTL-')) {
             const { data: restricted } = await supabase
                 .from('restricted_inventory')
                 .select('*')
