@@ -46,19 +46,27 @@ export function DashboardStats({ data }: { data: any }) {
             href: "/admin/shipping"
         },
         {
+            title: "Kho Hàng Lẻ (Piece)",
+            value: inventory.totalPieceItems.toLocaleString(),
+            desc: "Items",
+            icon: Package,
+            gradient: "from-blue-600 to-indigo-600",
+            href: "/admin/inventory?tab=piece"
+        },
+        {
+            title: "Kho Hàng Sỉ (Bulk)",
+            value: inventory.totalBulkItems.toLocaleString(),
+            desc: "Items",
+            icon: Layers,
+            gradient: "from-amber-600 to-orange-600",
+            href: "/admin/inventory?tab=bulk"
+        },
+        {
             title: "Tổng Mã Hàng (SKU)",
             value: inventory.skus,
             icon: Package,
             gradient: "from-slate-500 to-slate-600",
             href: "/admin/products"
-        },
-        {
-            title: "Tổng Tồn Kho",
-            value: inventory.totalItems.toLocaleString(),
-            desc: "Items",
-            icon: Layers,
-            gradient: "from-slate-600 to-slate-700",
-            href: "/admin/inventory"
         },
         {
             title: "Thùng Lưu Trữ",

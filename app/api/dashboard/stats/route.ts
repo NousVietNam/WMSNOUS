@@ -41,9 +41,14 @@ export async function GET() {
 
         // 3. Inventory Stats
         const { count: skuCount } = await supabase.from('products').select('*', { count: 'exact', head: true })
-        const { data: inventory } = await supabase.from('inventory_items').select('quantity')
 
-        const totalItems = inventory?.reduce((sum, item) => sum + item.quantity, 0) || 0
+        // Piece Inventory
+        const { data: pieceInventory } = await supabase.from('inventory_items').select('quantity')
+        const totalPieceItems = pieceInventory?.reduce((sum, item) => sum + item.quantity, 0) || 0
+
+        // Bulk Inventory
+        const { data: bulkInventory } = await supabase.from('bulk_inventory').select('quantity')
+        const totalBulkItems = bulkInventory?.reduce((sum, item) => sum + item.quantity, 0) || 0
 
         // 4. Box Stats
         const { data: boxes } = await supabase.from('boxes').select('type')
@@ -67,15 +72,18 @@ export async function GET() {
 
         const { data: recentTx } = await supabase
             .from('transactions')
-            .select('timestamp, type')
+            .select('timestamp, type, quantity')
             .gte('timestamp', last7Days[0])
 
         const trendData = last7Days.map(date => {
             const dayTx = recentTx?.filter(tx => tx.timestamp.startsWith(date))
             return {
                 date: date.split('-').slice(1).join('/'), // MM/DD
+                fullDate: date,
                 inbound: dayTx?.filter(tx => tx.type === 'IMPORT').length || 0,
-                outbound: dayTx?.filter(tx => ['PACK', 'SHIP', 'EXPORT'].includes(tx.type)).length || 0
+                outbound: dayTx?.filter(tx => ['PACK', 'SHIP', 'EXPORT'].includes(tx.type)).length || 0,
+                inboundQty: dayTx?.filter(tx => tx.type === 'IMPORT').reduce((sum, tx) => sum + (tx.quantity || 0), 0),
+                outboundQty: dayTx?.filter(tx => ['PACK', 'SHIP', 'EXPORT'].includes(tx.type)).reduce((sum, tx) => sum + (tx.quantity || 0), 0)
             }
         })
 
@@ -86,7 +94,9 @@ export async function GET() {
                 jobs: jobStats,
                 inventory: {
                     skus: skuCount || 0,
-                    totalItems,
+                    totalItems: totalPieceItems + totalBulkItems,
+                    totalPieceItems,
+                    totalBulkItems,
                     storageBoxes,
                     outboxes
                 },
