@@ -564,7 +564,14 @@ export default function WarehouseMap() {
             try {
                 const res = await fetch(`/api/map/search?q=${encodeURIComponent(searchQuery)}`)
                 const json = await res.json()
-                if (json.success) setHighlightedIds(new Set(json.data))
+                if (json.success) {
+                    setHighlightedIds(new Set(json.data))
+                    if (json.data.length > 0) {
+                        toast.success(`Tìm thấy ${json.data.length} vị trí. Hãy tìm các kệ nhấp nháy!`)
+                    } else {
+                        toast.error('Không tìm thấy sản phẩm/vị trí này')
+                    }
+                }
             } catch (e) {
                 console.error("Search failed", e)
             } finally {

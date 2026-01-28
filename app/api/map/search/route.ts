@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 export async function GET(request: Request) {
@@ -26,16 +26,31 @@ export async function GET(request: Request) {
         const matchedProductIds = matchedProducts?.map(i => i.id) || []
 
         // 2. Find Boxes containing these items
-        // Use 'inventory_items' instead of 'box_items'
+        // Use 'inventory_items' (Piece) AND 'bulk_inventory' (Bulk)
         let matchedBoxIds = new Set<string>()
+        let matchedBulkLocationIds = new Set<string>() // Bulk inventory can be directly in locations
 
         if (matchedProductIds.length > 0) {
+            // Check inventory_items (Piece)
             const { data: inventoryItems } = await supabase
                 .from('inventory_items')
                 .select('box_id')
                 .in('product_id', matchedProductIds)
 
-            inventoryItems?.forEach(bi => matchedBoxIds.add(bi.box_id))
+            inventoryItems?.forEach(bi => {
+                if (bi.box_id) matchedBoxIds.add(bi.box_id)
+            })
+
+            // Check bulk_inventory (Sỉ)
+            const { data: bulkItems } = await supabase
+                .from('bulk_inventory')
+                .select('box_id, location_id')
+                .in('product_id', matchedProductIds)
+
+            bulkItems?.forEach(bi => {
+                if (bi.box_id) matchedBoxIds.add(bi.box_id)
+                if (bi.location_id) matchedBulkLocationIds.add(bi.location_id)
+            })
         }
 
         // 3. Also Search for Boxes explicitly matching query (Box Code)
@@ -72,6 +87,9 @@ export async function GET(request: Request) {
             .limit(50)
 
         matchedLocations?.forEach(l => matchedLocationIds.add(l.id))
+
+        // 6. Merge with direct bulk locations
+        matchedBulkLocationIds.forEach(id => matchedLocationIds.add(id))
 
         return NextResponse.json({
             success: true,

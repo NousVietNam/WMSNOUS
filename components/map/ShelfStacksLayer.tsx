@@ -93,7 +93,8 @@ const ShelfStacksLayer = ({
                     sY2 > minY_px
                 )
 
-                if (!isVisible && draggingStackId !== stack.id && resizingStackId !== stack.id) return null
+                const isHighlighted = stack.levels?.some(l => highlightedIds.has(l.id))
+                if (!isVisible && draggingStackId !== stack.id && resizingStackId !== stack.id && !isHighlighted) return null
 
                 return (
                     <MemoizedStack
@@ -104,7 +105,7 @@ const ShelfStacksLayer = ({
                         scale={scale}
                         GRID_SIZE={GRID_SIZE}
                         isSelected={selectedIds.has(stack.id)}
-                        isHighlighted={highlightedIds.has(stack.id)}
+                        isHighlighted={isHighlighted}
                         isFlashing={showEmptySlots && stack.total_boxes === 0}
                         isDragging={draggingStackId === stack.id}
                         getStackColor={getStackColor}

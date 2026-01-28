@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic'
 
 const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
 export async function GET() {
@@ -42,13 +42,26 @@ export async function GET() {
         // 3. Inventory Stats
         const { count: skuCount } = await supabase.from('products').select('*', { count: 'exact', head: true })
 
-        // Piece Inventory
-        const { data: pieceInventory } = await supabase.from('inventory_items').select('quantity')
-        const totalPieceItems = pieceInventory?.reduce((sum, item) => sum + item.quantity, 0) || 0
+        // Piece Inventory - Logical split by boxes.inventory_type
+        const { data: pieceInventory } = await supabase.from('inventory_items').select('quantity, boxes(inventory_type)')
 
-        // Bulk Inventory
+        let totalPieceItems = 0
+        let pieceInBulkBoxes = 0
+
+        pieceInventory?.forEach(item => {
+            const isBulk = (item.boxes as any)?.inventory_type === 'BULK'
+            if (isBulk) {
+                pieceInBulkBoxes += item.quantity
+            } else {
+                totalPieceItems += item.quantity
+            }
+        })
+
+        // Bulk Inventory Table
         const { data: bulkInventory } = await supabase.from('bulk_inventory').select('quantity')
-        const totalBulkItems = bulkInventory?.reduce((sum, item) => sum + item.quantity, 0) || 0
+        const bulkTableQty = bulkInventory?.reduce((sum, item) => sum + item.quantity, 0) || 0
+
+        const totalBulkItems = bulkTableQty + pieceInBulkBoxes
 
         // 4. Box Stats
         const { data: boxes } = await supabase.from('boxes').select('type')

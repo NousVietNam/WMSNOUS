@@ -139,7 +139,7 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, showEmptySlot
                 if (level.type === 'OFFICE') c = '#93c5fd'
                 if (level.type === 'SHIPPING') c = '#6ee7b7'
                 if (level.type === 'RECEIVING') c = '#fdba74'
-                if (highlightedIds.has(stack.id)) c = '#facc15'
+                if (stack.levels?.some(l => highlightedIds.has(l.id))) c = '#22d3ee'
 
                 color.set(c)
                 color.toArray(colors, instanceIdx * 3)
@@ -160,29 +160,39 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, showEmptySlot
     useFrame((state, delta) => {
         if (!meshRef.current || !baseColors.current) return
 
-        // Only run if we actually show empty slots
-        if (showEmptySlots) {
-            timeRef.current += delta * 12 // Even faster flash
+        const hasHighlights = highlightedIds.size > 0
+
+        // Only run if we actually show empty slots OR have highlights
+        if (showEmptySlots || hasHighlights) {
+            timeRef.current += delta * 15 // Even faster flash
             const flashIntensity = (Math.sin(timeRef.current) + 1) / 2 // 0 to 1
 
             let idx = 0
             let needsUpdate = false
-            const baseColor = new THREE.Color('#cbd5e1')
-            const targetColor = new THREE.Color('#ef4444') // RED
+
+            // Colors for Empty Slots
+            const emptyBase = new THREE.Color('#cbd5e1')
+            const emptyTarget = new THREE.Color('#ef4444') // RED
+
+            // Colors for Search Highlights (Cyan theme)
+            const highlightBase = new THREE.Color('#22d3ee') // Bright Cyan
+            const highlightTarget = new THREE.Color('#a5f3fc') // Saturated Light Cyan
+
             const flashColor = new THREE.Color()
 
             stacks.forEach((s) => {
                 const levels = s.levels.length || 1
+                const isHighlighted = s.levels?.some(l => highlightedIds.has(l.id))
 
-                // Allow flashing for empty stacks OR specific empty logic you want
-                // Ensure we don't flash specialized types like OFFICE
                 const isSpecial = ['OFFICE', 'SHIPPING', 'RECEIVING'].includes(s.levels[0]?.type || '')
-                const isEmpty = !isSpecial && (s.total_boxes === 0)
+                const isEmpty = showEmptySlots && !isSpecial && (s.total_boxes === 0)
 
-                if (isEmpty) {
-                    // Update color for these instances
-                    // Interpolate
-                    flashColor.copy(baseColor).lerp(targetColor, flashIntensity)
+                if (isHighlighted || isEmpty) {
+                    if (isHighlighted) {
+                        flashColor.copy(highlightBase).lerp(highlightTarget, flashIntensity)
+                    } else {
+                        flashColor.copy(emptyBase).lerp(emptyTarget, flashIntensity)
+                    }
 
                     for (let i = 0; i < levels; i++) {
                         meshRef.current!.setColorAt(idx + i, flashColor)
@@ -245,7 +255,7 @@ const Shelves = ({ stacks, GRID_SIZE, highlightedIds, selectedIds, showEmptySlot
         if (meshRef.current.instanceColor) meshRef.current.instanceColor.needsUpdate = true
         if (meshRef.current) meshRef.current.computeBoundingSphere()
 
-    }, [hoveredStackIdx, stacks, selectedIds, totalLevels, showEmptySlots]) // showEmptySlots dependency ensures reset when turned off
+    }, [hoveredStackIdx, stacks, selectedIds, totalLevels, showEmptySlots, highlightedIds]) // showEmptySlots/highlightedIds dependency ensures reset when turned off
 
 
     return (
@@ -561,7 +571,8 @@ export default function WarehouseScene3D({
                         stacks={stacks}
                         GRID_SIZE={GRID_SIZE}
                         highlightedIds={highlightedIds}
-                        selectedIds={selectedIds || new Set()} // Propagate
+                        showEmptySlots={showEmptySlots}
+                        selectedIds={selectedIds || new Set()}
                         onStackClick={onStackClick}
                     />
 

@@ -64,14 +64,19 @@ const MemoizedStack = memo(({
             onMouseDown={(e) => onMouseDown(e, stack)}
             className={`
                 absolute border-2 rounded-md shadow-md flex flex-col items-center justify-between p-1 transition-all duration-500 overflow-visible
-                ${mode === 'EDIT' ? 'bg-slate-100 border-blue-600 hover:ring-2 ring-blue-300 cursor-grab active:cursor-grabbing' : getStackColor(stack)}
+                ${mode === 'EDIT'
+                    ? 'bg-slate-100 border-blue-600 hover:ring-2 ring-blue-300 cursor-grab active:cursor-grabbing'
+                    : isHighlighted
+                        ? '' // Important: Bypass heatmap color when highlighted to allow animation bgcolor
+                        : getStackColor(stack)
+                }
                 ${isDragging ? 'z-50 shadow-2xl scale-105 transition-none' : 'z-auto hover:shadow-md'}
                 ${isFlashing
                     ? is3D
                         ? 'bg-emerald-300 border-emerald-500 z-40' // 3D: Solid Green Top Face, No Ring/Pulse
                         : 'ring-4 ring-green-500 ring-offset-2 z-40 animate-pulse bg-green-100' // 2D: Pulse Ring
-                    : isHighlighted || stack.levels?.some(l => isHighlighted)
-                        ? 'ring-4 ring-yellow-400 ring-offset-2 z-40 animate-pulse bg-yellow-100/50'
+                    : isHighlighted
+                        ? 'z-50 animate-fast-blink ring-4 ring-cyan-500 ring-offset-4 shadow-[0_0_50px_rgba(34,211,238,1)]'
                         : isSelected
                             ? 'ring-4 ring-purple-600 ring-offset-2 z-40 bg-purple-50'
                             : ''
