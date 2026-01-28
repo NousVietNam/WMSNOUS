@@ -371,52 +371,112 @@ export interface Employee {
 const EmployeeMarkers = ({ employees, stacks, GRID_SIZE }: { employees?: Employee[], stacks: StackNode[], GRID_SIZE: number }) => {
     if (!employees || employees.length === 0) return null
 
+    // 1. Pre-calculate occupied grid cells by stacks
+    const occupiedSet = useMemo(() => {
+        const set = new Set<string>()
+        stacks.forEach(s => {
+            for (let x = Math.floor(s.pos_x); x < Math.ceil(s.pos_x + s.width); x++) {
+                for (let y = Math.floor(s.pos_y); y < Math.ceil(s.pos_y + s.height); y++) {
+                    set.add(`${x},${y}`)
+                }
+            }
+        })
+        return set
+    }, [stacks])
+
+    // 2. Assign employees to "Empty Holes" near their target
+    const renderedEmployees = useMemo(() => {
+        const takenCells = new Set<string>()
+
+        return employees.map((emp, i) => {
+            const stack = stacks.find(s => s.baseCode === emp.locationCode.split('-')[0] || s.levels.some(l => l.code === emp.locationCode))
+            if (!stack) return null
+
+            // Look for empty cell around the stack perimeter
+            let bestX = (stack.pos_x + stack.width / 2)
+            let bestY = (stack.pos_y + stack.height / 2)
+            let found = false
+
+            // Spiral or radius search for empty grid cell
+            const searchRadius = 2
+            for (let r = 1; r <= searchRadius; r++) {
+                for (let dx = -r; dx <= stack.width + r - 1; dx++) {
+                    for (let dy = -r; dy <= stack.height + r - 1; dy++) {
+                        // Only check perimeter of this radius
+                        const isInner = dx >= 0 && dx < stack.width && dy >= 0 && dy < stack.height
+                        if (isInner && r === 1) continue
+
+                        const gx = Math.floor(stack.pos_x + dx)
+                        const gy = Math.floor(stack.pos_y + dy)
+                        const key = `${gx},${gy}`
+
+                        if (gx >= 0 && gy >= 0 && !occupiedSet.has(key) && !takenCells.has(key)) {
+                            bestX = gx + 0.5
+                            bestY = gy + 0.5
+                            takenCells.add(key)
+                            found = true
+                            break
+                        }
+                    }
+                    if (found) break
+                }
+                if (found) break
+            }
+
+            // Fallback: If no empty spot, add a small offset based on index so they don't overlap perfectly
+            if (!found) {
+                const angle = (i / employees.length) * Math.PI * 2
+                const offset = 40
+                return {
+                    ...emp,
+                    x: (stack.pos_x + stack.width / 2) * GRID_SIZE + Math.cos(angle) * offset,
+                    y: -((stack.pos_y + stack.height / 2) * GRID_SIZE + Math.sin(angle) * offset),
+                    z: 15
+                }
+            }
+
+            return {
+                ...emp,
+                x: bestX * GRID_SIZE,
+                y: -(bestY * GRID_SIZE),
+                z: 15
+            }
+        })
+    }, [employees, stacks, occupiedSet, GRID_SIZE])
+
     return (
         <group>
-            {employees.map((emp, i) => {
-                // Find location (Stack)
-                const stack = stacks.find(s => s.baseCode === emp.locationCode.split('-')[0] || s.levels.some(l => l.code === emp.locationCode))
-                if (!stack) return null
-
-                const x = (stack.pos_x * GRID_SIZE) + (stack.width * GRID_SIZE) / 2
-                const y = -((stack.pos_y * GRID_SIZE) + (stack.height * GRID_SIZE) / 2)
-
-                // Offset slightly to aisle (assuming aisle is 'front' of stack, typically y-1 or depending on rotation)
-                // For simplicity, just float above or near center
-                const z = (stack.levels.length * 80) + 40 // Float above stack
-
+            {renderedEmployees.map((emp) => {
+                if (!emp) return null
                 return (
-                    <group key={emp.id} position={[x, y, z]}>
-                        {/* Animated Marker (Dot) */}
+                    <group key={emp.id} position={[emp.x, emp.y, emp.z]}>
+                        {/* Animated Marker (Dot) - Lowered to ground */}
                         <mesh position={[0, 0, 0]}>
-                            <sphereGeometry args={[15, 16, 16]} />
-                            <meshStandardMaterial color="#ec4899" emissive="#ec4899" emissiveIntensity={0.5} />
+                            <sphereGeometry args={[12, 16, 16]} />
+                            <meshStandardMaterial color="#ec4899" emissive="#ec4899" emissiveIntensity={0.8} />
                         </mesh>
 
-                        {/* Name Tag */}
+                        {/* Name Tag - Billboard ensures visibility */}
                         <Billboard
                             follow={true}
-                            lockX={false}
-                            lockY={false}
-                            lockZ={false} // Lock to prevent rolling
-                            position={[0, 0, 25]}
+                            position={[0, 0, 30]} // Floating slightly above dot
                         >
                             <Text
-                                fontSize={24}
+                                fontSize={22}
                                 color="#ffffff"
                                 outlineWidth={2}
-                                outlineColor="#000000"
+                                outlineColor="#ec4899"
                                 anchorX="center"
                                 anchorY="bottom"
                             >
                                 {emp.name}
                             </Text>
                             <Text
-                                position={[0, -12, 0]}
-                                fontSize={14}
-                                color="#e2e8f0"
+                                position={[0, -10, 0]}
+                                fontSize={12}
+                                color="#fbcfe8"
                                 outlineWidth={1}
-                                outlineColor="#000000"
+                                outlineColor="#9d174d"
                                 anchorX="center"
                                 anchorY="top"
                             >

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import WarehouseScene3D from '@/components/map/WarehouseScene3D'
+import EmployeeLayer from '@/components/map/EmployeeLayer'
 
 // -- Types --
 interface LocationNode {
@@ -681,6 +682,9 @@ export default function WarehouseMap() {
                         handleStackMouseDown={handleStackMouseDown} setSelectedStack={setSelectedStack}
                         setHoveredStack={setHoveredStack} setTooltipPos={setTooltipPos} handleResizeStart={handleResizeStart}
                     />
+                    {showEmployees && (
+                        <EmployeeLayer employees={employees} stacks={stacks} GRID_SIZE={GRID_SIZE} scale={scale} />
+                    )}
                 </div>
 
                 {lassoRect && <div className="absolute border-2 border-blue-500 bg-blue-500/10 pointer-events-none z-[1000] rounded-sm" style={{ left: lassoRect.x, top: lassoRect.y, width: lassoRect.w, height: lassoRect.h }} />}
