@@ -31,7 +31,7 @@ async function runMigration() {
     const { data, error } = await supabase.rpc('exec_sql', { sql_query: sql })
 
     if (error) {
-        console.error("Migration failed:", error)
+        console.error("Migration failed:", JSON.stringify(error, null, 2))
         process.exit(1)
     } else {
         console.log("Migration successful!")
