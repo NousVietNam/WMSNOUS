@@ -28,8 +28,9 @@ export default function TransferPage() {
     const [bulkStep, setBulkStep] = useState<1 | 2>(1) // 1: Dest, 2: Boxes
     const [bulkDestCode, setBulkDestCode] = useState("")
     const [bulkDestId, setBulkDestId] = useState<string | null>(null)
+    const [bulkDestWarehouseId, setBulkDestWarehouseId] = useState<string | null>(null) // NEW: Store Warehouse ID
     const [bulkBoxInput, setBulkBoxInput] = useState("")
-    const [bulkBoxes, setBulkBoxes] = useState<{ id: string, code: string, currentLoc: string }[]>([])
+    const [bulkBoxes, setBulkBoxes] = useState<{ id: string, code: string, currentLoc: string, currentLocId: string | null }[]>([]) // NEW: Store Loc ID
 
     const [loading, setLoading] = useState(false)
 
@@ -87,7 +88,8 @@ export default function TransferPage() {
         setLoading(true)
 
         try {
-            const { data: location } = await supabase.from('locations').select('id').ilike('code', destCode.trim()).single()
+            // Fetch warehouse_id as well
+            const { data: location } = await supabase.from('locations').select('id, warehouse_id').ilike('code', destCode.trim()).single()
             if (!location) {
                 alert("Vị trí đích không tồn tại!")
                 setLoading(false)
@@ -110,6 +112,7 @@ export default function TransferPage() {
                 entity_id: box.id,
                 from_location_id: currentLocId,
                 to_location_id: location.id,
+                warehouse_id: location.warehouse_id, // Add warehouse_id to Single Move too
                 user_id: session?.user?.id,
                 created_at: new Date().toISOString()
             })
@@ -138,7 +141,8 @@ export default function TransferPage() {
         if (!bulkDestCode) return
         setLoading(true)
 
-        const { data: location } = await supabase.from('locations').select('id, code').ilike('code', bulkDestCode.trim()).single()
+        // Fetch warehouse_id here
+        const { data: location } = await supabase.from('locations').select('id, code, warehouse_id').ilike('code', bulkDestCode.trim()).single()
 
         if (!location) {
             playErrorSound()
@@ -148,6 +152,7 @@ export default function TransferPage() {
         }
 
         setBulkDestId(location.id)
+        setBulkDestWarehouseId(location.warehouse_id) // Save it
         setBulkDestCode(location.code) // Normalize case
         setBulkStep(2)
         setLoading(false)
@@ -195,8 +200,9 @@ export default function TransferPage() {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const locCode = (box.locations as any)?.code || "N/A"
+        const locId = (box.locations as any)?.id || null
 
-        setBulkBoxes(prev => [{ id: box.id, code: box.code, currentLoc: locCode }, ...prev])
+        setBulkBoxes(prev => [{ id: box.id, code: box.code, currentLoc: locCode, currentLocId: locId }, ...prev])
         setBulkBoxInput("")
         setLoading(false)
         playSuccessSound()
@@ -232,8 +238,9 @@ export default function TransferPage() {
                     type: 'MOVE_BOX',
                     entity_type: 'BOX',
                     entity_id: box.id,
-                    from_location_id: null, // We could store currentLocId map but keep it simple
+                    from_location_id: box.currentLocId, // Use stored ID
                     to_location_id: bulkDestId,
+                    warehouse_id: bulkDestWarehouseId, // Use stored Warehouse ID
                     user_id: session?.user?.id,
                     note: `Bulk move to ${bulkDestCode}`,
                     created_at: new Date().toISOString()
