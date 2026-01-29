@@ -210,9 +210,16 @@ export default function AuditPage() {
                                     >
                                         -
                                     </button>
-                                    <div className="w-12 text-center font-bold text-lg border-b-2 border-slate-200 py-1">
-                                        {item.actual_qty}
-                                    </div>
+                                    <input
+                                        type="number"
+                                        className="w-16 h-10 text-center font-bold text-lg border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                        value={item.actual_qty}
+                                        onChange={(e) => {
+                                            const val = parseInt(e.target.value)
+                                            handleUpdateQty(item.id, isNaN(val) ? 0 : Math.max(0, val))
+                                        }}
+                                        onFocus={(e) => e.target.select()}
+                                    />
                                     <button
                                         className="h-10 w-10 flex items-center justify-center border rounded-lg bg-slate-50 active:bg-slate-200 font-bold"
                                         onClick={() => handleUpdateQty(item.id, item.actual_qty + 1)}

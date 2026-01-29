@@ -136,6 +136,8 @@ export default function TransferPage() {
                 entity_id: box.id,
                 from_location_id: currentLocId,
                 to_location_id: location.id,
+                from_box_id: box.id, // Record the moving box
+                to_box_id: box.id,   // Record the moving box
                 // warehouse_id: location.warehouse_id, // REMOVED: Column does not exist on locations table
                 user_id: session?.user?.id,
                 created_at: new Date().toISOString()
@@ -286,6 +288,8 @@ export default function TransferPage() {
                     entity_id: box.id,
                     from_location_id: box.currentLocId, // Use stored ID
                     to_location_id: bulkDestId,
+                    from_box_id: box.id, // Record box
+                    to_box_id: box.id,   // Record box
                     // warehouse_id: bulkDestWarehouseId, // REMOVED: Not available
                     user_id: session?.user?.id,
                     note: `Bulk move to ${bulkDestCode}`,
