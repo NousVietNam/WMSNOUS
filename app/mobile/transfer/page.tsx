@@ -88,16 +88,40 @@ export default function TransferPage() {
         setLoading(true)
 
         try {
-            // Fetch warehouse_id as well
-            const { data: location } = await supabase.from('locations').select('id, warehouse_id').ilike('code', destCode.trim()).single()
-            if (!location) {
-                alert("Vị trí đích không tồn tại!")
+            // Fix: locations table does not have warehouse_id, so remove it from select.
+            // Just select id and code.
+            const { data: location, error: locError } = await supabase
+                .from('locations')
+                .select('id, code')
+                .ilike('code', destCode.trim())
+                .single()
+
+            if (locError || !location) {
+                console.error("Location scan error:", locError)
+                playErrorSound()
+                alert(`Vị trí đích "${destCode}" không tồn tại!`)
                 setLoading(false)
                 return
             }
 
             const { data: box } = await supabase.from('boxes').select('id').eq('code', sourceCode).single()
             if (!box) throw new Error("Box missing")
+
+            // LOGIC: Block moving EMPTY box FROM RECEIVING
+            // currentLoc holds the source location code
+            if (currentLoc && currentLoc.toLowerCase().includes('receiving')) {
+                const { count: standardCount } = await supabase.from('inventory_items').select('*', { count: 'exact', head: true }).eq('box_id', box.id)
+                const { count: bulkCount } = await supabase.from('bulk_inventory').select('*', { count: 'exact', head: true }).eq('box_id', box.id).gt('quantity', 0)
+
+                const totalItems = (standardCount || 0) + (bulkCount || 0)
+
+                if (totalItems === 0) {
+                    playErrorSound()
+                    alert("CHẶN: Không được chuyển thùng rỗng ra khỏi khu vực Receiving!")
+                    setLoading(false)
+                    return
+                }
+            }
 
             const { error: moveError } = await supabase
                 .from('boxes')
@@ -112,7 +136,7 @@ export default function TransferPage() {
                 entity_id: box.id,
                 from_location_id: currentLocId,
                 to_location_id: location.id,
-                warehouse_id: location.warehouse_id, // Add warehouse_id to Single Move too
+                // warehouse_id: location.warehouse_id, // REMOVED: Column does not exist on locations table
                 user_id: session?.user?.id,
                 created_at: new Date().toISOString()
             })
@@ -141,41 +165,24 @@ export default function TransferPage() {
         if (!bulkDestCode) return
         setLoading(true)
 
-        // Try fetching with warehouse_id first
-        let { data: location, error } = await supabase
+        // Fix: locations table does not have warehouse_id
+        const { data: location, error } = await supabase
             .from('locations')
-            .select('id, code, warehouse_id')
+            .select('id, code')
             .ilike('code', bulkDestCode.trim())
             .single()
 
-        // If error (likely column missing), fallback to just id, code
-        if (error) {
-            console.warn("Retrying location scan without warehouse_id:", error.message)
-            const { data: retryLoc, error: retryError } = await supabase
-                .from('locations')
-                .select('id, code')
-                .ilike('code', bulkDestCode.trim())
-                .single()
-
-            if (retryError || !retryLoc) {
-                playErrorSound()
-                alert(`Lỗi tìm vị trí: ${retryError?.message || "Không tìm thấy"}`)
-                setLoading(false)
-                return
-            }
-            location = retryLoc as any
-        }
-
-        if (!location) {
+        if (error || !location) {
             playErrorSound()
-            alert("Vị trí đích không tồn tại!")
+            console.error("Bulk loc scan error:", error)
+            alert(`Vị trí đích "${bulkDestCode}" không tồn tại!`)
             setLoading(false)
             return
         }
 
         setBulkDestId(location.id)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setBulkDestWarehouseId((location as any).warehouse_id || null) // Safe access
+        // setBulkDestWarehouseId((location as any).warehouse_id || null) // REMOVED
+        setBulkDestWarehouseId(null)
         setBulkDestCode(location.code) // Normalize case
         setBulkStep(2)
         setLoading(false)
@@ -225,6 +232,22 @@ export default function TransferPage() {
         const locCode = (box.locations as any)?.code || "N/A"
         const locId = (box.locations as any)?.id || null
 
+        // LOGIC: Check Empty if moving FROM Receiving
+        if (locCode && locCode.toLowerCase().includes('receiving')) {
+            const { count: standardCount } = await supabase.from('inventory_items').select('*', { count: 'exact', head: true }).eq('box_id', box.id)
+            const { count: bulkCount } = await supabase.from('bulk_inventory').select('*', { count: 'exact', head: true }).eq('box_id', box.id).gt('quantity', 0)
+
+            const totalItems = (standardCount || 0) + (bulkCount || 0)
+
+            if (totalItems === 0) {
+                playErrorSound()
+                alert("CHẶN: Không được chuyển thùng rỗng ra khỏi khu vực Receiving!")
+                setBulkBoxInput("")
+                setLoading(false)
+                return
+            }
+        }
+
         setBulkBoxes(prev => [{ id: box.id, code: box.code, currentLoc: locCode, currentLocId: locId }, ...prev])
         setBulkBoxInput("")
         setLoading(false)
@@ -263,7 +286,7 @@ export default function TransferPage() {
                     entity_id: box.id,
                     from_location_id: box.currentLocId, // Use stored ID
                     to_location_id: bulkDestId,
-                    warehouse_id: bulkDestWarehouseId, // Use stored Warehouse ID
+                    // warehouse_id: bulkDestWarehouseId, // REMOVED: Not available
                     user_id: session?.user?.id,
                     note: `Bulk move to ${bulkDestCode}`,
                     created_at: new Date().toISOString()

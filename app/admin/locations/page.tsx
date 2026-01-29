@@ -146,7 +146,7 @@ export default function LocationsPage() {
         setSelectedLoc(loc)
         const { data, error } = await supabase
             .from('boxes')
-            .select('*, inventory_items(count)')
+            .select('*, inventory_items(quantity)')
             .eq('location_id', loc.id)
             .order('code')
 
@@ -370,7 +370,7 @@ export default function LocationsPage() {
             <Dialog open={!!selectedLoc} onOpenChange={o => !o && setSelectedLoc(null)}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Thùng tại {selectedLoc?.code}</DialogTitle></DialogHeader><div className="space-y-4 max-h-[60vh] overflow-auto thin-scrollbar">{locBoxes.length ? locBoxes.map(b => (
                 <div key={b.id} className="flex items-center justify-between p-3 border rounded-xl hover:bg-slate-50 cursor-pointer" onClick={() => handleViewBoxItems(b)}>
                     <div className="flex items-center gap-3"><BoxIcon className="text-indigo-600" /><div><div className="font-bold">{b.code}</div><div className="text-[10px] text-slate-400 capitalize">{b.status}</div></div></div>
-                    <div className="font-bold text-slate-700">{b.inventory_items?.[0]?.count || 0} hàng</div>
+                    <div className="font-bold text-slate-700">{b.inventory_items?.reduce((acc: number, cur: any) => acc + (cur.quantity || 0), 0) || 0} hàng</div>
                 </div>
             )) : <p className="text-center p-10 text-slate-400 italic">Trống</p>}</div></DialogContent></Dialog>
             <Dialog open={!!selectedBox} onOpenChange={o => !o && setSelectedBox(null)}><DialogContent><DialogHeader><DialogTitle>Hàng trong {selectedBox?.code}</DialogTitle></DialogHeader><div className="space-y-3">{boxItems.length ? boxItems.map(i => (
