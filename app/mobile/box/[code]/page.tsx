@@ -16,7 +16,8 @@ interface AssetItem {
     id: string
     quantity: number
     product_id: string
-    products: { name: string; sku: string } | null
+    sku: string
+    product_name: string
 }
 
 export default function BoxDetailPage() {
@@ -54,15 +55,16 @@ export default function BoxDetailPage() {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             setBox(boxData as any)
 
-            // 2. Fetch Inventory in Box
+            // 2. Fetch Inventory in Box (Unified View)
             if (boxData) {
                 const { data: itemData, error: itemError } = await supabase
-                    .from('inventory_items')
+                    .from('view_box_contents_unified')
                     .select(`
                 id,
                 quantity,
                 product_id,
-                products (name, sku)
+                sku,
+                product_name
             `)
                     .eq('box_id', boxData.id)
 
@@ -145,8 +147,8 @@ export default function BoxDetailPage() {
                                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                                     </div>
                                     <div className="min-w-0">
-                                        <p className="font-bold text-slate-800 truncate font-mono text-sm">{item.products?.sku || 'Unknown SKU'}</p>
-                                        <p className="text-xs text-slate-500 truncate">{item.products?.name}</p>
+                                        <p className="font-bold text-slate-800 truncate font-mono text-sm">{item.sku || 'Unknown SKU'}</p>
+                                        <p className="text-xs text-slate-500 truncate">{item.product_name}</p>
                                     </div>
                                 </div>
                                 <div className="text-right shrink-0 pl-2">

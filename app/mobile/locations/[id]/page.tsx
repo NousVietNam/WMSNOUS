@@ -27,15 +27,15 @@ export default function LocationDetailPage() {
         setLocation(loc)
 
         if (loc) {
-            // 2. Get Boxes
+            // 2. Get Boxes using Unified View with Counts
             const { data: boxData } = await supabase
-                .from('boxes')
-                .select('*, inventory_items(count)')
+                .from('view_boxes_with_counts')
+                .select('*')
                 .eq('location_id', id)
 
             setBoxes(boxData?.map((b: any) => ({
                 ...b,
-                item_count: b.inventory_items?.[0]?.count || 0
+                item_count: b.total_item_count || 0
             })) || [])
 
             // 3. Get History (Real query using columns)

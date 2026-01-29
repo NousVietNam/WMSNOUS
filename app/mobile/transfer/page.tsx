@@ -141,8 +141,30 @@ export default function TransferPage() {
         if (!bulkDestCode) return
         setLoading(true)
 
-        // Fetch warehouse_id here
-        const { data: location } = await supabase.from('locations').select('id, code, warehouse_id').ilike('code', bulkDestCode.trim()).single()
+        // Try fetching with warehouse_id first
+        let { data: location, error } = await supabase
+            .from('locations')
+            .select('id, code, warehouse_id')
+            .ilike('code', bulkDestCode.trim())
+            .single()
+
+        // If error (likely column missing), fallback to just id, code
+        if (error) {
+            console.warn("Retrying location scan without warehouse_id:", error.message)
+            const { data: retryLoc, error: retryError } = await supabase
+                .from('locations')
+                .select('id, code')
+                .ilike('code', bulkDestCode.trim())
+                .single()
+
+            if (retryError || !retryLoc) {
+                playErrorSound()
+                alert(`Lỗi tìm vị trí: ${retryError?.message || "Không tìm thấy"}`)
+                setLoading(false)
+                return
+            }
+            location = retryLoc as any
+        }
 
         if (!location) {
             playErrorSound()
@@ -152,7 +174,8 @@ export default function TransferPage() {
         }
 
         setBulkDestId(location.id)
-        setBulkDestWarehouseId(location.warehouse_id) // Save it
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        setBulkDestWarehouseId((location as any).warehouse_id || null) // Safe access
         setBulkDestCode(location.code) // Normalize case
         setBulkStep(2)
         setLoading(false)
