@@ -465,6 +465,54 @@ export default function BoxesPage() {
         }
     }
 
+    const handleExportAll = async () => {
+        setLoading(true)
+        try {
+            let query = supabase
+                .from('view_boxes_with_counts')
+                .select(`
+                    code,
+                    location_code,
+                    total_item_count,
+                    status,
+                    inventory_type
+                `)
+
+            if (statusFilter !== 'ALL') {
+                query = query.eq('status', statusFilter)
+            }
+            if (searchTerm) {
+                query = query.ilike('code', `%${searchTerm}%`)
+            }
+
+            const { data, error } = await query
+
+            if (error) throw error
+            if (!data || data.length === 0) return alert("Không có dữ liệu để xuất")
+
+            const exportData = data.map(item => ({
+                "Mã Thùng": item.code,
+                "Vị Trí": item.location_code || "N/A",
+                "Số Lượng SP": item.total_item_count || 0,
+                "Trạng Thái": item.status,
+                "Loại": item.inventory_type
+            }))
+
+            const ws = XLSX.utils.json_to_sheet(exportData)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, "DanhSachThung")
+
+            const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '')
+            XLSX.writeFile(wb, `DanhSachThung_ALL_${timestamp}.xlsx`)
+
+        } catch (error: any) {
+            console.error("Export all error:", error)
+            alert("Lỗi xuất file: " + error.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
     const triggerSinglePrint = (box: Box) => {
         triggerPrint([box])
     }
@@ -723,6 +771,9 @@ export default function BoxesPage() {
                             </Button>
                             <Button variant="outline" onClick={handleExport} disabled={selectedIds.size === 0} className="w-full">
                                 <Download className="mr-2 h-4 w-4" /> Xuất Excel ({selectedIds.size})
+                            </Button>
+                            <Button variant="secondary" onClick={handleExportAll} className="w-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200">
+                                <Download className="mr-2 h-4 w-4" /> Xuất Toàn Bộ
                             </Button>
                         </div>
 
