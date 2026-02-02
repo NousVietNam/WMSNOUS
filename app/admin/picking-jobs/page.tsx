@@ -40,7 +40,7 @@ export default function PickingJobsPage() {
                     started_at,
                     completed_at,
                     user:users(name),
-                    outbound_order:outbound_orders(code, customer:customers(name)),
+                    outbound_order:outbound_orders(code, inventory_type, customer:customers(name)),
                     transfer:outbound_orders!outbound_order_id(code, destination:destinations(name)),
                     picking_tasks(id, status, quantity)
                 `)

@@ -5,9 +5,10 @@ import { supabase } from "@/lib/supabase"
 import Link from "next/link"
 import { format, subDays } from "date-fns"
 import { vi } from "date-fns/locale"
-import { Package, Truck, Plus, Filter, RefreshCw, Upload, Download, Trash2, X, FileSpreadsheet, Search, Calendar } from "lucide-react"
+import { Package, Truck, Plus, Filter, RefreshCw, Upload, Download, Trash2, X, FileSpreadsheet, Search, Calendar, Layers, Box } from "lucide-react"
 import { toast } from "sonner"
 import * as XLSX from 'xlsx'
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type OutboundOrder = {
     id: string
@@ -27,7 +28,9 @@ type OutboundOrder = {
     customers?: { id: string; name: string; code?: string } | null
     destinations?: { id: string; name: string; code?: string } | null
     sale_staff?: { id: string; name: string; code?: string } | null
+    sale_staff?: { id: string; name: string; code?: string } | null
     outbound_order_items?: any[]
+    inventory_type?: 'PIECE' | 'BULK'
 }
 
 type Customer = { id: string; name: string; code?: string }
@@ -39,6 +42,7 @@ export default function OutboundListPage() {
     const [loading, setLoading] = useState(true)
 
     // Filters
+    const [filterInventoryType, setFilterInventoryType] = useState<string>('PIECE')
     const [filterType, setFilterType] = useState<string>('ALL')
     const [filterStatus, setFilterStatus] = useState<string>('ALL')
     const [filterCode, setFilterCode] = useState<string>('')
@@ -66,7 +70,7 @@ export default function OutboundListPage() {
 
     useEffect(() => {
         fetchOrders()
-    }, [filterType, filterStatus, filterCode, filterDestinationId, filterDateFrom, filterDateTo])
+    }, [filterInventoryType, filterType, filterStatus, filterCode, filterDestinationId, filterDateFrom, filterDateTo])
 
     // Reset destination filter when type changes
     useEffect(() => {
@@ -94,12 +98,14 @@ export default function OutboundListPage() {
                 customers (id, name, code),
                 destinations (id, name, code),
                 sale_staff:internal_staff (id, name, code),
-                outbound_order_items (id, quantity)
+                outbound_order_items (id, quantity),
+                pick_waves (id, code, status)
             `)
             .order('created_at', { ascending: false })
             .limit(200)
 
         // Apply filters
+        query = query.eq('inventory_type', filterInventoryType)
         if (filterType !== 'ALL') query = query.eq('type', filterType)
         if (filterStatus !== 'ALL') query = query.eq('status', filterStatus)
         if (filterCode.trim()) query = query.ilike('code', `%${filterCode.trim()}%`)
@@ -123,7 +129,7 @@ export default function OutboundListPage() {
 
         const { data, error } = await query
 
-        if (!error && data) setOrders(data)
+        if (!error && data) setOrders(data as any)
         setLoading(false)
     }
 
@@ -351,7 +357,8 @@ export default function OutboundListPage() {
                         created_at,
                         customers (name),
                         destinations (name),
-                        boxes (code)
+                        boxes (code),
+                        pick_waves (code)
                     )
                 `)
                 .in('order_id', Array.from(selectedOrderIds))
@@ -371,6 +378,7 @@ export default function OutboundListPage() {
 
                 return {
                     'Mã Đơn': order.code,
+                    'Wave': order.pick_waves?.code || '',
                     'Loại': order.type,
                     'HT Xuất': order.transfer_type === 'BOX' ? 'Theo Thùng' : 'Sản phẩm',
                     'Mã Thùng': boxCodes,
@@ -392,7 +400,7 @@ export default function OutboundListPage() {
 
             // Set column widths
             ws['!cols'] = [
-                { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 25 },
+                { wch: 15 }, { wch: 15 }, { wch: 12 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 18 }, { wch: 25 },
                 { wch: 20 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 15 }
             ]
 
@@ -549,6 +557,20 @@ export default function OutboundListPage() {
                 </div>
             </div>
 
+            {/* Inventory Type Tabs */}
+            <Tabs value={filterInventoryType} onValueChange={(val) => setFilterInventoryType(val)} className="w-full">
+                <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+                    <TabsTrigger value="PIECE" className="flex items-center gap-2">
+                        <Layers className="h-4 w-4" />
+                        Đơn Lẻ (Retail)
+                    </TabsTrigger>
+                    <TabsTrigger value="BULK" className="flex items-center gap-2">
+                        <Box className="h-4 w-4" />
+                        Đơn Sỉ (Bulk)
+                    </TabsTrigger>
+                </TabsList>
+            </Tabs>
+
             {/* Filters - Single Horizontal Row */}
             <div className="bg-white p-4 rounded-lg border">
                 <div className="flex gap-3 items-center flex-wrap">
@@ -627,7 +649,7 @@ export default function OutboundListPage() {
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="bg-slate-50 border-b border-gray-200">
-                            <th colSpan={8} className="px-3 py-2 text-right text-gray-400 font-bold uppercase text-[10px]">Tổng cộng bộ lọc:</th>
+                            <th colSpan={9} className="px-3 py-2 text-right text-gray-400 font-bold uppercase text-[10px]">Tổng cộng bộ lọc:</th>
                             <th className="px-3 py-2 text-center font-black text-indigo-600 bg-indigo-50/30">
                                 {orders.reduce((sum, o) => sum + getItemCount(o), 0).toLocaleString()}
                             </th>
@@ -654,6 +676,7 @@ export default function OutboundListPage() {
                                 />
                             </th>
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Mã Đơn</th>
+                            {filterInventoryType === 'BULK' && <th className="text-left px-3 py-3 text-xs font-bold text-indigo-600 uppercase">Wave</th>}
                             <th className="text-left px-3 py-3 text-xs font-medium text-gray-500 uppercase">Loại</th>
                             <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Trạng Thái</th>
                             <th className="text-center px-3 py-3 text-xs font-medium text-gray-500 uppercase">Duyệt</th>
@@ -673,11 +696,11 @@ export default function OutboundListPage() {
                     <tbody className="divide-y">
                         {loading ? (
                             <tr>
-                                <td colSpan={15} className="text-center py-8 text-gray-500">Đang tải...</td>
+                                <td colSpan={16} className="text-center py-8 text-gray-500">Đang tải...</td>
                             </tr>
                         ) : orders.length === 0 ? (
                             <tr>
-                                <td colSpan={15} className="text-center py-8 text-gray-500">Không có dữ liệu</td>
+                                <td colSpan={16} className="text-center py-8 text-gray-500">Không có dữ liệu</td>
                             </tr>
                         ) : (
                             orders.map(order => (
@@ -696,6 +719,17 @@ export default function OutboundListPage() {
                                         </Link>
                                         <div className="text-xs text-gray-400">{order.transfer_type}</div>
                                     </td>
+                                    {filterInventoryType === 'BULK' && (
+                                        <td className="px-3 py-2">
+                                            {(order as any).pick_waves ? (
+                                                <Link href={`/admin/waves/${(order as any).pick_waves.id}`} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-700 hover:bg-purple-200">
+                                                    {(order as any).pick_waves.code}
+                                                </Link>
+                                            ) : (
+                                                <span className="text-gray-300 text-xs italic">Chưa gom</span>
+                                            )}
+                                        </td>
+                                    )}
                                     <td className="px-3 py-2">{getTypeBadge(order.type)}</td>
                                     <td className="px-3 py-2 text-center">{getStatusBadge(order.status)}</td>
                                     <td className="px-3 py-2 text-center">

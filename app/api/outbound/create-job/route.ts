@@ -14,6 +14,17 @@ export async function POST(request: Request) {
             return NextResponse.json({ success: false, error: 'orderId is required' }, { status: 400 })
         }
 
+        // Gatekeeper: Check Inventory Type
+        const { data: order } = await supabase
+            .from('outbound_orders')
+            .select('inventory_type')
+            .eq('id', orderId)
+            .single()
+
+        if (order?.inventory_type === 'BULK') {
+            return NextResponse.json({ success: false, error: 'Cannot create Retail Job for BULK order. Use Wave Planning instead.' }, { status: 400 })
+        }
+
         const { data, error } = await supabase.rpc('create_picking_job_for_outbound', {
             p_order_id: orderId
         })

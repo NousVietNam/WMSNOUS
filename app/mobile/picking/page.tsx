@@ -33,6 +33,7 @@ export default function PickingJobsPage() {
                 users (name)
             `)
             .in('status', ['OPEN', 'IN_PROGRESS'])
+            .eq('outbound_orders.inventory_type', 'PIECE') // Legacy App only handles Retail Picking
             .order('created_at', { ascending: false })
 
         if (!error && data) setJobs(data)

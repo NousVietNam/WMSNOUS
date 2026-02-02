@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
-import { ArrowLeft, Plus, Trash2, Loader2, Box as BoxIcon, Package, Search, ShoppingCart, Truck, Gift, Users, Save, FileText, Settings } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Loader2, Box as BoxIcon, Package, Search, ShoppingCart, Truck, Gift, Users, Save, FileText, Settings, Layers } from "lucide-react"
 import { toast } from "sonner"
 
 type Product = { id: string; sku: string; name: string; price?: number; barcode?: string }
@@ -40,6 +40,7 @@ export default function NewOutboundPage() {
     const [submitting, setSubmitting] = useState(false)
 
     // Header info
+    const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK'>('PIECE')
     const [orderType, setOrderType] = useState<'SALE' | 'TRANSFER' | 'INTERNAL' | 'GIFT'>('SALE')
     const [transferType, setTransferType] = useState<'ITEM' | 'BOX'>('ITEM')
     const [customerId, setCustomerId] = useState<string>('')
@@ -221,6 +222,7 @@ export default function NewOutboundPage() {
                 )
             `)
             .eq('status', 'OPEN')
+            .eq('inventory_type', inventoryType) // Filter by inventory type
             .gt('inventory_items.quantity', 0)
             .limit(10)
 
@@ -348,6 +350,7 @@ export default function NewOutboundPage() {
                 .from('outbound_orders')
                 .insert({
                     code: orderCode,
+                    inventory_type: inventoryType,
                     type: orderType,
                     transfer_type: transferType,
                     source: 'MANUAL',
@@ -477,6 +480,36 @@ export default function NewOutboundPage() {
                 <main className="flex-1 w-full flex gap-6 px-6 py-4 h-full">
                     {/* LEFT: Fixed Sidebar (Header Info) */}
                     <div className="w-1/3 h-full overflow-y-auto pr-2 space-y-3">
+                        {/* Inventory Type */}
+                        <div className="bg-white rounded-xl border p-3">
+                            <h2 className="font-bold text-gray-800 mb-2 flex items-center gap-2 text-sm">
+                                <Layers className="h-4 w-4 text-blue-500" />
+                                Nguồn Hàng
+                            </h2>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    onClick={() => setInventoryType('PIECE')}
+                                    className={`p-2 rounded-lg border transition-all flex items-center justify-center gap-2 ${inventoryType === 'PIECE'
+                                        ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                        }`}
+                                >
+                                    <Layers className="h-4 w-4" />
+                                    <span className="font-medium text-xs">Kho Lẻ</span>
+                                </button>
+                                <button
+                                    onClick={() => setInventoryType('BULK')}
+                                    className={`p-2 rounded-lg border transition-all flex items-center justify-center gap-2 ${inventoryType === 'BULK'
+                                        ? 'border-purple-500 bg-purple-50 text-purple-700'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                        }`}
+                                >
+                                    <BoxIcon className="h-4 w-4" />
+                                    <span className="font-medium text-xs">Kho Sỉ</span>
+                                </button>
+                            </div>
+                        </div>
+
                         {/* Order Type */}
                         <div className="bg-white rounded-xl border p-3">
                             <h2 className="font-bold text-gray-800 mb-2 flex items-center gap-2 text-sm">

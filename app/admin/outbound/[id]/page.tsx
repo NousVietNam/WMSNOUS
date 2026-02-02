@@ -37,6 +37,7 @@ type OutboundOrder = {
     customers?: { id: string; name: string } | null
     destinations?: { id: string; name: string } | null
     sale_staff?: { id: string; name: string; code?: string } | null
+    inventory_type?: 'PIECE' | 'BULK'
 }
 
 type OrderItem = {
@@ -615,6 +616,10 @@ export default function OutboundDetailPage() {
                         <span>{order.type}</span>
                         <span>•</span>
                         <span>{order.transfer_type}</span>
+                        <span>•</span>
+                        <span className={`font-bold ${order.inventory_type === 'BULK' ? 'text-purple-600' : 'text-blue-600'}`}>
+                            {order.inventory_type === 'BULK' ? 'SỈ' : 'LẺ'}
+                        </span>
                     </div>
                 </div>
                 <div className="flex gap-2">
@@ -757,6 +762,14 @@ export default function OutboundDetailPage() {
                                             {order.transfer_type && (
                                                 <span className="ml-2 px-2 py-0.5 bg-slate-50 text-slate-500 rounded text-xs border border-slate-100">
                                                     {order.transfer_type}
+                                                </span>
+                                            )}
+                                            {order.inventory_type && (
+                                                <span className={`ml-2 px-2 py-0.5 rounded text-xs border ${order.inventory_type === 'BULK'
+                                                    ? 'bg-purple-50 text-purple-700 border-purple-100'
+                                                    : 'bg-blue-50 text-blue-700 border-blue-100'
+                                                    }`}>
+                                                    {order.inventory_type === 'BULK' ? 'KHO SỈ' : 'KHO LẺ'}
                                                 </span>
                                             )}
                                         </div>
