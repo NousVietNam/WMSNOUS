@@ -189,7 +189,18 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
         }
     }
 
-    if (loading) return <div className="p-8 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-600" /></div>
+    if (loading) return <div className="p-8 text-center flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <Loader2 className="h-10 w-10 animate-spin text-indigo-600" />
+        <p className="text-slate-500 font-medium italic animate-pulse">Đang tải dữ liệu Wave...</p>
+    </div>
+
+    if (!wave) return <div className="p-8 text-center gap-4 flex flex-col items-center">
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-2">
+            <Ban className="h-5 w-5" />
+            <span className="font-bold">Không tìm thấy thông tin Wave!</span>
+        </div>
+        <Button onClick={() => router.push('/admin/waves')}>Quay lại danh sách</Button>
+    </div>
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8 min-h-screen pb-20">
@@ -286,11 +297,16 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {jobs.map((job) => (
                             <div key={job.id} className="bg-white rounded-xl border shadow-sm overflow-hidden hover:shadow-md transition-shadow">
-                                <div className="p-4 border-b bg-slate-50/50 flex justify-between items-center">
-                                    <div className="font-mono text-sm font-bold text-indigo-900">{job.code}</div>
+                                <div className="p-4 border-b bg-indigo-50 flex justify-between items-center">
+                                    <div className="flex items-center gap-2">
+                                        <div className="bg-slate-900 text-white p-1 rounded">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
+                                        </div>
+                                        <div className="font-mono text-base font-black text-black">{job.code}</div>
+                                    </div>
                                     <Badge className={
-                                        job.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                                            job.status === 'OPEN' || job.status === 'ASSIGNED' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'
+                                        job.status === 'COMPLETED' ? 'bg-green-500 text-white shadow-sm' :
+                                            job.status === 'OPEN' || job.status === 'ASSIGNED' ? 'bg-blue-600 text-white shadow-sm' : 'bg-yellow-500 text-white shadow-sm'
                                     }>
                                         {job.status}
                                     </Badge>

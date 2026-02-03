@@ -17,10 +17,19 @@ AS $$
 DECLARE
     v_wave_id UUID;
     v_code TEXT;
-    v_orders_count INT;
+    v_mmyy TEXT;
+    v_seq INT;
+    v_orders_count INT := 0;
 BEGIN
-    -- 1. Generate Code: W-YYMMDD-XXXX
-    v_code := 'W-' || to_char(NOW(), 'YYMMDD') || '-' || upper(substring(md5(random()::text) from 1 for 4));
+    -- 1. Generate Code: Wave-mmyy-xxxx
+    v_mmyy := to_char(NOW(), 'MMYY');
+    
+    -- Lấy số thứ tự lớn nhất trong tháng hiện tại (Wave-MMYY-XXXX)
+    SELECT COALESCE(MAX(SUBSTRING(code FROM 11 FOR 4)::INT), 0) + 1 INTO v_seq 
+    FROM pick_waves 
+    WHERE code LIKE 'Wave-' || v_mmyy || '-%';
+    
+    v_code := 'Wave-' || v_mmyy || '-' || lpad(v_seq::text, 4, '0');
     
     -- 2. Insert Wave Header
     INSERT INTO pick_waves (code, inventory_type, created_by, description)
@@ -35,15 +44,9 @@ BEGIN
         
         GET DIAGNOSTICS v_orders_count = ROW_COUNT;
         
-        -- Optional: Validation
         IF v_orders_count = 0 THEN
             RAISE EXCEPTION 'No valid orders found to link to wave.';
         END IF;
-
-        -- Manually Trigger Metric Recalc (Just in case trigger misses bulk update, though ROW trigger should catch it)
-        -- We trust the trigger on 'outbound_orders' to filter and update 'pick_waves'
-        -- OR we can manually update here for performance/certainty?
-        -- Let's trust the trigger we just fixed in Step 1411 (recalc_wave_metrics).
     END IF;
 
     RETURN jsonb_build_object(
@@ -53,7 +56,6 @@ BEGIN
         'linked_orders', v_orders_count
     );
 EXCEPTION WHEN OTHERS THEN
-    -- If any error, the whole transaction rolls back automatically
     RAISE;
 END;
 $$;

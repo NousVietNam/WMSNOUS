@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import QRCode from "react-qr-code"
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
+import { ReceivingReminder } from "@/components/mobile/ReceivingReminder"
 
 interface Box {
     id: string
@@ -577,6 +578,11 @@ export default function BoxesPage() {
                                     </SelectContent>
                                 </Select>
                             </div>
+
+                            <div className="pt-2">
+                                <ReceivingReminder title="Giám Sát Thùng Chờ Cất" />
+                            </div>
+
                             <Dialog open={openDialog} onOpenChange={setOpenDialog}>
                                 <DialogTrigger asChild><Button className="w-full"><Plus className="mr-2 h-4 w-4" /> Tạo Mới</Button></DialogTrigger>
                                 <DialogContent className="max-w-xl">

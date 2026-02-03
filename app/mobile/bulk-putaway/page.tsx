@@ -7,6 +7,7 @@ import { MobileHeader } from "@/components/mobile/MobileHeader"
 import { useAuth } from "@/components/auth/AuthProvider"
 import MobileScannerInput from "@/components/mobile/MobileScannerInput"
 import { playSuccessSound, playErrorSound } from "@/utils/sound"
+import { ReceivingReminder } from "@/components/mobile/ReceivingReminder"
 
 function BulkPutAwayContent() {
     const { session } = useAuth()
@@ -286,6 +287,7 @@ function BulkPutAwayContent() {
             <MobileHeader title="Nhập Tồn Đầu Kỳ (Sỉ)" backLink="/mobile" />
 
             <main className="p-4 space-y-4">
+                <ReceivingReminder inventoryType="BULK" userId={session?.user?.id} />
                 {step === 1 && (
                     <>
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4 space-y-4">

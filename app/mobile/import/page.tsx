@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { MobileHeader } from "@/components/mobile/MobileHeader"
 import MobileScannerInput from "@/components/mobile/MobileScannerInput"
+import { ReceivingReminder } from "@/components/mobile/ReceivingReminder"
 
 export default function ImportPage() {
     const { session } = useAuth()
@@ -130,6 +131,8 @@ export default function ImportPage() {
                     ))}
                 </div>
 
+                <ReceivingReminder inventoryType="PIECE" userId={session?.user?.id} />
+
                 {step === 1 && (
                     <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
                         <div className="flex items-center gap-3 text-slate-800 mb-2">
@@ -227,6 +230,6 @@ export default function ImportPage() {
                     </div>
                 )}
             </div>
-        </div>
+        </div >
     )
 }

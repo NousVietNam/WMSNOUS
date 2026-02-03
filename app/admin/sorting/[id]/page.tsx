@@ -223,6 +223,34 @@ export default function SortingVisualPage() {
                                 </div>
                                 <div className={`text-[10px] font-bold ${isFull ? 'text-green-400' : 'text-slate-400'}`}>{order.sorted_qty}/{order.total_qty}</div>
                             </div>
+
+                            {isFull && order.status !== 'PACKED' && (
+                                <button
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        const { data: userData } = await supabase.auth.getUser();
+                                        if (!userData.user) return;
+                                        const { error } = await supabase.rpc('confirm_order_packed', {
+                                            p_order_id: order.order_id,
+                                            p_user_id: userData.user.id
+                                        });
+                                        if (error) {
+                                            alert("Lỗi xác nhận: " + error.message);
+                                        } else {
+                                            fetchData();
+                                        }
+                                    }}
+                                    className="mt-2 w-full py-1.5 bg-green-600 hover:bg-green-500 text-white text-[10px] font-black rounded uppercase tracking-wider transition-colors shadow-lg shadow-green-900/20"
+                                >
+                                    Xác nhận Đóng gói
+                                </button>
+                            )}
+
+                            {order.status === 'PACKED' && (
+                                <div className="mt-2 w-full py-1 border border-green-500/50 text-green-400 text-[9px] font-bold rounded text-center uppercase bg-green-500/10">
+                                    Đã Đóng Gói ✓
+                                </div>
+                            )}
                         </div>
                     )
                 })}

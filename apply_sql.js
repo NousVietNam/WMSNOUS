@@ -40,7 +40,12 @@ async function run() {
     const migrations = [
         'database/migrations/migration_cancel_released_wave.sql',
         'database/migrations/migration_enhance_ship_safety.sql',
-        'database/migrations/migration_smart_order_status_update.sql'
+        'database/migrations/migration_smart_order_status_update.sql',
+        'database/migrations/migration_wave_progress_view.sql',
+        'database/migrations/migration_refined_status_logic.sql',
+        'database/migrations/migration_confirm_packed_rpc.sql',
+        'database/migrations/migration_transactional_wave.sql',
+        'database/migrations/migration_fix_allocation_release_on_cancel.sql'
     ];
 
     for (const file of migrations) {

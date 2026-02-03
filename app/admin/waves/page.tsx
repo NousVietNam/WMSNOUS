@@ -31,19 +31,29 @@ export default function WavesPage() {
     const fetchWaves = async () => {
         setLoading(true)
         try {
-            const { data, error } = await supabase
+            // 1. Fetch Waves and Jobs
+            const { data: wavesData, error: wavesError } = await supabase
                 .from('pick_waves')
                 .select('*, picking_jobs(id, code)')
                 .order('created_at', { ascending: false })
 
-            if (error) {
-                console.error("Wave fetch error:", error)
-                toast.error("Không thể tải danh sách Wave: " + error.message)
-                return
-            }
-            if (data) setWaves(data)
+            if (wavesError) throw wavesError
+
+            // 2. Fetch Progress (Separate query because relationships with views can be tricky)
+            const { data: progressData, error: progressError } = await supabase
+                .from('view_wave_progress')
+                .select('*')
+
+            // 3. Merge in memory
+            const enrichedWaves = (wavesData || []).map(w => ({
+                ...w,
+                view_wave_progress: (progressData || []).filter(p => p.wave_id === w.id)
+            }))
+
+            setWaves(enrichedWaves)
         } catch (err: any) {
-            toast.error("Lỗi hệ thống: " + err.message)
+            console.error("Wave fetch error:", err)
+            toast.error("Không thể tải danh sách Wave: " + err.message)
         } finally {
             setLoading(false)
         }
@@ -90,6 +100,7 @@ export default function WavesPage() {
                                 <TableHead className="w-[120px]">Mã Wave</TableHead>
                                 <TableHead>Loại Kho</TableHead>
                                 <TableHead>Trạng Thái</TableHead>
+                                <TableHead className="w-[180px]">Tiến độ nhặt</TableHead>
                                 <TableHead>Picking Jobs</TableHead>
                                 <TableHead>Người Tạo</TableHead>
                                 <TableHead className="text-right">Số Đơn</TableHead>
@@ -100,13 +111,13 @@ export default function WavesPage() {
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={8} className="text-center py-8">
+                                    <TableCell colSpan={9} className="text-center py-8">
                                         <Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-600" />
                                     </TableCell>
                                 </TableRow>
                             ) : waves.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={8} className="text-center py-8 text-slate-500">
+                                    <TableCell colSpan={9} className="text-center py-8 text-slate-500">
                                         Chưa có Wave nào được tạo.
                                     </TableCell>
                                 </TableRow>
@@ -117,7 +128,7 @@ export default function WavesPage() {
                                         className="hover:bg-slate-50 cursor-pointer transition-colors"
                                         onClick={() => router.push(`/admin/waves/${wave.id}`)}
                                     >
-                                        <TableCell className="font-mono font-bold text-indigo-600">{wave.code}</TableCell>
+                                        <TableCell className="font-mono font-bold text-black">{wave.code}</TableCell>
                                         <TableCell>
                                             <Badge variant="outline" className={wave.inventory_type === 'BULK' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
                                                 {wave.inventory_type === 'BULK' ? 'KHO SỈ' : 'KHO LẺ'}
@@ -127,6 +138,28 @@ export default function WavesPage() {
                                             <Badge variant="secondary" className={`${getStatusColor(wave.status)} uppercase text-[10px]`}>
                                                 {wave.status === 'PLANNING' ? 'ĐANG LÊN KH' : wave.status === 'RELEASED' ? 'ĐANG THỰC HIỆN' : wave.status}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            {(() => {
+                                                const stats = (wave as any).view_wave_progress?.[0]
+                                                const total = stats?.total_tasks || 0
+                                                const done = stats?.completed_tasks || 0
+                                                const pct = total > 0 ? Math.round((done / total) * 100) : 0
+                                                return (
+                                                    <div className="space-y-1">
+                                                        <div className="flex justify-between text-[10px] font-bold">
+                                                            <span>{pct}%</span>
+                                                            <span className="text-slate-400">{done}/{total} tasks</span>
+                                                        </div>
+                                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                                                            <div
+                                                                className={`h-full transition-all duration-500 ${pct === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
+                                                                style={{ width: `${pct}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })()}
                                         </TableCell>
                                         <TableCell>
                                             <div className="flex flex-wrap gap-1 max-w-[200px]">

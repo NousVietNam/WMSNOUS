@@ -93,7 +93,7 @@ export default function DoPickingPage() {
         })
 
         const locationGroups: LocationGroup[] = []
-        const sortedLocs = Array.from(groupedMap.keys()).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        const sortedLocs = Array.from(groupedMap.keys()).sort((a, b) => a.localeCompare(b))
 
         sortedLocs.forEach(locCode => {
             const boxMap = groupedMap.get(locCode)!
@@ -112,7 +112,7 @@ export default function DoPickingPage() {
                     totalItems: boxTotal, pickedItems: boxPicked
                 })
             })
-            boxGroups.sort((a, b) => a.boxCode.localeCompare(b.boxCode, undefined, { numeric: true }))
+            boxGroups.sort((a, b) => a.boxCode.localeCompare(b.boxCode))
             locationGroups.push({ locationCode: locCode, boxes: boxGroups })
         })
         return locationGroups

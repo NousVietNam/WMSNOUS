@@ -151,7 +151,7 @@ serve(async (req) => {
             const zoneTasks = allocationByZone[zone]
             const escapedZone = zone.replace(/'/g, "''")
             // Generate friendly code: WP-MMYY-XXXX-Zone
-            const shortWaveCode = (wave.code || '').replace('WAVE-', '').replace('W-', '')
+            const shortWaveCode = (wave.code || '').replace('Wave-', '').replace('WAVE-', '').replace('W-', '')
             const jobCode = `WP-${shortWaveCode}-${zone}`
 
             // Create Job
@@ -190,11 +190,14 @@ serve(async (req) => {
         return new Response(JSON.stringify({
             success: false,
             error: error.message,
-            stack: error.stack,
-            type: 'Technical/Logic Error'
+            context: {
+                message: error.message,
+                sku: error.sku,
+                order: error.order
+            }
         }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 400,
+            status: 200, // Return 200 even on logic error so client can read JSON
         })
     }
 })
