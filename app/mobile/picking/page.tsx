@@ -43,7 +43,7 @@ export default function PickingJobsPage() {
                 view_picking_job_progress (total_tasks, completed_tasks),
                 users (name)
             `)
-            .in('status', ['OPEN', 'IN_PROGRESS'])
+            .in('status', ['OPEN', 'IN_PROGRESS', 'PENDING'])
             .order('created_at', { ascending: false })
 
         if (!error && data) setJobs(data)
