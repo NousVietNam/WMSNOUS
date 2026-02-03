@@ -75,7 +75,7 @@ BEGIN
 
             IF v_job_id IS NULL THEN
                 v_job_id := gen_random_uuid();
-                v_job_code := 'WP-' || SUBSTRING(v_wave.code, 1, 10) || '-' || v_current_zone;
+                v_job_code := 'WP-' || v_wave.code || '-' || v_current_zone;
                 
                 INSERT INTO picking_jobs (id, code, wave_id, type, zone, status)
                 VALUES (v_job_id, v_job_code, p_wave_id, 'WAVE_PICK', v_current_zone, 'PENDING');
