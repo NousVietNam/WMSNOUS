@@ -212,6 +212,51 @@ export default function InventoryPage() {
         updateAvailableFilterOptions()
     }, [searchTerm, filterWarehouse, filterLocation, filterBox, filterBrand, filterTarget, filterProductGroup, filterSeason, filterMonth, viewMode, inventoryType])
 
+    // Realtime Subscription
+    useEffect(() => {
+        console.log("Setting up Realtime Subscription for Inventory...")
+
+        const channel = supabase.channel('inventory-changes')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'bulk_inventory' },
+                () => {
+                    console.log("Realtime: Bulk Inventory changed. Refreshing...")
+                    fetchInventory()
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'inventory_items' },
+                () => {
+                    console.log("Realtime: Piece Inventory changed. Refreshing...")
+                    fetchInventory()
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'boxes' },
+                () => {
+                    console.log("Realtime: Boxes changed (Move). Refreshing...")
+                    fetchInventory()
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'restricted_inventory' },
+                () => {
+                    console.log("Realtime: Restricted flags changed. Refreshing...")
+                    fetchInventory()
+                }
+            )
+            .subscribe()
+
+        return () => {
+            console.log("Cleaning up Realtime Subscription...")
+            supabase.removeChannel(channel)
+        }
+    }, [inventoryType, page, searchTerm, filterWarehouse, filterLocation, filterBox, filterBrand, filterTarget, filterProductGroup, filterSeason, filterMonth, viewMode])
+
     const fetchWarehouses = async () => {
         const { data } = await supabase.from('warehouses').select('id, name, code').order('name')
         if (data) setWarehouses(data)
@@ -809,8 +854,8 @@ export default function InventoryPage() {
                                     </Button>
                                     <Button
                                         variant="outline"
-                                        size="icon"
-                                        className="h-10 w-10 text-slate-500 hover:text-red-500 border-dashed"
+                                        size="sm"
+                                        className="h-10 text-slate-500 hover:text-red-500 hover:bg-red-50 border-dashed"
                                         title="Làm mới cảnh báo (Reset)"
                                         onClick={async () => {
                                             if (!confirm("Xóa tất cả cảnh báo hiện tại để thông báo lại?")) return
@@ -822,7 +867,8 @@ export default function InventoryPage() {
                                             }
                                         }}
                                     >
-                                        <X className="h-4 w-4" />
+                                        <X className="h-4 w-4 mr-2" />
+                                        Reset Cảnh Báo
                                     </Button>
                                 </>
                             )}
