@@ -9,9 +9,10 @@ import { supabase } from "@/lib/supabase"
 import Papa from "papaparse"
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
-import { Upload, AlertCircle, CheckCircle, Trash2, ShieldAlert, FileDown } from "lucide-react"
+import { Upload, CircleAlert, CheckCircle, Trash2, ShieldAlert, FileDown } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 
 interface RestrictedItem {
     id: string
@@ -19,6 +20,7 @@ interface RestrictedItem {
     barcode: string | null
     current_stock: number
     reason: string | null
+    is_launching_soon: boolean
     created_at: string
 }
 
@@ -41,6 +43,16 @@ export default function RestrictedInventoryPage() {
         if (data && !error) {
             setItems(data)
         }
+    }
+
+    const toggleLaunchingSoon = async (id: string, current: boolean) => {
+        const { error } = await supabase
+            .from('restricted_inventory')
+            .update({ is_launching_soon: !current })
+            .eq('id', id)
+
+        if (error) toast.error(error.message)
+        else fetchItems()
     }
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,12 +98,15 @@ export default function RestrictedInventoryPage() {
                     const chunk = rows.slice(i, i + BATCH_SIZE)
                     const formattedData = chunk.map(row => {
                         const cleanStock = row["current_stock"] ? parseInt(row["current_stock"].toString().replace(/,/g, '')) : 0
+                        const launchingSoonStr = (row["is_launching_soon"] || "").toString().toLowerCase()
+                        const isLaunchingSoon = launchingSoonStr === 'yes' || launchingSoonStr === 'true' || launchingSoonStr === '1' || launchingSoonStr === 'y'
 
                         return {
                             sku: row["sku"],
                             barcode: row["barcode"] || null,
                             current_stock: isNaN(cleanStock) ? 0 : cleanStock,
-                            reason: row["reason"] || null
+                            reason: row["reason"] || null,
+                            is_launching_soon: isLaunchingSoon
                         }
                     }).filter(item => item.sku) // Must have SKU
 
@@ -139,9 +154,6 @@ export default function RestrictedInventoryPage() {
                     <h1 className="text-3xl font-bold mb-2 flex items-center gap-2">
                         <ShieldAlert className="h-8 w-8 text-red-600" />
                         Hàng Bị Hạn Chế Nhập Kho
-                        <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded animate-pulse">
-                            V3 - 11:05 AM
-                        </span>
                     </h1>
                     <p className="text-slate-600">
                         Quản lý danh sách hàng không được phép thêm vào thùng khi Put-away.
@@ -154,7 +166,7 @@ export default function RestrictedInventoryPage() {
                 <CardHeader>
                     <CardTitle>Upload CSV File</CardTitle>
                     <CardDescription>
-                        File CSV cần có các cột: <code>sku</code>, <code>barcode</code>, <code>current_stock</code>, <code>reason</code>
+                        File CSV cần có các cột: <code>sku</code>, <code>barcode</code>, <code>current_stock</code>, <code>reason</code>, <code>is_launching_soon</code> (Yes/No)
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -175,7 +187,8 @@ export default function RestrictedInventoryPage() {
                                     'Mã Hàng (SKU)': i.sku,
                                     'Barcode': i.barcode || '',
                                     'Số Tồn Hiện Tại': i.current_stock,
-                                    'Lý Do Hạn Chế': i.reason || ''
+                                    'Lý Do Hạn Chế': i.reason || '',
+                                    'Chuẩn Bị Mở Bán': i.is_launching_soon ? 'Yes' : 'No'
                                 })))
                                 const workbook = XLSX.utils.book_new()
                                 XLSX.utils.book_append_sheet(workbook, worksheet, 'Restricted')
@@ -194,7 +207,7 @@ export default function RestrictedInventoryPage() {
 
                     {result && (
                         <Alert variant={result.error > 0 ? "destructive" : "default"} className={result.error === 0 ? "border-green-500 bg-green-50" : ""}>
-                            {result.error > 0 ? <AlertCircle className="h-4 w-4" /> : <CheckCircle className="h-4 w-4 text-green-600" />}
+                            {result.error > 0 ? <CircleAlert className="h-4 w-4" /> : <CheckCircle className="h-4 w-4 text-green-600" />}
                             <AlertTitle>{result.error > 0 ? "Có lỗi xảy ra" : "Hoàn tất"}</AlertTitle>
                             <AlertDescription>
                                 <p>Thành công: <b>{result.success}</b> dòng.</p>
@@ -224,6 +237,7 @@ export default function RestrictedInventoryPage() {
                                     <th className="p-3 text-left font-medium">Barcode</th>
                                     <th className="p-3 text-right font-medium">Số Tồn</th>
                                     <th className="p-3 text-left font-medium">Lý Do</th>
+                                    <th className="p-3 text-center font-medium">Mở Bán</th>
                                     <th className="p-3 text-right font-medium">Ngày Thêm</th>
                                     <th className="p-3 text-right font-medium">Hành Động</th>
                                 </tr>
@@ -231,7 +245,7 @@ export default function RestrictedInventoryPage() {
                             <tbody className="divide-y">
                                 {items.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                                        <td colSpan={7} className="p-8 text-center text-muted-foreground">
                                             Chưa có mã hàng nào bị hạn chế
                                         </td>
                                     </tr>
@@ -242,6 +256,14 @@ export default function RestrictedInventoryPage() {
                                             <td className="p-3 font-mono text-slate-600">{item.barcode || '-'}</td>
                                             <td className="p-3 text-right font-bold text-orange-600">{item.current_stock.toLocaleString()}</td>
                                             <td className="p-3 text-slate-600">{item.reason || '-'}</td>
+                                            <td className="p-3 text-center">
+                                                <Badge
+                                                    onClick={() => toggleLaunchingSoon(item.id, item.is_launching_soon)}
+                                                    className={`cursor-pointer ${item.is_launching_soon ? 'bg-green-100 text-green-700 hover:bg-green-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                                >
+                                                    {item.is_launching_soon ? 'Yes' : 'No'}
+                                                </Badge>
+                                            </td>
                                             <td className="p-3 text-right text-xs text-slate-500">
                                                 {new Date(item.created_at).toLocaleDateString('vi-VN')}
                                             </td>

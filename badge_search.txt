@@ -1,0 +1,96 @@
+﻿C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\inventory\restricted\page.tsx:15:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\inventory\restricted\page.tsx:260:<Badge
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\inventory\restricted\page.tsx:265:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\locations\page.tsx:15:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\locations\page.tsx:320:<Badge variant="secondary" className="bg-white border text-slate-700 font-bold">Dữ Liệu Vị Trí</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\locations\page.tsx:345:<td className="p-4"><Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100">{loc.zone || '---'}</Badge></td>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\locations\page.tsx:346:<td className="p-4"><Badge variant="outline" className="text-[10px]">{loc.type}</Badge></td>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\outbound\page.tsx:531:const getTypeBadge = (type: string) => {
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\outbound\page.tsx:551:const getStatusBadge = (status: string) => {
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\outbound\page.tsx:823:<td className="px-3 py-2">{getTypeBadge(order.type)}</td>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\outbound\page.tsx:824:<td className="px-3 py-2 text-center">{getStatusBadge(order.status)}</td>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\outbound\[id]\page.tsx:508:const getStatusBadge = (status: string) => {
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\outbound\[id]\page.tsx:779:<div>{getStatusBadge(order.status)}</div>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\job-detail-dialog.tsx:5:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\job-detail-dialog.tsx:200:<Badge className="bg-green-100 text-green-800 border-green-200">Đã Lấy</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\job-detail-dialog.tsx:202:<Badge variant="outline" className="text-slate-500">Chờ</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\job-detail-dialog.tsx:271:<Badge variant="outline" className="bg-slate-100">
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\job-detail-dialog.tsx:273:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\job-detail-dialog.tsx:283:<Badge className="bg-green-100 text-green-800 border-green-200">Đã Lấy</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\job-detail-dialog.tsx:285:<Badge variant="outline" className="text-slate-500">Chờ</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:5:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:94:const getStatusBadge = (status: string) => {
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:96:case 'PENDING': return <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200 uppercase text-[10px]">Chờ Xử Lý</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:97:case 'PLANNED': return <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200 uppercase text-[10px]">Đã Lên Kế Hoạch</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:98:case 'OPEN': return <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200 uppercase text-[10px]">Mới Tạo</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:99:case 'IN_PROGRESS': return <Badge variant="outline" className="bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]">Đang Lấy</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:100:case 'PICKING': return <Badge variant="outline" className="bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]">Đang Lấy</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:101:case 'COMPLETED': return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 uppercase text-[10px]">Hoàn Thành</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:102:case 'PACKED': return <Badge variant="outline" className="bg-emerald-100 text-emerald-800 border-emerald-200 uppercase text-[10px]">Đã Đóng Gói</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:103:case 'SHIPPED': return <Badge variant="default" className="bg-green-600 hover:bg-green-700 uppercase text-[10px]">Đã Xuất Kho</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:104:case 'CANCELLED': return <Badge variant="outline" className="bg-red-100 text-red-800 border-red-200 uppercase text-[10px]">Đã Hủy</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:105:default: return <Badge variant="outline" className="uppercase text-[10px]">{status}</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:235:<Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100 ring-1 ring-purple-400/30">Nhặt Wave (Zoning)</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:237:<Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">Lấy Nguyên Thùng</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:239:<Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Lấy Lẻ (Item)</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\picking-jobs\page.tsx:265:<td className="p-3 text-center">{getStatusBadge(job.status)}</td>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:10:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:177:const getTypeBadge = (type: string) => {
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:178:if (type === 'ORDER') return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">ORDER</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:179:if (type === 'TRANSFER') return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">TRANSFER</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:180:return <Badge variant="outline">{type}</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:183:const getStatusBadge = (status: string) => {
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:184:if (status === 'SHIPPED') return <Badge className="bg-green-600 hover:bg-green-700"><Truck className="w-3 h-3 mr-1" /> SHIPPED</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:185:if (status === 'PACKED') return <Badge className="bg-blue-600 hover:bg-blue-700"><Package className="w-3 h-3 mr-1" /> PACKED</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:186:return <Badge variant="secondary">{status}</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:329:{getTypeBadge(req.type)}
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\page.tsx:332:{getStatusBadge(req.status)}
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\[id]\page.tsx:8:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\[id]\page.tsx:218:<Badge
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\[id]\page.tsx:229:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\[id]\page.tsx:254:<Badge key={code} variant="outline" className="bg-white border-blue-200 text-blue-700">
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\[id]\page.tsx:256:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\[id]\page.tsx:259:<Badge variant="outline" className="bg-white">LẺ</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\[id]\page.tsx:289:<Badge className={
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\shipping\[id]\page.tsx:295:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\sorting\page.tsx:7:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\sorting\page.tsx:44:<Badge variant="outline" className="font-mono text-lg">{wave.code}</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\sorting\page.tsx:45:<Badge className={wave.sorting_status === 'COMPLETED' ? 'bg-green-600' : 'bg-blue-600'}>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\sorting\page.tsx:47:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\page.tsx:9:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\page.tsx:133:<Badge variant="outline" className={wave.inventory_type === 'BULK' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'}>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\page.tsx:135:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\page.tsx:138:<Badge variant="secondary" className={`${getStatusColor(wave.status)} uppercase text-[10px]`}>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\page.tsx:140:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\page.tsx:168:<Badge key={job.id} variant="outline" className="text-[9px] bg-slate-50 text-slate-500 font-mono">
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\page.tsx:170:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\new\page.tsx:9:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\new\page.tsx:279:<Badge className="bg-indigo-600">
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\new\page.tsx:281:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\new\page.tsx:391:<Badge variant="secondary">{itemCount}</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\new\page.tsx:464:<Badge variant="secondary" className="text-[10px]">
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\new\page.tsx:466:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:8:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:214:<Badge variant="outline" className={
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:216:}>{wave.inventory_type === 'BULK' ? 'KHO SỈ' : 'KHO LẺ'}</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:217:<Badge className={
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:222:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:292:<Badge variant="secondary">{jobs.length}</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:305:<Badge className={
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:310:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:319:<Badge variant="outline" className="text-[10px]">{job.type}</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:347:<Badge variant="secondary" className="bg-indigo-50 text-indigo-700">
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\admin\waves\[id]\page.tsx:349:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\mobile\picking\[id]\page.tsx:12:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\mobile\picking\[id]\page.tsx:466:<Badge variant="outline" className="text-[9px] bg-slate-100 text-slate-500 h-4 px-1">
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\app\mobile\picking\[id]\page.tsx:468:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\dashboard\RecentActivity.tsx:3:import { Badge } from "@/components/ui/badge"
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\dashboard\RecentActivity.tsx:42:<Badge variant="secondary" className={getTypeColor(tx.type)}>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\dashboard\RecentActivity.tsx:44:</Badge>
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\map\EmployeeLayer.tsx:105:{/* Label Badge */}
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\ui\badge.tsx:5:const badgeVariants = cva(
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\ui\badge.tsx:25:export interface BadgeProps
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\ui\badge.tsx:27:VariantProps<typeof badgeVariants> { }
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\ui\badge.tsx:29:function Badge({ className, variant, ...props }: BadgeProps) {
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\ui\badge.tsx:31:<div className={cn(badgeVariants({ variant }), className)} {...props} />
+C:\Onedrive\OneDrive - NU Viet Nam\New folder\App hangle\wms-app\components\ui\badge.tsx:35:export { Badge, badgeVariants }

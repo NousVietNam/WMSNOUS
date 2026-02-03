@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from "react"
 import { supabase } from "@/lib/supabase"
-import { Loader2, Package, MapPin, AlertCircle, X, ChevronRight, User as UserIcon, Filter } from "lucide-react"
+import { Loader2, Package, MapPin, CircleAlert, X, ChevronRight, User as UserIcon, Filter } from "lucide-react"
 
 interface ReceivingReminderProps {
     inventoryType?: 'BULK' | 'PIECE' | 'ALL'
@@ -218,7 +218,7 @@ export function ReceivingReminder({ inventoryType = 'ALL', userId: fixedUserId, 
                                                 <div className="text-lg font-black text-slate-800">{box.code}</div>
                                                 <div className="flex items-center gap-3">
                                                     <div className="flex items-center gap-1 text-[11px] text-slate-400 font-medium">
-                                                        <AlertCircle className="w-3 h-3" />
+                                                        <CircleAlert className="w-3 h-3" />
                                                         <span>{box.totalQty} SP</span>
                                                     </div>
                                                     <div className="flex items-center gap-1 text-[11px] text-amber-600 bg-amber-50 px-1.5 rounded">

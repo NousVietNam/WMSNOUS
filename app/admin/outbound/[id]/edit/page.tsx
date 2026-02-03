@@ -823,14 +823,30 @@ export default function EditOutboundPage() {
                                                 <td className="px-4 py-2 text-gray-700 font-medium">
                                                     {item.product?.name}
                                                 </td>
-                                                <td className="px-4 py-2 text-center">
-                                                    <input
-                                                        type="number"
-                                                        min={1}
-                                                        value={item.quantity}
-                                                        onChange={(e) => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)}
-                                                        className="w-full px-2 py-1 text-center border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                                                    />
+                                                <td className="px-4 py-2 text-center w-32">
+                                                    <div className="flex items-center gap-1">
+                                                        <button
+                                                            tabIndex={-1}
+                                                            onClick={() => updateItem(idx, 'quantity', Math.max(1, item.quantity - 1))}
+                                                            className="h-8 w-8 flex items-center justify-center border rounded hover:bg-gray-100"
+                                                        >
+                                                            -
+                                                        </button>
+                                                        <input
+                                                            type="number"
+                                                            min={1}
+                                                            value={item.quantity}
+                                                            onChange={(e) => updateItem(idx, 'quantity', Math.max(1, parseInt(e.target.value) || 0))}
+                                                            className="h-8 w-full text-center border rounded font-medium"
+                                                        />
+                                                        <button
+                                                            tabIndex={-1}
+                                                            onClick={() => updateItem(idx, 'quantity', item.quantity + 1)}
+                                                            className="h-8 w-8 flex items-center justify-center border rounded hover:bg-gray-100"
+                                                        >
+                                                            +
+                                                        </button>
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-2 text-right">
                                                     <input

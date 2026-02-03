@@ -991,9 +991,20 @@ export default function OutboundDetailPage() {
                         {missingItems.map((item, idx) => (
                             <div key={idx} className="bg-red-50 p-3 rounded-lg border border-red-100 text-sm">
                                 <div className="font-medium text-red-900">{item.product_name}</div>
-                                <div className="flex justify-between mt-1 text-red-700">
-                                    <span>SKU: {item.sku}</span>
-                                    <span>Thiếu: <strong>{item.missing_quantity}</strong></span>
+                                <div className="text-xs text-red-600 font-mono mb-2">{item.sku}</div>
+                                <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                                    <div className="bg-white p-2 rounded border border-red-100">
+                                        <div className="text-gray-500">Đặt</div>
+                                        <div className="font-bold text-gray-900">{item.requested}</div>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border border-red-100">
+                                        <div className="text-gray-500">Khả dụng</div>
+                                        <div className="font-bold text-blue-600">{item.available}</div>
+                                    </div>
+                                    <div className="bg-white p-2 rounded border border-red-100">
+                                        <div className="text-gray-500">Thiếu</div>
+                                        <div className="font-bold text-red-600">{item.missing}</div>
+                                    </div>
                                 </div>
                             </div>
                         ))}

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { Package, Search, Plus, Loader2, Box, Truck, Calendar, Hash, Factory, CheckCircle, AlertCircle } from 'lucide-react'
+import { Package, Search, Plus, Loader2, Box, Truck, Calendar, Hash, Factory, CheckCircle, CircleAlert } from 'lucide-react'
 import Link from 'next/link'
 
 const supabase = createClient(
@@ -190,9 +190,9 @@ export default function BulkInboundPage() {
             {/* Feedback Toast */}
             {feedback && (
                 <div className={`mb-4 p-4 rounded-lg flex items-center gap-3 ${feedback.type === 'success' ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-300'
-                        : 'bg-red-500/20 border border-red-500/50 text-red-300'
+                    : 'bg-red-500/20 border border-red-500/50 text-red-300'
                     }`}>
-                    {feedback.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
+                    {feedback.type === 'success' ? <CheckCircle size={20} /> : <CircleAlert size={20} />}
                     {feedback.message}
                 </div>
             )}

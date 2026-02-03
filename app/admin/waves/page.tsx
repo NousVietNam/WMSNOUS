@@ -34,7 +34,7 @@ export default function WavesPage() {
             // 1. Fetch Waves and Jobs
             const { data: wavesData, error: wavesError } = await supabase
                 .from('pick_waves')
-                .select('*, picking_jobs(id, code)')
+                .select('*, picking_jobs(id, code), user:users!pick_waves_created_by_profiles_fkey(name)')
                 .order('created_at', { ascending: false })
 
             if (wavesError) throw wavesError

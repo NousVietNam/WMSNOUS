@@ -28,7 +28,7 @@ type OutboundOrder = {
     customers?: { id: string; name: string; code?: string } | null
     destinations?: { id: string; name: string; code?: string } | null
     sale_staff?: { id: string; name: string; code?: string } | null
-    sale_staff?: { id: string; name: string; code?: string } | null
+
     outbound_order_items?: any[]
     inventory_type?: 'PIECE' | 'BULK'
 }
@@ -64,13 +64,33 @@ export default function OutboundListPage() {
     // Selection states
     const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set())
 
+    // Pagination
+    const [page, setPage] = useState(1)
+    const PAGE_SIZE = 50
+    const [totalCount, setTotalCount] = useState(0)
+
+    // Debounce Search
+    const [debouncedCode, setDebouncedCode] = useState('')
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedCode(filterCode)
+        }, 500)
+        return () => clearTimeout(timer)
+    }, [filterCode])
+
     useEffect(() => {
         fetchDropdowns()
     }, [])
 
     useEffect(() => {
+        setPage(1) // Reset to page 1 when filters change
         fetchOrders()
-    }, [filterInventoryType, filterType, filterStatus, filterCode, filterDestinationId, filterDateFrom, filterDateTo])
+    }, [filterInventoryType, filterType, filterStatus, debouncedCode, filterDestinationId, filterDateFrom, filterDateTo])
+
+    useEffect(() => {
+        fetchOrders()
+    }, [page])
 
     // Reset destination filter when type changes
     useEffect(() => {
@@ -91,6 +111,7 @@ export default function OutboundListPage() {
     const fetchOrders = async () => {
         setLoading(true)
 
+        // Base Query
         let query = supabase
             .from('outbound_orders')
             .select(`
@@ -100,15 +121,14 @@ export default function OutboundListPage() {
                 sale_staff:internal_staff (id, name, code),
                 outbound_order_items (id, quantity),
                 pick_waves (id, code, status)
-            `)
+            `, { count: 'exact' })
             .order('created_at', { ascending: false })
-            .limit(200)
 
         // Apply filters
         query = query.eq('inventory_type', filterInventoryType)
         if (filterType !== 'ALL') query = query.eq('type', filterType)
         if (filterStatus !== 'ALL') query = query.eq('status', filterStatus)
-        if (filterCode.trim()) query = query.ilike('code', `%${filterCode.trim()}%`)
+        if (debouncedCode.trim()) query = query.ilike('code', `%${debouncedCode.trim()}%`)
 
         // Destination filter (customer or destination based on type)
         if (filterDestinationId !== 'ALL') {
@@ -127,9 +147,17 @@ export default function OutboundListPage() {
             query = query.lte('created_at', `${filterDateTo}T23:59:59`)
         }
 
-        const { data, error } = await query
+        // Pagination
+        const from = (page - 1) * PAGE_SIZE
+        const to = from + PAGE_SIZE - 1
+        query = query.range(from, to)
 
-        if (!error && data) setOrders(data as any)
+        const { data, error, count } = await query
+
+        if (!error && data) {
+            setOrders(data as any)
+            setTotalCount(count || 0)
+        }
         setLoading(false)
     }
 
@@ -138,21 +166,35 @@ export default function OutboundListPage() {
         const template = [
             {
                 'Loại': 'SALE',
-                'Khách Hàng (ID hoặc Tên)': '',
-                'Kho Đích (ID hoặc Tên)': '',
+                'Khách Hàng (Tên/Mã)': 'Khách lẻ',
+                'Kho Đích (Tên/Mã)': '',
+                'Nhân Viên (Tên/Mã)': 'NV001',
+                'Loại Giảm Giá': 'PERCENT',
+                'Giá trị GG': 10,
                 'SKU': 'NL2W25-OP1-U13-SY-3M',
                 'Số Lượng': 10,
                 'Giá Đơn Vị': 250000,
-                'Ghi Chú': ''
+                'Diễn Giải': 'Đơn hàng mẫu 1',
+                'Ghi Chú': 'Giao trong ngày',
+                'Xét Thưởng (Y/N)': 'Y',
+                'Tính Thưởng (Y/N)': 'Y',
+                'Hạng Sale (Normal/Promo)': 'NORMAL'
             },
             {
                 'Loại': 'TRANSFER',
-                'Khách Hàng (ID hoặc Tên)': '',
-                'Kho Đích (ID hoặc Tên)': 'Cửa Hàng Hà Nội',
+                'Khách Hàng (Tên/Mã)': '',
+                'Kho Đích (Tên/Mã)': 'CH-HANOI',
+                'Nhân Viên (Tên/Mã)': '',
+                'Loại Giảm Giá': '',
+                'Giá trị GG': 0,
                 'SKU': 'NB2S25-TB2-M04-OW-9M',
                 'Số Lượng': 5,
                 'Giá Đơn Vị': 0,
-                'Ghi Chú': 'Điều chuyển nội bộ'
+                'Diễn Giải': '',
+                'Ghi Chú': 'Điều chuyển nội bộ',
+                'Xét Thưởng (Y/N)': '',
+                'Tính Thưởng (Y/N)': '',
+                'Hạng Sale (Normal/Promo)': ''
             }
         ]
 
@@ -161,11 +203,13 @@ export default function OutboundListPage() {
         XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
         ws['!cols'] = [
-            { wch: 12 }, { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 12 }, { wch: 15 }, { wch: 30 }
+            { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 15 },
+            { wch: 12 }, { wch: 10 }, { wch: 25 }, { wch: 10 },
+            { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 15 }
         ]
 
-        XLSX.writeFile(wb, 'outbound_import_template.xlsx')
-        toast.success('Đã tải file mẫu!')
+        XLSX.writeFile(wb, 'outbound_import_template_v2.xlsx')
+        toast.success('Đã tải file mẫu mới!')
     }
 
     // Handle file upload for Import
@@ -212,34 +256,63 @@ export default function OutboundListPage() {
                 const firstRow = items[0]
                 const orderType = firstRow['Loại'] || 'SALE'
 
+                // Map new fields
+                const staffName = firstRow['Nhân Viên (Tên/Mã)']
+                const discountType = firstRow['Loại Giảm Giá'] === 'FIXED' ? 'FIXED' : 'PERCENT'
+                const discountValue = Number(firstRow['Giá trị GG']) || 0
+                const description = firstRow['Diễn Giải']
+                const isBonus = (firstRow['Xét Thưởng (Y/N)'] || '').toUpperCase() === 'Y'
+                const isCalc = (firstRow['Tính Thưởng (Y/N)'] || '').toUpperCase() === 'Y'
+
                 let customerId = null
                 let destinationId = null
+                let saleStaffId = null
+
+                // Lookup Staff
+                if (staffName) {
+                    const { data: staff } = await supabase
+                        .from('internal_staff')
+                        .select('id')
+                        .or(`id.eq.${staffName},code.eq.${staffName},name.ilike.%${staffName}%`)
+                        .limit(1)
+                        .maybeSingle()
+                    saleStaffId = staff?.id
+                }
 
                 if (orderType === 'SALE' || orderType === 'GIFT') {
-                    const customerName = firstRow['Khách Hàng (ID hoặc Tên)']
+                    const customerName = firstRow['Khách Hàng (Tên/Mã)'] || firstRow['Khách Hàng (ID hoặc Tên)']
                     if (customerName) {
                         const { data: customer } = await supabase
                             .from('customers')
                             .select('id')
-                            .or(`id.eq.${customerName},name.ilike.%${customerName}%`)
+                            .or(`id.eq.${customerName},code.eq.${customerName},name.ilike.%${customerName}%`)
                             .limit(1)
-                            .single()
+                            .maybeSingle()
                         customerId = customer?.id
                     }
                 } else {
-                    const destName = firstRow['Kho Đích (ID hoặc Tên)']
+                    const destName = firstRow['Kho Đích (Tên/Mã)'] || firstRow['Kho Đích (ID hoặc Tên)']
                     if (destName) {
                         const { data: dest } = await supabase
                             .from('destinations')
                             .select('id')
-                            .or(`id.eq.${destName},name.ilike.%${destName}%`)
+                            .or(`id.eq.${destName},code.eq.${destName},name.ilike.%${destName}%`)
                             .limit(1)
-                            .single()
+                            .maybeSingle()
                         destinationId = dest?.id
                     }
                 }
 
-                const { data: codeData } = await supabase.rpc('generate_outbound_code', { p_type: orderType })
+                // Generate Code
+                let prefix = ''
+                switch (orderType) {
+                    case 'SALE': prefix = 'SO'; break;
+                    case 'TRANSFER': prefix = 'TO'; break;
+                    case 'INTERNAL': prefix = 'IO'; break;
+                    case 'GIFT': prefix = 'GO'; break;
+                    default: prefix = 'OT';
+                }
+                const { data: codeData } = await supabase.rpc('generate_outbound_order_code', { prefix })
                 const orderCode = codeData || `ORD-${Date.now()}`
 
                 const orderItems = []
@@ -254,7 +327,8 @@ export default function OutboundListPage() {
                         .from('products')
                         .select('id, price')
                         .eq('sku', sku)
-                        .single()
+                        .limit(1)
+                        .maybeSingle()
 
                     if (product) {
                         const unitPrice = price || product.price || 0
@@ -270,6 +344,15 @@ export default function OutboundListPage() {
 
                 if (orderItems.length === 0) continue
 
+                // Calculate Discount
+                let discountAmount = 0
+                if (discountType === 'PERCENT') {
+                    discountAmount = subtotal * (discountValue / 100)
+                } else {
+                    discountAmount = discountValue
+                }
+                const total = Math.max(0, subtotal - discountAmount)
+
                 const { data: newOrder, error: orderError } = await supabase
                     .from('outbound_orders')
                     .insert({
@@ -279,9 +362,16 @@ export default function OutboundListPage() {
                         source: 'EXCEL',
                         customer_id: customerId,
                         destination_id: destinationId,
+                        sale_staff_id: saleStaffId,
+                        discount_type: discountType,
+                        discount_value: discountValue,
+                        discount_amount: discountAmount,
                         subtotal,
-                        total: subtotal,
-                        note: firstRow['Ghi Chú'] || null
+                        total,
+                        description: description || null,
+                        note: firstRow['Ghi Chú'] || null,
+                        is_bonus_consideration: isBonus,
+                        is_bonus_calculation: isCalc
                     })
                     .select('id')
                     .single()
@@ -789,6 +879,32 @@ export default function OutboundListPage() {
                         )}
                     </tbody>
                 </table>
+            </div>
+
+            {/* Pagination */}
+            <div className="flex items-center justify-between bg-white p-4 border rounded-lg shadow-sm">
+                <div className="text-sm text-gray-500 font-medium">
+                    Hiển thị <span className="text-gray-900 font-bold">{Math.min((page - 1) * PAGE_SIZE + 1, totalCount)}</span> đến <span className="text-gray-900 font-bold">{Math.min(page * PAGE_SIZE, totalCount)}</span> của <span className="text-indigo-600 font-bold">{totalCount}</span> đơn hàng
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => setPage(p => Math.max(1, p - 1))}
+                        disabled={page === 1}
+                        className="h-9 px-3 border rounded-lg flex items-center gap-1 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    >
+                        ← Trước
+                    </button>
+                    <div className="h-9 px-3 border rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold text-sm min-w-[3rem]">
+                        {page}
+                    </div>
+                    <button
+                        onClick={() => setPage(p => Math.min(Math.ceil(totalCount / PAGE_SIZE), p + 1))}
+                        disabled={page >= Math.ceil(totalCount / PAGE_SIZE)}
+                        className="h-9 px-3 border rounded-lg flex items-center gap-1 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                    >
+                        Sau →
+                    </button>
+                </div>
             </div>
 
             {/* Import Modal */}

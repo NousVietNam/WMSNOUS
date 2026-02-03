@@ -10,110 +10,59 @@ const supabase = createClient(
 
 export async function GET() {
     try {
-        // 1. Order Stats (from outbound_orders)
-        const { data: orders } = await supabase
-            .from('outbound_orders')
-            .select('id, status, created_at, code')
+        // Parallel fetch: 
+        // 1. Heavy stats via optimized RPC
+        // 2. Recent Activity (Limit 10)
+        // 3. Trends (Last 7 days)
 
-        const todayStr = new Date().toDateString()
-
-        const orderStats = {
-            total: orders?.length || 0,
-            today: orders?.filter(o => new Date(o.created_at).toDateString() === todayStr).length || 0,
-            pending: orders?.filter(o => ['PENDING'].includes(o.status)).length || 0,
-            allocated: orders?.filter(o => ['ALLOCATED'].includes(o.status)).length || 0,
-            ready: orders?.filter(o => ['READY'].includes(o.status)).length || 0,
-            picking: orders?.filter(o => ['PICKING'].includes(o.status)).length || 0,
-            packed: orders?.filter(o => ['PACKED'].includes(o.status)).length || 0,
-            shipped: orders?.filter(o => ['SHIPPED'].includes(o.status)).length || 0,
-        }
-
-        // 2. Job Stats (from picking_jobs)
-        const { data: jobs } = await supabase
-            .from('picking_jobs')
-            .select('id, status, created_at')
-
-        const jobStats = {
-            total: jobs?.length || 0,
-            active: jobs?.filter(j => ['PLANNED', 'IN_PROGRESS'].includes(j.status)).length || 0,
-            completed: jobs?.filter(j => j.status === 'COMPLETED').length || 0
-        }
-
-        // 3. Inventory Stats
-        const { count: skuCount } = await supabase.from('products').select('*', { count: 'exact', head: true })
-
-        // Piece Inventory - Logical split by boxes.inventory_type
-        const { data: pieceInventory } = await supabase.from('inventory_items').select('quantity, boxes(inventory_type)')
-
-        let totalPieceItems = 0
-        let pieceInBulkBoxes = 0
-
-        pieceInventory?.forEach(item => {
-            const isBulk = (item.boxes as any)?.inventory_type === 'BULK'
-            if (isBulk) {
-                pieceInBulkBoxes += item.quantity
-            } else {
-                totalPieceItems += item.quantity
-            }
-        })
-
-        // Bulk Inventory Table
-        const { data: bulkInventory } = await supabase.from('bulk_inventory').select('quantity')
-        const bulkTableQty = bulkInventory?.reduce((sum, item) => sum + item.quantity, 0) || 0
-
-        const totalBulkItems = bulkTableQty + pieceInBulkBoxes
-
-        // 4. Box Stats
-        const { data: boxes } = await supabase.from('boxes').select('type')
-        const storageBoxes = boxes?.filter(b => b.type === 'STORAGE').length || 0
-        const outboxes = boxes?.filter(b => b.type === 'OUTBOX').length || 0
-
-        // 5. Recent Activity (Transactions)
-        const { data: recentActivity } = await supabase
-            .from('transactions')
-            .select('*')
-            .order('timestamp', { ascending: false })
-            .limit(10)
-
-        // 6. Activity Trend (Last 7 Days)
         const today = new Date()
         const last7Days = Array.from({ length: 7 }, (_, i) => {
             const d = new Date()
             d.setDate(today.getDate() - 6 + i)
             return d.toISOString().split('T')[0]
         })
+        const startDate = last7Days[0]
 
-        const { data: recentTx } = await supabase
-            .from('transactions')
-            .select('timestamp, type, quantity')
-            .gte('timestamp', last7Days[0])
+        const [statsRes, activityRes, trendRes] = await Promise.all([
+            supabase.rpc('get_dashboard_stats'),
 
+            supabase
+                .from('transactions')
+                .select('*')
+                .order('timestamp', { ascending: false })
+                .limit(10),
+
+            supabase
+                .from('transactions')
+                .select('timestamp, type, quantity')
+                .gte('timestamp', startDate)
+        ])
+
+        if (statsRes.error) throw statsRes.error
+
+        const stats = statsRes.data
+
+        // Process Trends (client-side aggregation is fine for 7 days of data)
+        const recentTx = trendRes.data || []
         const trendData = last7Days.map(date => {
-            const dayTx = recentTx?.filter(tx => tx.timestamp.startsWith(date))
+            const dayTx = recentTx.filter(tx => tx.timestamp.startsWith(date))
             return {
                 date: date.split('-').slice(1).join('/'), // MM/DD
                 fullDate: date,
-                inbound: dayTx?.filter(tx => tx.type === 'IMPORT').length || 0,
-                outbound: dayTx?.filter(tx => ['PACK', 'SHIP', 'EXPORT'].includes(tx.type)).length || 0,
-                inboundQty: dayTx?.filter(tx => tx.type === 'IMPORT').reduce((sum, tx) => sum + (tx.quantity || 0), 0),
-                outboundQty: dayTx?.filter(tx => ['PACK', 'SHIP', 'EXPORT'].includes(tx.type)).reduce((sum, tx) => sum + (tx.quantity || 0), 0)
+                inbound: dayTx.filter(tx => tx.type === 'IMPORT').length || 0,
+                outbound: dayTx.filter(tx => ['PACK', 'SHIP', 'EXPORT'].includes(tx.type)).length || 0,
+                inboundQty: dayTx.filter(tx => tx.type === 'IMPORT').reduce((sum, tx) => sum + (tx.quantity || 0), 0),
+                outboundQty: dayTx.filter(tx => ['PACK', 'SHIP', 'EXPORT'].includes(tx.type)).reduce((sum, tx) => sum + (tx.quantity || 0), 0)
             }
         })
 
         return NextResponse.json({
             success: true,
             data: {
-                orders: orderStats,
-                jobs: jobStats,
-                inventory: {
-                    skus: skuCount || 0,
-                    totalItems: totalPieceItems + totalBulkItems,
-                    totalPieceItems,
-                    totalBulkItems,
-                    storageBoxes,
-                    outboxes
-                },
-                activity: recentActivity || [],
+                orders: stats.orders,
+                jobs: stats.jobs,
+                inventory: stats.inventory, // The RPC returns the structure we need
+                activity: activityRes.data || [],
                 trends: trendData
             }
         })

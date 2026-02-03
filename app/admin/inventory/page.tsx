@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { supabase } from "@/lib/supabase"
-import { Download, Package, Search, ChevronLeft, ChevronRight, Filter, X, ChevronDown, Check, Container, BoxIcon } from "lucide-react"
+import { Download, Package, Search, ChevronLeft, ChevronRight, Filter, X, ChevronDown, Check, Container, BoxIcon, CircleAlert } from "lucide-react"
 import Barcode from 'react-barcode'
 import * as XLSX from 'xlsx'
 import { toast } from "sonner"
@@ -65,7 +65,10 @@ export default function InventoryPage() {
     const [searchTerm, setSearchTerm] = useState("")
     const [page, setPage] = useState(0)
     const [total, setTotal] = useState(0)
-    const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK'>('PIECE')
+    const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK' | 'LAUNCH_SOON'>('PIECE')
+    const [launchSoonItems, setLaunchSoonItems] = useState<any[]>([])
+    const [selectedLaunchSKUs, setSelectedLaunchSKUs] = useState<string[]>([])
+    const [alerting, setAlerting] = useState(false)
 
 
 
@@ -231,7 +234,8 @@ export default function InventoryPage() {
             p_target_audience: excludeKey !== 'target' && filterTarget !== "all" ? filterTarget : null,
             p_product_group: excludeKey !== 'group' && filterProductGroup !== "all" ? filterProductGroup : null,
             p_season: excludeKey !== 'season' && filterSeason !== "all" ? filterSeason : null,
-            p_launch_month: excludeKey !== 'month' && filterMonth !== "all" ? filterMonth : null
+            p_launch_month: excludeKey !== 'month' && filterMonth !== "all" ? filterMonth : null,
+            p_inventory_type: inventoryType
         })
 
         // Parallel fetch for each filter group to ensure "Dependent" behavior works correctly (excluding self)
@@ -315,7 +319,20 @@ export default function InventoryPage() {
         setLoading(true)
         console.log("Fetching Inventory...", { inventoryType, viewMode, page, filters: { filterWarehouse, filterBox } })
 
-        if (viewMode === 'SUMMARY') {
+        if (inventoryType === 'LAUNCH_SOON') {
+            const { data, error } = await supabase
+                .from('view_launch_soon_bulk')
+                .select('*')
+                .order('sku', { ascending: true })
+
+            if (error) {
+                console.error("Fetch Launch Soon Error:", error)
+                setLaunchSoonItems([])
+            } else {
+                setLaunchSoonItems(data || [])
+                setTotal(data?.length || 0)
+            }
+        } else if (viewMode === 'SUMMARY') {
             if (inventoryType === 'BULK') {
                 // UNIFIED LOGIC: Call dedicated Bulk RPC (Identical to Piece RPC structure)
                 const { data, error } = await supabase.rpc('get_inventory_bulk_grouped', {
@@ -415,12 +432,34 @@ export default function InventoryPage() {
 
             // Box Filter
             if (filterBox !== "all") {
-                // If BULK, boxes is joined !inner above? Yes.
+                // If BULK, boxes is joined !inner above? Yes, we used !inner in Select if it was Bulk or if filterBox was set
+                // Just to be safe, we use the embedding notation
                 query = query.eq('boxes.code', filterBox)
             }
 
+            // LOCATION FILTER (Server-side)
+            if (filterLocation !== "all") {
+                if (inventoryType === 'BULK') {
+                    // Filter deep nested for Bulk
+                    query = query.eq('boxes.locations.code', filterLocation)
+                } else {
+                    // For Piece, could be direct location OR box location
+                    // However, Supabase doesn't support complex OR across different relations easily in one .or() without raw filters
+                    // We will prioritize consistent behavior:
+                    // If the item is directly in a location: locations.code
+                    // If the item is in a box: boxes.locations.code
+                    // Ideally we should use a Postgres View for detailed inventory to simplify this, but for now:
+
+                    // Note: This might not work perfectly for Piece items in Boxes if we only filter `locations.code`
+                    // But `inventory_items` usually has `location_id` populated even if in a box? 
+                    // Let's assume `location_id` is the source of truth for physical location.
+                    // If existing logic keeps `location_id` in sync with `box.location_id`, then:
+                    query = query.eq('locations.code', filterLocation)
+                }
+            }
+
             // Search Logic (Client side mostly, or full scan? kept existing logic)
-            const isGlobalSearch = searchTerm.length > 0 || filterLocation !== "all";
+            const isGlobalSearch = searchTerm.length > 0; // Removing filterLocation from here as we moved it to server-side
 
             if (!isGlobalSearch) {
                 const from = page * ITEMS_PER_PAGE
@@ -673,6 +712,21 @@ export default function InventoryPage() {
                             <Container className="w-4 h-4" />
                             Kho Sỉ
                         </button>
+                        <button
+                            onClick={() => {
+                                setInventoryType('LAUNCH_SOON')
+                                setPage(0)
+                            }}
+                            className={cn(
+                                "px-4 py-2 text-sm font-medium rounded-sm transition-all flex items-center gap-2",
+                                inventoryType === 'LAUNCH_SOON'
+                                    ? "bg-white text-orange-600 shadow-sm font-bold"
+                                    : "text-slate-500 hover:text-slate-900"
+                            )}
+                        >
+                            <CircleAlert className="w-4 h-4" />
+                            CB Mở Bán
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-2 w-full md:w-auto">
@@ -730,138 +784,233 @@ export default function InventoryPage() {
                                 Tổng Hợp
                             </button>
                         </div>
+                        <div className="flex gap-2">
+                            {inventoryType === 'LAUNCH_SOON' && (
+                                <>
+                                    <Button
+                                        variant="destructive"
+                                        size="sm"
+                                        className="h-10"
+                                        disabled={selectedLaunchSKUs.length === 0 || alerting}
+                                        onClick={async () => {
+                                            setAlerting(true)
+                                            const { error } = await supabase.rpc('alert_launch_soon', { p_skus: selectedLaunchSKUs })
+                                            if (error) toast.error(error.message)
+                                            else {
+                                                toast.success("Đã gửi cảnh báo!")
+                                                setSelectedLaunchSKUs([])
+                                                fetchInventory()
+                                            }
+                                            setAlerting(false)
+                                        }}
+                                    >
+                                        <CircleAlert className="mr-2 h-4 w-4" />
+                                        Cảnh báo nhân viên di chuyển ({selectedLaunchSKUs.length})
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-10 w-10 text-slate-500 hover:text-red-500 border-dashed"
+                                        title="Làm mới cảnh báo (Reset)"
+                                        onClick={async () => {
+                                            if (!confirm("Xóa tất cả cảnh báo hiện tại để thông báo lại?")) return
+                                            const { error } = await supabase.rpc('reset_launch_soon_alerts')
+                                            if (error) toast.error(error.message)
+                                            else {
+                                                toast.success("Đã reset!")
+                                                fetchInventory()
+                                            }
+                                        }}
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </Button>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
 
-                {/* FILTERS - Compact (Removed 'Bộ Lọc' header) */}
-                <div className="bg-white p-3 rounded-md border shadow-sm">
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
-                        {/* WAREHOUSE FILTER REMOVED - Replaced by Top Toggle */}
-                        {/* If we want to keep it as an option inside 'Bulk', we can add it back conditionally, 
-                            but user asked to REPLACE it. 
-                            If 'Bulk' supports filtering by Warehouse, we might need it back later? 
-                            For now, we strictly follow: "Replace filter with toggle".
-                        */}
+                {/* FILTERS - Hide for LAUNCH_SOON as requested */}
+                {inventoryType !== 'LAUNCH_SOON' && (
+                    <div className="bg-white p-3 rounded-md border shadow-sm">
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                            <SearchableFilter
+                                label="Vị trí"
+                                placeholder="Vị trí"
+                                value={filterLocation}
+                                onChange={setFilterLocation}
+                                options={locations}
+                            />
 
-                        <SearchableFilter
-                            label="Vị trí"
-                            placeholder="Vị trí"
-                            value={filterLocation}
-                            onChange={setFilterLocation}
-                            options={locations}
-                        />
+                            <SearchableFilter
+                                label="Thùng"
+                                placeholder="Thùng"
+                                value={filterBox}
+                                onChange={setFilterBox}
+                                options={boxes}
+                            />
 
-                        <SearchableFilter
-                            label="Thùng"
-                            placeholder="Thùng"
-                            value={filterBox}
-                            onChange={setFilterBox}
-                            options={boxes}
-                        />
+                            <Select value={filterBrand} onValueChange={setFilterBrand}>
+                                <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Thương hiệu" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Tất cả thương hiệu</SelectItem>
+                                    {brands.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
 
-                        <Select value={filterBrand} onValueChange={setFilterBrand}>
-                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Thương hiệu" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Tất cả thương hiệu</SelectItem>
-                                {brands.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                            <Select value={filterTarget} onValueChange={setFilterTarget}>
+                                <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Đối tượng" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Tất cả đối tượng</SelectItem>
+                                    {targets.map(target => <SelectItem key={target} value={target}>{target}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
 
-                        <Select value={filterTarget} onValueChange={setFilterTarget}>
-                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Đối tượng" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Tất cả đối tượng</SelectItem>
-                                {targets.map(target => <SelectItem key={target} value={target}>{target}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                            <Select value={filterProductGroup} onValueChange={setFilterProductGroup}>
+                                <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Nhóm hàng" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Tất cả nhóm</SelectItem>
+                                    {productGroups.map(group => <SelectItem key={group} value={group}>{group}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
 
-                        <Select value={filterProductGroup} onValueChange={setFilterProductGroup}>
-                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Nhóm hàng" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Tất cả nhóm</SelectItem>
-                                {productGroups.map(group => <SelectItem key={group} value={group}>{group}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
+                            <Select value={filterSeason} onValueChange={setFilterSeason}>
+                                <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Mùa" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Tất cả mùa</SelectItem>
+                                    {seasons.map(season => <SelectItem key={season} value={season}>{season}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
 
-                        <Select value={filterSeason} onValueChange={setFilterSeason}>
-                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Mùa" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Tất cả mùa</SelectItem>
-                                {seasons.map(season => <SelectItem key={season} value={season}>{season}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-
-                        <Select value={filterMonth} onValueChange={setFilterMonth}>
-                            <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Tháng MB" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Tất cả tháng</SelectItem>
-                                {months.map(month => (
-                                    <SelectItem key={month} value={month.toString()}>Tháng {month}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                            <Select value={filterMonth} onValueChange={setFilterMonth}>
+                                <SelectTrigger className="text-xs h-8"><SelectValue placeholder="Tháng MB" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Tất cả tháng</SelectItem>
+                                    {months.map(month => (
+                                        <SelectItem key={month} value={month.toString()}>Tháng {month}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 <div className="bg-white p-4 rounded-md border shadow-sm flex-1 flex flex-col min-h-0">
                     <div className="rounded-md border overflow-auto relative flex-1">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-100 font-medium text-slate-700 sticky top-0 z-10 shadow-sm">
-                                <tr>
-                                    <th className="p-3 w-[140px]">Barcode</th>
-                                    <th className="p-3 w-[100px]">SKU</th>
-                                    <th className="p-3 w-[250px]">Sản Phẩm</th>
-                                    <th className="p-3 w-[110px]">Thương Hiệu</th>
-                                    <th className="p-3 w-[100px]">Đối Tượng</th>
-                                    <th className="p-3 w-[100px]">Nhóm Hàng</th>
-                                    <th className="p-3 w-[80px] text-center">Mùa</th>
-                                    <th className="p-3 w-[70px] text-center">Tháng</th>
-                                    <th className="p-3 w-[70px] text-center">Tổng Tồn</th>
-                                    <th className="p-3 w-[70px] text-center text-orange-600">Đang Lấy</th>
-                                    {viewMode === 'SUMMARY' && (
-                                        <>
-                                            <th className="p-3 w-[70px] text-center text-blue-600">Đơn Bán</th>
-                                            <th className="p-3 w-[70px] text-center text-pink-600">Đơn Quà</th>
-                                            <th className="p-3 w-[70px] text-center text-purple-600">Nội Bộ</th>
-                                            <th className="p-3 w-[70px] text-center text-orange-500">Điều Chuyển</th>
-                                        </>
-                                    )}
-                                    <th className="p-3 w-[70px] text-center text-green-600">Khả Dụng</th>
-                                    {viewMode === 'DETAILED' && <th className="p-3 w-[110px]">Thùng</th>}
-                                    <th className="p-3 w-[110px]">Vị Trí</th>
-                                </tr>
+                                {inventoryType === 'LAUNCH_SOON' ? (
+                                    <tr>
+                                        <th className="p-3 w-10"></th>
+                                        <th className="p-3">SKU</th>
+                                        <th className="p-3">Barcode</th>
+                                        <th className="p-3">Tên sản phẩm</th>
+                                        <th className="p-3">Nhóm hàng</th>
+                                        <th className="p-3">Đối tượng</th>
+                                        <th className="p-3 text-center">Tồn kho</th>
+                                        <th className="p-3">Thùng</th>
+                                        <th className="p-3">Vị trí</th>
+                                        <th className="p-3 text-center">Trạng thái</th>
+                                    </tr>
+                                ) : (
+                                    <tr>
+                                        <th className="p-3 w-[140px]">Barcode</th>
+                                        <th className="p-3 w-[100px]">SKU</th>
+                                        <th className="p-3 w-[250px]">Sản Phẩm</th>
+                                        <th className="p-3 w-[110px]">Thương Hiệu</th>
+                                        <th className="p-3 w-[100px]">Đối Tượng</th>
+                                        <th className="p-3 w-[100px]">Nhóm Hàng</th>
+                                        <th className="p-3 w-[80px] text-center">Mùa</th>
+                                        <th className="p-3 w-[70px] text-center">Tháng</th>
+                                        <th className="p-3 w-[70px] text-center">Tổng Tồn</th>
+                                        <th className="p-3 w-[70px] text-center text-orange-600">Đang Lấy</th>
+                                        {viewMode === 'SUMMARY' && (
+                                            <>
+                                                <th className="p-3 w-[70px] text-center text-blue-600">Đơn Bán</th>
+                                                <th className="p-3 w-[70px] text-center text-pink-600">Đơn Quà</th>
+                                                <th className="p-3 w-[70px] text-center text-purple-600">Nội Bộ</th>
+                                                <th className="p-3 w-[70px] text-center text-orange-500">Điều Chuyển</th>
+                                            </>
+                                        )}
+                                        <th className="p-3 w-[70px] text-center text-green-600">Khả Dụng</th>
+                                        {viewMode === 'DETAILED' && <th className="p-3 w-[110px]">Thùng</th>}
+                                        <th className="p-3 w-[110px]">Vị Trí</th>
+                                    </tr>
+                                )}
                             </thead>
                             <tbody>
-                                {/* GLOBAL TOTALS ROW (Top of body) */}
-                                <tr className="bg-slate-50 font-bold border-b-2 border-slate-200">
-                                    <td colSpan={2} className="p-3 text-left pl-4 text-slate-600 uppercase text-xs tracking-wider">
-                                        Tổng tất cả:
-                                    </td>
-                                    {/* Empty cells to align with columns: Sản Phẩm, Thương Hiệu, Đối Tượng, Nhóm Hàng, Mùa, Tháng */}
-                                    <td></td><td></td><td></td><td></td><td></td><td></td>
-                                    <td className="p-3 text-center text-slate-800 text-base">
-                                        {calculatingTotals ? '...' : totals.quantity}
-                                    </td>
-                                    <td className="p-3 text-center text-orange-700 text-base">
-                                        {calculatingTotals ? '...' : totals.allocated}
-                                    </td>
-                                    {viewMode === 'SUMMARY' && (
-                                        <>
-                                            <td className="p-3 text-center text-blue-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_sale}</td>
-                                            <td className="p-3 text-center text-pink-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_gift}</td>
-                                            <td className="p-3 text-center text-purple-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_internal}</td>
-                                            <td className="p-3 text-center text-orange-500 text-base font-bold">{calculatingTotals ? '...' : totals.approved_transfer}</td>
-                                        </>
-                                    )}
-                                    <td className="p-3 text-center text-green-700 text-base bg-green-50 font-bold">
-                                        {calculatingTotals ? '...' : totals.available}
-                                    </td>
-                                    <td colSpan={viewMode === 'SUMMARY' ? 1 : 2}></td>
-                                </tr>
-
+                                {/* GLOBAL TOTALS ROW (Only for Standard Inventory) */}
+                                {inventoryType !== 'LAUNCH_SOON' && (
+                                    <tr className="bg-slate-50 font-bold border-b-2 border-slate-200">
+                                        <td colSpan={2} className="p-3 text-left pl-4 text-slate-600 uppercase text-xs tracking-wider">
+                                            Tổng tất cả:
+                                        </td>
+                                        {/* Empty cells to align with columns */}
+                                        <td></td><td></td><td></td><td></td><td></td><td></td>
+                                        <td className="p-3 text-center text-slate-800 text-base">
+                                            {calculatingTotals ? '...' : totals.quantity}
+                                        </td>
+                                        <td className="p-3 text-center text-orange-700 text-base">
+                                            {calculatingTotals ? '...' : totals.allocated}
+                                        </td>
+                                        {viewMode === 'SUMMARY' && (
+                                            <>
+                                                <td className="p-3 text-center text-blue-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_sale}</td>
+                                                <td className="p-3 text-center text-pink-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_gift}</td>
+                                                <td className="p-3 text-center text-purple-600 text-base font-bold">{calculatingTotals ? '...' : totals.approved_internal}</td>
+                                                <td className="p-3 text-center text-orange-500 text-base font-bold">{calculatingTotals ? '...' : totals.approved_transfer}</td>
+                                            </>
+                                        )}
+                                        <td className="p-3 text-center text-green-700 text-base bg-green-50 font-bold">
+                                            {calculatingTotals ? '...' : totals.available}
+                                        </td>
+                                        <td colSpan={viewMode === 'SUMMARY' ? 1 : 2}></td>
+                                    </tr>
+                                )}
 
                                 {loading ? (
-                                    <tr><td colSpan={viewMode === 'SUMMARY' ? 16 : 13} className="p-8 text-center text-slate-400">Đang tải dữ liệu...</td></tr>
+                                    <tr><td colSpan={inventoryType === 'LAUNCH_SOON' ? 10 : (viewMode === 'SUMMARY' ? 16 : 13)} className="p-8 text-center text-slate-400 font-medium">Đang tải dữ liệu...</td></tr>
+                                ) : inventoryType === 'LAUNCH_SOON' ? (
+                                    launchSoonItems.length === 0 ? (
+                                        <tr><td colSpan={10} className="p-8 text-center text-muted-foreground italic tracking-wide">Không có mã hàng nào chuẩn bị mở bán.</td></tr>
+                                    ) : (
+                                        launchSoonItems.map((item, idx) => (
+                                            <tr key={idx} className="border-b hover:bg-slate-50 text-sm">
+                                                <td className="p-3 text-center">
+                                                    <input
+                                                        type="checkbox"
+                                                        className="h-4 w-4 rounded border-gray-300"
+                                                        checked={selectedLaunchSKUs.includes(item.sku)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) setSelectedLaunchSKUs(prev => [...prev, item.sku])
+                                                            else setSelectedLaunchSKUs(prev => prev.filter(s => s !== item.sku))
+                                                        }}
+                                                    />
+                                                </td>
+                                                <td className="p-3 font-mono font-bold text-blue-600">{item.sku}</td>
+                                                <td className="p-3 font-mono text-slate-600">{item.barcode || '-'}</td>
+                                                <td className="p-3 font-medium text-slate-800">{item.product_name || '---'}</td>
+                                                <td className="p-3 text-slate-600">{item.product_group || '-'}</td>
+                                                <td className="p-3 text-slate-600">{item.target_audience || '-'}</td>
+                                                <td className="p-3 text-center font-bold text-slate-900">{item.quantity}</td>
+                                                <td className="p-3 font-mono text-blue-700 font-bold">{item.box_code}</td>
+                                                <td className="p-3">
+                                                    <span className="bg-green-100 text-green-800 px-2 py-0.5 rounded text-[10px] font-bold">
+                                                        {item.location_code}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3">
+                                                    {item.is_alerted && (
+                                                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold w-fit flex items-center gap-1 shadow-sm border border-red-200">
+                                                            <CircleAlert className="w-3 h-3" />
+                                                            Đã cảnh báo
+                                                        </span>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+
+                                    )
                                 ) : viewMode === 'SUMMARY' ? (
                                     groupedItems.map((item, idx) => (
                                         <tr key={idx} className="border-b hover:bg-slate-50 transition-colors text-sm">
