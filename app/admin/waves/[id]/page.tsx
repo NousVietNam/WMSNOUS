@@ -166,11 +166,9 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
         setReleasing(true)
         try {
             const user = await supabase.auth.getUser()
-            const { data, error } = await supabase.functions.invoke('release-wave', {
-                body: {
-                    wave_id: id,
-                    user_id: user.data.user?.id
-                }
+            const { data, error } = await supabase.rpc('release_wave_v3', {
+                p_wave_id: id,
+                p_user_id: user.data.user?.id
             })
 
             if (error) throw error
