@@ -66,7 +66,7 @@ export function ReceivingReminder({ inventoryType = 'ALL', userId: fixedUserId, 
             if (boxError) throw boxError
 
             // 3. Filter boxes that actually have quantity > 0
-            let nonEmptyBoxes = (boxData || []).map(box => {
+            let nonEmptyBoxes: any[] = (boxData || []).map(box => {
                 const bulkQty = (box.bulk_inventory as any[])?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
                 const pieceQty = (box.inventory_items as any[])?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0
                 return {
@@ -140,7 +140,7 @@ export function ReceivingReminder({ inventoryType = 'ALL', userId: fixedUserId, 
                 onClick={() => setIsOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm font-bold shadow-sm active:scale-95 transition-all w-full justify-center"
             >
-                <AlertCircle className="w-4 h-4" />
+                <CircleAlert className="w-4 h-4" />
                 <span>{isAdmin ? "Giám Sát Receiving" : "Cần Bạn Cất"}</span>
                 {boxes.length > 0 && <span className="bg-amber-600 text-white px-1.5 py-0.5 rounded-full text-[10px]">{boxes.length}</span>}
             </button>
