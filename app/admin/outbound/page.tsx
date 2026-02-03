@@ -649,7 +649,7 @@ export default function OutboundListPage() {
                 <table className="w-full text-sm">
                     <thead>
                         <tr className="bg-slate-50 border-b border-gray-200">
-                            <th colSpan={9} className="px-3 py-2 text-right text-gray-400 font-bold uppercase text-[10px]">Tổng cộng bộ lọc:</th>
+                            <th colSpan={filterInventoryType === 'BULK' ? 9 : 8} className="px-3 py-2 text-right text-gray-400 font-bold uppercase text-[10px]">Tổng cộng bộ lọc:</th>
                             <th className="px-3 py-2 text-center font-black text-indigo-600 bg-indigo-50/30">
                                 {orders.reduce((sum, o) => sum + getItemCount(o), 0).toLocaleString()}
                             </th>
@@ -662,7 +662,7 @@ export default function OutboundListPage() {
                             <th className="px-3 py-2 text-right font-black text-blue-700 bg-blue-50/30">
                                 {orders.reduce((sum, o) => sum + (o.total || 0), 0).toLocaleString()}đ
                             </th>
-                            <th colSpan={3}></th>
+                            <th colSpan={4}></th>
                         </tr>
                     </thead>
                     <thead className="bg-gray-50 border-b">

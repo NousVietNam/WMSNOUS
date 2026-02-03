@@ -14,7 +14,7 @@ import {
     TableHeader,
     TableRow
 } from "@/components/ui/table"
-import { ArrowLeft, Ban, Box, Calendar, Loader2, User } from "lucide-react"
+import { ArrowLeft, Ban, Box, Calendar, Loader2, User, LayoutDashboard } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 
@@ -135,7 +135,11 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
     }
 
     const handleCancelWave = async () => {
-        if (!confirm("Bạn có chắc chắn muốn HỦY đợt soạn hàng này? Các đơn hàng sẽ được trả về trạng thái chưa gom nhóm.")) return
+        const msg = wave.status === 'RELEASED'
+            ? "CẢNH BÁO: Wave đã được Duyệt. Việc Hủy sẽ XÓA TOÀN BỘ Picking Jobs chưa thực hiện và trả đơn về trạng thái chờ. Bạn có chắc chắn?"
+            : "Bạn có chắc chắn muốn HỦY đợt soạn hàng này? Các đơn hàng sẽ được trả về trạng thái chưa gom nhóm."
+
+        if (!confirm(msg)) return
 
         setCancelling(true)
         try {
@@ -213,16 +217,29 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
                 </div>
 
                 <div className="flex gap-2">
-                    {wave.status === 'PLANNING' && (
+                    {/* BUTTON SHORTCUT TO SORTING VISUAL */}
+                    {(wave.status === 'RELEASED' || wave.status === 'COMPLETED' || wave.status === 'IN_PROGRESS') && (
+                        <Button
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg animate-pulse font-bold"
+                            onClick={() => window.open(`/admin/sorting/${wave.id}`, '_blank')}
+                        >
+                            <LayoutDashboard className="h-4 w-4 mr-2" />
+                            Mở Bàn Chia Hàng (Sorting Visual)
+                        </Button>
+                    )}
+
+                    {(wave.status === 'PLANNING' || wave.status === 'RELEASED') && (
                         <>
-                            <Button
-                                className="bg-green-600 hover:bg-green-700 text-white font-bold"
-                                onClick={handleReleaseWave}
-                                disabled={releasing || cancelling}
-                            >
-                                {releasing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Box className="h-4 w-4 mr-2" />}
-                                Duyệt Wave & Tạo Job
-                            </Button>
+                            {wave.status === 'PLANNING' && (
+                                <Button
+                                    className="bg-green-600 hover:bg-green-700 text-white font-bold"
+                                    onClick={handleReleaseWave}
+                                    disabled={releasing || cancelling}
+                                >
+                                    {releasing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Box className="h-4 w-4 mr-2" />}
+                                    Duyệt Wave & Tạo Job
+                                </Button>
+                            )}
 
                             <Button
                                 variant="destructive"
@@ -230,7 +247,7 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
                                 disabled={cancelling || releasing}
                             >
                                 {cancelling ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Ban className="h-4 w-4 mr-2" />}
-                                Hủy Wave
+                                Hủy Wave {wave.status === 'RELEASED' && '(Thu hồi)'}
                             </Button>
                         </>
                     )}
@@ -273,7 +290,7 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
                                     <div className="font-mono text-sm font-bold text-indigo-900">{job.code}</div>
                                     <Badge className={
                                         job.status === 'COMPLETED' ? 'bg-green-100 text-green-800' :
-                                            job.status === 'OPEN' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'
+                                            job.status === 'OPEN' || job.status === 'ASSIGNED' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'
                                     }>
                                         {job.status}
                                     </Badge>
@@ -289,12 +306,12 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
                                     </div>
                                     <div className="flex justify-between items-center text-sm">
                                         <span className="text-slate-500">Người phụ trách:</span>
-                                        <span className="text-slate-600">{job.assigned_to ? 'Đã giao' : 'Chưa giao'}</span>
+                                        <span className="text-slate-600 font-medium">{job.assigned_to_name || (job.assigned_to ? 'Đã giao' : 'Chưa giao')}</span>
                                     </div>
                                     <Button
                                         variant="outline"
                                         className="w-full text-xs mt-2"
-                                        onClick={() => router.push(`/admin/picking/${job.id}`)}
+                                        onClick={() => router.push(`/admin/picking-jobs?search=${job.code}`)}
                                     >
                                         Chi tiết lệnh nhặt
                                     </Button>
@@ -406,4 +423,3 @@ export default function WaveDetailPage({ params }: { params: Promise<{ id: strin
         </div>
     )
 }
-

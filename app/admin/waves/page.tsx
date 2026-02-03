@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table"
 import { Plus, Search, Waves, Loader2 } from "lucide-react"
 import { format } from "date-fns"
+import { toast } from "sonner"
 
 export default function WavesPage() {
     const router = useRouter()
@@ -29,13 +30,23 @@ export default function WavesPage() {
 
     const fetchWaves = async () => {
         setLoading(true)
-        const { data, error } = await supabase
-            .from('pick_waves')
-            .select('*')
-            .order('created_at', { ascending: false })
+        try {
+            const { data, error } = await supabase
+                .from('pick_waves')
+                .select('*, picking_jobs(id, code)')
+                .order('created_at', { ascending: false })
 
-        if (data) setWaves(data)
-        setLoading(false)
+            if (error) {
+                console.error("Wave fetch error:", error)
+                toast.error("Không thể tải danh sách Wave: " + error.message)
+                return
+            }
+            if (data) setWaves(data)
+        } catch (err: any) {
+            toast.error("Lỗi hệ thống: " + err.message)
+        } finally {
+            setLoading(false)
+        }
     }
 
     const getStatusColor = (status: string) => {
@@ -76,9 +87,10 @@ export default function WavesPage() {
                     <Table>
                         <TableHeader className="bg-slate-50">
                             <TableRow>
-                                <TableHead>Mã Wave</TableHead>
+                                <TableHead className="w-[120px]">Mã Wave</TableHead>
                                 <TableHead>Loại Kho</TableHead>
                                 <TableHead>Trạng Thái</TableHead>
+                                <TableHead>Picking Jobs</TableHead>
                                 <TableHead>Người Tạo</TableHead>
                                 <TableHead className="text-right">Số Đơn</TableHead>
                                 <TableHead className="text-right">Tổng Sản Phẩm</TableHead>
@@ -88,13 +100,13 @@ export default function WavesPage() {
                         <TableBody>
                             {loading ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8">
+                                    <TableCell colSpan={8} className="text-center py-8">
                                         <Loader2 className="h-6 w-6 animate-spin mx-auto text-indigo-600" />
                                     </TableCell>
                                 </TableRow>
                             ) : waves.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                                    <TableCell colSpan={8} className="text-center py-8 text-slate-500">
                                         Chưa có Wave nào được tạo.
                                     </TableCell>
                                 </TableRow>
@@ -115,6 +127,19 @@ export default function WavesPage() {
                                             <Badge variant="secondary" className={`${getStatusColor(wave.status)} uppercase text-[10px]`}>
                                                 {wave.status === 'PLANNING' ? 'ĐANG LÊN KH' : wave.status === 'RELEASED' ? 'ĐANG THỰC HIỆN' : wave.status}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                                {wave.picking_jobs && wave.picking_jobs.length > 0 ? (
+                                                    wave.picking_jobs.map((job: any) => (
+                                                        <Badge key={job.id} variant="outline" className="text-[9px] bg-slate-50 text-slate-500 font-mono">
+                                                            {job.code}
+                                                        </Badge>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-slate-300 text-xs italic">Chưa có</span>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell>{wave.user?.name || '---'}</TableCell>
                                         <TableCell className="text-right font-medium">{wave.total_orders}</TableCell>
