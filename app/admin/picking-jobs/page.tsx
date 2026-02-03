@@ -39,9 +39,12 @@ export default function PickingJobsPage() {
                     created_at,
                     started_at,
                     completed_at,
+                    code,
+                    zone,
                     user:users(name),
                     outbound_order:outbound_orders(code, inventory_type, customer:customers(name)),
                     transfer:outbound_orders!outbound_order_id(code, destination:destinations(name)),
+                    wave:pick_waves(code),
                     picking_tasks(id, status, quantity)
                 `)
                 .order('created_at', { ascending: false })
@@ -184,13 +187,17 @@ export default function PickingJobsPage() {
                         ) : (
                             filteredJobs.map(job => {
                                 const order = job.outbound_order
+                                const wave = (job as any).wave
                                 const isManual = job.type === 'MANUAL_PICK'
+                                const isWave = job.type === 'WAVE_PICK'
                                 const isTransfer = order?.type === 'TRANSFER' || order?.type === 'INTERNAL'
-                                const code = isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : `PICK-${order?.code || 'N/A'}`
-                                const link = `/admin/outbound/${job.outbound_order_id || ''}`
-                                const info = isManual
-                                    ? 'Upload thủ công'
-                                    : (order?.customer?.name || 'N/A')
+
+                                const code = job.code || (isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : `PICK-${order?.code || 'N/A'}`)
+                                const link = isWave ? `/admin/waves/${job.wave_id || ''}` : `/admin/outbound/${job.outbound_order_id || ''}`
+
+                                const info = isWave
+                                    ? `Wave: ${wave?.code || 'N/A'} | Zone: ${job.zone || 'N/A'}`
+                                    : (isManual ? 'Upload thủ công' : (order?.customer?.name || 'N/A'))
 
                                 const tasks = (job as any).picking_tasks || []
                                 const totalTasks = tasks.length
@@ -201,10 +208,11 @@ export default function PickingJobsPage() {
                                     <tr key={job.id} className="hover:bg-slate-50">
                                         <td className="p-3 font-medium">
                                             <div className="flex items-center gap-2">
-                                                <span className={`text-xs px-1.5 rounded border ${isManual ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                    isTransfer ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                                                <span className={`text-[10px] px-1.5 py-0.5 font-bold rounded border ${isWave ? 'bg-purple-600 text-white border-purple-700' :
+                                                        isManual ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                            isTransfer ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'
                                                     }`}>
-                                                    {isManual ? 'THỦ CÔNG' : (isTransfer ? 'TRANSFER' : 'ORDER')}
+                                                    {isWave ? 'WAVE' : (isManual ? 'MANUAL' : (isTransfer ? 'TRANSFER' : 'ORDER'))}
                                                 </span>
                                                 <button
                                                     className="hover:underline text-blue-600 font-bold"
@@ -223,12 +231,12 @@ export default function PickingJobsPage() {
                                             </div>
                                         </td>
                                         <td className="p-3 font-mono text-xs">
-                                            {job.type === 'BOX_PICK' ? (
-                                                <Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100">Lấy Thùng</Badge>
-                                            ) : job.type === 'ITEM_PICK' ? (
-                                                <Badge className="bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-100">Lấy Lẻ</Badge>
+                                            {job.type === 'WAVE_PICK' ? (
+                                                <Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100 ring-1 ring-purple-400/30">Nhặt Wave (Zoning)</Badge>
+                                            ) : job.type === 'BOX_PICK' ? (
+                                                <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">Lấy Nguyên Thùng</Badge>
                                             ) : (
-                                                <span className="text-slate-500">{job.type}</span>
+                                                <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Lấy Lẻ (Item)</Badge>
                                             )}
                                         </td>
                                         <td className="p-3 text-slate-600">{info}</td>

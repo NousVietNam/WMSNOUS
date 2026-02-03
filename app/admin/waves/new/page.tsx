@@ -60,24 +60,18 @@ export default function NewWavePage() {
         setCreating(true)
 
         try {
-            // 1. Create Wave
+            // 1. Create Wave (Transactional - Includes Linking)
             const { data: wave, error: waveError } = await supabase.rpc('create_wave', {
-                p_inventory_type: 'BULK', // Only Bulk for now as requested
+                p_inventory_type: 'BULK',
                 p_user_id: session?.user?.id,
-                p_description: `Gom ${selectedOrders.length} đơn (Size ${selectedCluster?.bucket || 'Custom'})`
+                p_description: `Gom ${selectedOrders.length} đơn (Size ${selectedCluster?.bucket || 'Custom'})`,
+                p_order_ids: selectedOrders
             })
 
             if (waveError) throw waveError
 
-            const waveId = wave.wave_id
+            // No need for Step 2 (Linking) as it's done in RPC
 
-            // 2. Link Orders to Wave
-            const { error: linkError } = await supabase
-                .from('outbound_orders')
-                .update({ wave_id: waveId })
-                .in('id', selectedOrders)
-
-            if (linkError) throw linkError
 
             toast.success(`Đã tạo Wave ${wave.code} thành công!`)
             router.push('/admin/waves')

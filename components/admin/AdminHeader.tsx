@@ -2,7 +2,7 @@
 
 import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/components/auth/AuthProvider"
-import { LayoutDashboard, LogOut, Package, User, MapPin, Box, History, Printer, FileText, ArrowRightLeft, Cloud, Truck, FileOutput, Waves } from "lucide-react"
+import { LayoutDashboard, LogOut, Package, User, MapPin, Box, History, Printer, FileText, ArrowRightLeft, Cloud, Truck, FileOutput, Waves, Layers } from "lucide-react"
 import Link from "next/link"
 
 export function AdminHeader() {
@@ -24,6 +24,7 @@ export function AdminHeader() {
         { href: "/admin/boxes", icon: Box, label: "Thùng" },
         { href: "/admin/outbound", icon: FileOutput, label: "Outbound" },
         { href: "/admin/waves", icon: Waves, label: "Wave" },
+        { href: "/admin/sorting", icon: Layers, label: "Sorting" },
         { href: "/admin/outboxes", icon: Package, label: "Outbox" },
         { href: "/admin/shipping", icon: Truck, label: "Ship" },
         { href: "/admin/picking-jobs", icon: Package, label: "Jobs" },

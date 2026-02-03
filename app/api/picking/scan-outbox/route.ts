@@ -15,7 +15,7 @@ export async function POST(request: Request) {
         // 1. Get Job & Order Info
         const { data: job, error: jobError } = await supabase
             .from('picking_jobs')
-            .select('outbound_order_id')
+            .select('outbound_order_id, type')
             .eq('id', jobId)
             .single()
 
@@ -31,6 +31,18 @@ export async function POST(request: Request) {
             .single()
 
         if (boxError || !box) return NextResponse.json({ success: false, error: 'Mã thùng không tồn tại' }, { status: 404 })
+
+        if (job.type === 'WAVE_PICK') {
+            // For Wave Pick, we allow CART type and don't strictly bind to one order immediately (or bind to Wave? For now, loose binding)
+            if (box.type !== 'CART') return NextResponse.json({ success: false, error: 'Vui lòng quét Mã Xe Đẩy (CART-...) cho Wave Pick' }, { status: 400 })
+
+            // TODO: Maybe link Cart to Wave? 
+            // For now, return success so Mobile can use this Box ID as Target
+            return NextResponse.json({
+                success: true,
+                box: { id: box.id, code: box.code, count: 0 } // count is tricky for Cart, maybe fetch?
+            })
+        }
 
         if (box.type !== 'OUTBOX') return NextResponse.json({ success: false, error: 'Đây không phải là thùng đóng gói (Outbox)' }, { status: 400 })
 

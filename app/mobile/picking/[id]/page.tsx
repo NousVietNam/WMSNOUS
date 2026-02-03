@@ -9,13 +9,14 @@ import { Package, Check, X, RefreshCw } from "lucide-react"
 
 import { QRScanner } from "@/components/mobile/QRScanner"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 
 // Types
 type PickingTask = {
     id: string
     quantity: number
     status: 'PENDING' | 'COMPLETED'
-    products: { sku: string; name: string; barcode: string; image_url?: string }
+    products: { id: string; sku: string; name: string; barcode: string; image_url?: string }
     boxes: { id: string; code: string; locations?: { code: string } } | null
     locations: { id: string; code: string } | null
     available_qty?: number
@@ -234,6 +235,12 @@ export default function DoPickingPage() {
             validateBoxCode(code)
             return
         }
+        // If Wave Pick and no active outbox (cart), we MUST scan cart first
+        if (jobType === 'WAVE_PICK' && !activeOutbox) {
+            handleScanOutbox(code)
+            return
+        }
+
         if (scannerMode === 'BOX_UNLOCK') validateBoxCode(code)
         else handleScanOutbox(code)
     }
@@ -289,7 +296,7 @@ export default function DoPickingPage() {
             const json = await res.json()
             if (json.success) {
                 setActiveOutbox({ id: json.box.id, code: json.box.code, count: json.box.count })
-                toast.success(`Active Outbox: ${json.box.code}`)
+                toast.success(jobType === 'WAVE_PICK' ? `Đã nhận Xe Đẩy: ${json.box.code}` : `Active Outbox: ${json.box.code}`)
                 setShowScanner(false)
             } else {
                 toast.error(json.error || "Lỗi Outbox")
@@ -315,8 +322,10 @@ export default function DoPickingPage() {
     const handleConfirmBox = async (taskIds: string[]) => {
         const isBoxPick = transferType === 'BOX' || jobType === 'BOX_PICK'
         if (!isBoxPick && !activeOutbox) {
-            toast.error("Vui lòng chọn Outbox trước!")
-            return
+            if (!isBoxPick && !activeOutbox) {
+                toast.error("Vui lòng chọn Outbox/Xe Đẩy trước!")
+                return
+            }
         }
         if (taskIds.length === 0) return
 
@@ -349,10 +358,12 @@ export default function DoPickingPage() {
     }
 
     const handleCompleteJob = async () => {
-        const confirm = window.confirm("Xác nhận hoàn thành Job này? Thùng hàng sẽ được chuyển ra GATE-OUT và PXK sẽ được tạo tự động.")
+        const confirm = window.confirm("Xác nhận hoàn thành Job này? " + (jobType === 'WAVE_PICK' ? "Xe Đẩy sẽ được chuyển sang khu vực SORTING." : "Thùng hàng sẽ được chuyển ra GATE-OUT và PXK sẽ được tạo tự động."))
         if (!confirm) return
 
         try {
+            // For Wave Pick, we might need a different API or just use complete
+            // Assuming complete logic handles Wave Job status update
             const res = await fetch('/api/picking/complete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -399,7 +410,7 @@ export default function DoPickingPage() {
                     </div>
                 </div>
 
-                {!activeOutbox && transferType === 'ITEM' && (
+                {!activeOutbox && transferType === 'ITEM' && jobType !== 'WAVE_PICK' && (
                     <div className="bg-orange-50 p-3 rounded border border-orange-200 flex items-center justify-between">
                         <div className="text-xs text-orange-800 font-bold flex items-center gap-2">Chọn thùng đóng gói!</div>
                         <button className="h-8 px-3 rounded text-xs font-bold bg-white" onClick={() => { setScannerMode('OUTBOX'); setShowScanner(true) }}>Quét</button>
@@ -417,24 +428,77 @@ export default function DoPickingPage() {
                 )}
 
                 <div className={`space-y-2 ${!isUnlocked ? 'opacity-50 pointer-events-none' : ''}`}>
-                    {activeGroup.tasks.map(task => {
-                        const isDone = task.status === 'COMPLETED'
-                        const isSelected = tempSelectedTaskIds.has(task.id)
-                        return (
-                            <div key={task.id} className={`rounded-xl border flex p-3 ${isDone ? 'bg-slate-50' : isSelected ? 'bg-blue-50 border-blue-500' : 'bg-white'}`}>
-                                <div className="flex-1" onClick={() => setSelectedProduct(task.products)}>
-                                    <div className="font-bold text-sm text-indigo-700">{task.products.sku}</div>
-                                    <div className="text-xs text-slate-500">{task.products.name}</div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="text-2xl font-black">{task.quantity}</div>
-                                    <div onClick={() => transferType !== 'BOX' && !isDone && handleToggleTask(task.id)} className={`h-9 w-9 rounded-full flex items-center justify-center border-2 ${isDone ? 'bg-green-100 text-green-600' : isSelected ? 'bg-blue-500 text-white' : 'bg-white text-transparent'}`}>
-                                        <Check className="h-5 w-5" />
+                    {(() => {
+                        // Virtual Grouping by Product within the Box
+                        const productGroups: Record<string, { product: any, tasks: any[], totalQty: number, isDone: boolean, isSelected: boolean }> = {}
+
+                        activeGroup.tasks.forEach(task => {
+                            const productId = task.products.id
+                            if (!productGroups[productId]) {
+                                productGroups[productId] = {
+                                    product: task.products,
+                                    tasks: [],
+                                    totalQty: 0,
+                                    isDone: true, // Will be set to false if any task is pending
+                                    isSelected: true // Will be set to false if any task is not selected
+                                }
+                            }
+                            productGroups[productId].tasks.push(task)
+                            productGroups[productId].totalQty += task.quantity
+                            if (task.status !== 'COMPLETED') productGroups[productId].isDone = false
+                        })
+
+                        // Update selection state for product groups
+                        Object.values(productGroups).forEach(group => {
+                            group.isSelected = group.tasks.every(t => tempSelectedTaskIds.has(t.id))
+                        })
+
+                        return Object.values(productGroups).map(group => {
+                            const isDone = group.isDone
+                            const isSelected = group.isSelected
+
+                            return (
+                                <div key={group.product.id} className={`rounded-xl border flex p-3 ${isDone ? 'bg-slate-50' : isSelected ? 'bg-blue-50 border-blue-500' : 'bg-white shadow-sm'}`}>
+                                    <div className="flex-1" onClick={() => setSelectedProduct(group.product)}>
+                                        <div className="flex items-center gap-2">
+                                            <div className="font-black text-sm text-indigo-700">{group.product.sku}</div>
+                                            {group.tasks.length > 1 && (
+                                                <Badge variant="outline" className="text-[9px] bg-slate-100 text-slate-500 h-4 px-1">
+                                                    {group.tasks.length} ĐƠN
+                                                </Badge>
+                                            )}
+                                        </div>
+                                        <div className="text-[11px] text-slate-500 leading-tight mt-0.5 line-clamp-1">{group.product.name}</div>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-right">
+                                            <div className="text-2xl font-black text-slate-900">{group.totalQty}</div>
+                                            <div className="text-[9px] uppercase font-bold text-slate-400">Số lượng</div>
+                                        </div>
+                                        <div
+                                            onClick={() => {
+                                                if (transferType !== 'BOX' && !isDone) {
+                                                    const allTaskIds = group.tasks.map(t => t.id)
+                                                    setTempSelectedTaskIds(prev => {
+                                                        const next = new Set(prev)
+                                                        if (isSelected) {
+                                                            allTaskIds.forEach(id => next.delete(id))
+                                                        } else {
+                                                            allTaskIds.forEach(id => next.add(id))
+                                                        }
+                                                        return next
+                                                    })
+                                                }
+                                            }}
+                                            className={`h-10 w-10 rounded-xl flex items-center justify-center border-2 transition-all ${isDone ? 'bg-green-100 text-green-600 border-green-200' : isSelected ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-transparent border-slate-200 active:scale-95'}`}
+                                        >
+                                            <Check className="h-6 w-6" />
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )
-                    })}
+                            )
+                        })
+                    })()}
                 </div>
 
                 <div className="mt-6 pb-8">
@@ -482,6 +546,32 @@ export default function DoPickingPage() {
                         <div className="text-slate-600">Tiến độ: <b>{jobStats.pickedItems}/{jobStats.totalItems}</b></div>
                         <div className="text-slate-600">SKU: <b>{jobStats.totalSku}</b></div>
                     </div>
+                </div>
+            )}
+
+            {/* WAVE PICK CART PROMPT */}
+            {jobType === 'WAVE_PICK' && !activeOutbox && !loading && (
+                <div className="bg-purple-100 p-4 border-b border-purple-200 flex flex-col items-center justify-center space-y-3 animate-pulse">
+                    <div className="font-bold text-purple-900 text-lg flex items-center gap-2">
+                        <Package className="h-6 w-6" /> Scan Xe Đẩy / Rổ
+                    </div>
+                    <p className="text-sm text-purple-700 text-center">Vui lòng quét mã Xe (CART-...) để bắt đầu nhặt.</p>
+                    <button
+                        className="bg-purple-600 text-white font-bold py-2 px-6 rounded-full shadow-lg"
+                        onClick={() => setShowScanner(true)}
+                    >
+                        Mở Scanner
+                    </button>
+                </div>
+            )}
+
+            {/* ACTIVE CART INDICATOR */}
+            {jobType === 'WAVE_PICK' && activeOutbox && (
+                <div className="bg-purple-50 p-2 border-b border-purple-100 flex items-center justify-between px-4">
+                    <div className="text-xs text-purple-600 font-bold flex items-center gap-2">
+                        <Package className="h-4 w-4" /> Xe Đẩy: <span className="text-sm text-black">{activeOutbox.code}</span>
+                    </div>
+                    <button className="text-[10px] text-slate-400 underline" onClick={() => { if (confirm('Đổi Xe?')) setActiveOutbox(null) }}>Đổi</button>
                 </div>
             )}
 

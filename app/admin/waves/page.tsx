@@ -31,10 +31,7 @@ export default function WavesPage() {
         setLoading(true)
         const { data, error } = await supabase
             .from('pick_waves')
-            .select(`
-                *,
-                user:users(name)
-            `)
+            .select('*')
             .order('created_at', { ascending: false })
 
         if (data) setWaves(data)

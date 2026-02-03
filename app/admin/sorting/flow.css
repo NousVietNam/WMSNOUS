@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .flow-line {
+    stroke-dasharray: 10;
+    animation: flowAnimation 1s linear infinite;
+  }
+}
+
+@keyframes flowAnimation {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* Hiệu ứng đoàn tàu hạt (CSS Trick) */
+/* Dasharray: 0(dot) 6(gap) 0(dot) 6(gap) 0(dot) 150(long gap) */
+@keyframes particleTrain {
+  to {
+    stroke-dashoffset: -162;
+    /* = 0+6+0+6+0+150 */
+  }
+}
+
+.animate-particle-train {
+  stroke-dasharray: 0 6 0 6 0 150;
+  stroke-linecap: round;
+  animation: particleTrain 3s linear infinite;
+}
+
+.animate-particle-train-fast {
+  stroke-dasharray: 0 6 0 6 0 150;
+  stroke-linecap: round;
+  animation: particleTrain 1.5s linear infinite;
+}

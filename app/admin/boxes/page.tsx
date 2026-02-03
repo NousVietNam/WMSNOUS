@@ -20,6 +20,7 @@ interface Box {
     status: 'OPEN' | 'CLOSED' | 'FULL' | 'LOCKED' | 'SHIPPED'
     location_id: string | null
     inventory_type: 'PIECE' | 'BULK'
+    type?: 'STORAGE' | 'OUTBOX' | 'CART'
     created_at: string
     locations?: { code: string }
     inventory_items?: { quantity: number }[]
@@ -254,7 +255,7 @@ export default function BoxesPage() {
 
     // Inventory Type State
     const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK'>('PIECE')
-    const [createMode, setCreateMode] = useState<'standard' | 'return'>('standard')
+    const [createMode, setCreateMode] = useState<'standard' | 'return' | 'cart'>('standard')
 
     const getLocationReceivingId = async () => {
         try {
@@ -282,13 +283,15 @@ export default function BoxesPage() {
         return newLoc.id
     }
 
-    const generateBoxCode = async (type: 'PIECE' | 'BULK', count: number = 1): Promise<string[]> => {
+    const generateBoxCode = async (type: 'PIECE' | 'BULK' | 'CART', count: number = 1): Promise<string[]> => {
         const now = new Date()
         const month = (now.getMonth() + 1).toString().padStart(2, '0')
         const year = now.getFullYear().toString().slice(-2)
 
-        // Logic: PIECE -> BOX-MMYY-xxxx, BULK -> INB-MMYY-xxxx
-        const prefix = type === 'PIECE' ? `BOX-${month}${year}-` : `INB-${month}${year}-`
+        // Logic: PIECE -> BOX-MMYY-xxxx, BULK -> INB-MMYY-xxxx, CART -> CART-xxxx
+        let prefix = ''
+        if (type === 'CART') prefix = 'CART-'
+        else prefix = type === 'PIECE' ? `BOX-${month}${year}-` : `INB-${month}${year}-`
 
         // Get max code for this prefix
         const { data } = await supabase.from('boxes')
@@ -300,13 +303,16 @@ export default function BoxesPage() {
         let startSuffix = 1
         if (data && data.length > 0) {
             const lastCode = data[0].code
-            const lastSuffix = parseInt(lastCode.split('-').pop() || '0')
+            // Handle CART-01 vs BOX-MMYY-0001
+            const parts = lastCode.split('-')
+            const lastPart = parts[parts.length - 1]
+            const lastSuffix = parseInt(lastPart || '0')
             startSuffix = lastSuffix + 1
         }
 
         const codes = []
         for (let i = 0; i < count; i++) {
-            const suffix = (startSuffix + i).toString().padStart(4, '0')
+            const suffix = (startSuffix + i).toString().padStart(type === 'CART' ? 2 : 4, '0')
             codes.push(`${prefix}${suffix}`)
         }
         return codes
@@ -375,20 +381,22 @@ export default function BoxesPage() {
         }
     }
 
-    const handleCreateBulk = async (qty: number) => {
+    const handleCreateBulk = async (qty: number, isCart: boolean = false) => {
         if (qty > 100) return alert("Tối đa 100 thùng/lần")
         setLoading(true)
 
         const receivingLocId = await getLocationReceivingId()
         if (!receivingLocId) { setLoading(false); return }
 
-        const codes = await generateBoxCode(inventoryType, qty)
+        // Use 'CART' type for generation if isCart is true
+        const genType = isCart ? 'CART' : inventoryType
+        const codes = await generateBoxCode(genType as any, qty)
 
         const boxesToInsert = codes.map(code => ({
             code,
             status: 'OPEN',
-            type: 'STORAGE',
-            inventory_type: inventoryType,
+            type: isCart ? 'CART' : 'STORAGE',
+            inventory_type: 'PIECE', // Carts hold pieces usually
             location_id: receivingLocId
         }))
 
@@ -583,6 +591,12 @@ export default function BoxesPage() {
                                             Thùng Tiêu Chuẩn
                                         </button>
                                         <button
+                                            className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${createMode === 'cart' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                            onClick={() => setCreateMode('cart')}
+                                        >
+                                            Xe Đẩy / Rổ
+                                        </button>
+                                        <button
                                             className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${createMode === 'return' ? 'bg-white text-orange-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                             onClick={() => setCreateMode('return')}
                                         >
@@ -669,6 +683,50 @@ export default function BoxesPage() {
                                                     </p>
                                                 </div>
                                             </>
+                                        ) : createMode === 'cart' ? (
+                                            /* CART MODE */
+                                            <div className="space-y-4">
+                                                <div className="bg-purple-50 p-4 rounded-lg border border-purple-100 text-purple-900 space-y-2">
+                                                    <div className="flex items-center gap-2 font-bold">
+                                                        <BoxIcon className="h-5 w-5" /> Tạo Mã Xe Đẩy / Rổ Gom
+                                                    </div>
+                                                    <p className="text-sm">
+                                                        Tạo nhanh mã vạch dán lên xe đẩy hoặc rổ nhựa dùng để nhặt hàng (Picking Container).
+                                                    </p>
+                                                </div>
+
+                                                <div className="space-y-4 bg-slate-50 p-4 rounded-lg border">
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="space-y-2">
+                                                            <label className="text-xs font-bold uppercase text-slate-500">Số lượng cần tạo</label>
+                                                            <input
+                                                                type="number" min="1" max="50"
+                                                                className="w-full h-10 px-3 rounded border"
+                                                                placeholder="VD: 5"
+                                                                value={bulkQty}
+                                                                onChange={(e) => setBulkQty(e.target.value)}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-xs font-bold uppercase text-slate-500">Mẫu Mã</label>
+                                                            <div className="text-xs text-slate-600 font-mono bg-white p-2 rounded border truncate">
+                                                                CART-XX
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <Button
+                                                        onClick={() => {
+                                                            const qty = parseInt(bulkQty)
+                                                            if (qty > 0) handleCreateBulk(qty, true)
+                                                            else alert("Vui lòng nhập số lượng hợp lệ")
+                                                        }}
+                                                        className="w-full bg-purple-600 hover:bg-purple-700"
+                                                        disabled={loading}
+                                                    >
+                                                        {loading ? 'Đang tạo...' : 'Tạo Mã Xe Đẩy'}
+                                                    </Button>
+                                                </div>
+                                            </div>
                                         ) : (
                                             /* RETURN GOODS MODE */
                                             <div className="space-y-4">

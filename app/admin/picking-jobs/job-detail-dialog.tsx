@@ -39,7 +39,8 @@ export function JobDetailDialog({ jobId, open, onOpenChange }: JobDetailDialogPr
                         transfer_type,
                         customer:customers(name),
                         destination:destinations(name)
-                    )
+                    ),
+                    wave:pick_waves(code)
                 `)
                 .eq('id', jobId)
                 .single()
@@ -106,14 +107,16 @@ export function JobDetailDialog({ jobId, open, onOpenChange }: JobDetailDialogPr
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Package className="h-5 w-5 text-blue-600" />
-                        Chi Tiết Picking Job: {job?.outbound_order?.code || (jobId ? `JOB-${jobId.slice(0, 8).toUpperCase()}` : '...')}
+                        Chi Tiết Picking Job: {job?.code || job?.outbound_order?.code || (jobId ? `JOB-${jobId.slice(0, 8).toUpperCase()}` : '...')}
                     </DialogTitle>
                     <DialogDescription>
-                        {job?.type === 'MANUAL_PICK'
-                            ? 'Upload thủ công'
-                            : job?.type === 'BOX_PICK'
-                                ? `Lấy Thùng - ${job?.outbound_order?.customer?.name || job?.outbound_order?.destination?.name || 'N/A'}`
-                                : job?.outbound_order?.customer?.name || job?.outbound_order?.destination?.name || 'Chi tiết đơn hàng'}
+                        {job?.type === 'WAVE_PICK'
+                            ? `Nhặt Hàng Theo Đợt (Wave) - ${job?.wave?.code || 'N/A'} | Zone: ${job?.zone || 'N/A'}`
+                            : job?.type === 'MANUAL_PICK'
+                                ? 'Upload thủ công'
+                                : job?.type === 'BOX_PICK'
+                                    ? `Lấy Thùng - ${job?.outbound_order?.customer?.name || job?.outbound_order?.destination?.name || 'N/A'}`
+                                    : job?.outbound_order?.customer?.name || job?.outbound_order?.destination?.name || 'Chi tiết đơn hàng'}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -162,8 +165,8 @@ export function JobDetailDialog({ jobId, open, onOpenChange }: JobDetailDialogPr
                                                     Không có thông tin (Chưa phân bổ hàng)
                                                 </td>
                                             </tr>
-                                        ) : job?.type === 'BOX_PICK' ? (
-                                            // For BOX jobs: Group by box and show items in each box
+                                        ) : (job?.type === 'BOX_PICK' || job?.type === 'WAVE_PICK') ? (
+                                            // For BOX and WAVE jobs: Group by box and show items in each box
                                             (() => {
                                                 // Group tasks by box
                                                 const boxGroups = tasks.reduce((acc: any, task: any) => {

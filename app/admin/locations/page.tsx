@@ -22,6 +22,7 @@ interface Location {
     type: 'SHELF' | 'BIN' | 'FLOOR'
     capacity: number
     description: string
+    zone?: string
     box_count?: number
     last_update?: string | null
 }
@@ -50,6 +51,7 @@ export default function LocationsPage() {
     const [newType, setNewType] = useState("SHELF")
     const [newCapacity, setNewCapacity] = useState("100")
     const [newDesc, setNewDesc] = useState("")
+    const [newZone, setNewZone] = useState("")
 
     // Pagination & Selection
     const [currentPage, setCurrentPage] = useState(1)
@@ -110,7 +112,8 @@ export default function LocationsPage() {
             code: newCode.toUpperCase(),
             type: newType,
             capacity: parseInt(newCapacity),
-            description: newDesc
+            description: newDesc,
+            zone: newZone.toUpperCase()
         }
 
         let error
@@ -279,7 +282,7 @@ export default function LocationsPage() {
                                     <Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger><SelectValue placeholder="Loại" /></SelectTrigger><SelectContent><SelectItem value="ALL">Tất cả</SelectItem><SelectItem value="SHELF">Kệ</SelectItem><SelectItem value="BIN">Bin</SelectItem><SelectItem value="FLOOR">Sàn</SelectItem></SelectContent></Select>
                                     <Select value={occupancyFilter} onValueChange={setOccupancyFilter}><SelectTrigger><SelectValue placeholder="Trạng thái" /></SelectTrigger><SelectContent><SelectItem value="ALL">Tất cả</SelectItem><SelectItem value="EMPTY">Trống</SelectItem><SelectItem value="LOW">Còn chỗ</SelectItem><SelectItem value="HIGH">Sắp đầy</SelectItem><SelectItem value="FULL">Đầy</SelectItem></SelectContent></Select>
                                 </div>
-                                <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => { setEditingLoc(null); setNewCode(""); setOpenDialog(true); }}><Plus className="mr-2 h-4 w-4" /> Thêm Mới</Button>
+                                <Button className="w-full bg-indigo-600 hover:bg-indigo-700" onClick={() => { setEditingLoc(null); setNewCode(""); setNewZone(""); setOpenDialog(true); }}><Plus className="mr-2 h-4 w-4" /> Thêm Mới</Button>
                                 <div className="grid grid-cols-2 gap-2">
                                     <Button variant="outline" size="sm" onClick={handlePrintBatch} disabled={selectedIds.size === 0}><Printer className="mr-1.5 h-3.5 w-3.5" /> In ({selectedIds.size})</Button>
                                     <Button variant="outline" size="sm" onClick={handleDownloadExample}><Download className="mr-1.5 h-3.5 w-3.5" /> Mẫu</Button>
@@ -323,9 +326,11 @@ export default function LocationsPage() {
                             <table className="w-full text-sm">
                                 <thead className="bg-slate-50 sticky top-0 z-10 text-[10px] uppercase font-bold text-slate-500 shadow-sm">
                                     <tr>
-                                        <th className="p-4 w-10"><Checkbox checked={selectedIds.size === paginated.length} onCheckedChange={() => setSelectedIds(new Set(selectedIds.size ? [] : paginated.map(l => l.id)))} /></th>
-                                        {['code', 'type', 'box_count'].map(c => (
-                                            <th key={c} className="p-4 cursor-pointer hover:text-indigo-600" onClick={() => handleSort(c)}>{c === 'box_count' ? 'Lấp đầy' : c === 'code' ? 'Mã' : 'Loại'} {getSortIcon(c)}</th>
+                                        <th className="p-4 w-10 text-left"><Checkbox checked={selectedIds.size === paginated.length} onCheckedChange={() => setSelectedIds(new Set(selectedIds.size ? [] : paginated.map(l => l.id)))} /></th>
+                                        {['code', 'zone', 'type', 'box_count'].map(c => (
+                                            <th key={c} className={`p-4 cursor-pointer hover:text-indigo-600 text-left ${c === 'box_count' ? 'w-40' : ''}`} onClick={() => handleSort(c)}>
+                                                {c === 'box_count' ? 'Lấp đầy' : c === 'code' ? 'Mã' : c === 'zone' ? 'Phân vùng' : 'Loại'} {getSortIcon(c)}
+                                            </th>
                                         ))}
                                         <th className="p-4 text-right">Thao tác</th>
                                     </tr>
@@ -337,6 +342,7 @@ export default function LocationsPage() {
                                             <tr key={loc.id} className="border-b hover:bg-slate-50/50 cursor-pointer" onClick={() => handleViewDetails(loc)}>
                                                 <td className="p-4" onClick={e => e.stopPropagation()}><Checkbox checked={selectedIds.has(loc.id)} onCheckedChange={() => toggleSelect(loc.id)} /></td>
                                                 <td className="p-4 font-bold text-slate-800">{loc.code}</td>
+                                                <td className="p-4"><Badge variant="secondary" className="bg-indigo-50 text-indigo-700 border-indigo-100">{loc.zone || '---'}</Badge></td>
                                                 <td className="p-4"><Badge variant="outline" className="text-[10px]">{loc.type}</Badge></td>
                                                 <td className="p-4 w-40">
                                                     <div className="text-[10px] flex justify-between mb-1"><span>{loc.box_count}/{loc.capacity} THÙNG</span><span>{occ}%</span></div>
@@ -344,7 +350,7 @@ export default function LocationsPage() {
                                                 </td>
                                                 <td className="p-4 text-right" onClick={e => e.stopPropagation()}>
                                                     <div className="flex justify-end gap-1">
-                                                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditingLoc(loc); setNewCode(loc.code); setNewType(loc.type); setNewCapacity(loc.capacity.toString()); setNewDesc(loc.description || ""); setOpenDialog(true); }}><MoreHorizontal className="h-4 w-4" /></Button>
+                                                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditingLoc(loc); setNewCode(loc.code); setNewType(loc.type); setNewCapacity(loc.capacity.toString()); setNewDesc(loc.description || ""); setNewZone(loc.zone || ""); setOpenDialog(true); }}><MoreHorizontal className="h-4 w-4" /></Button>
                                                         <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleSinglePrint(loc)}><Printer className="h-4 w-4" /></Button>
                                                         <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-500" onClick={() => handleDelete(loc.id, loc.box_count || 0)}><Trash2 className="h-4 w-4" /></Button>
                                                     </div>
@@ -366,7 +372,7 @@ export default function LocationsPage() {
                 </div>
             </main>
 
-            <Dialog open={openDialog} onOpenChange={setOpenDialog}><DialogContent><DialogHeader><DialogTitle>{editingLoc ? 'Sửa Vị Trí' : 'Thêm Vị Trí'}</DialogTitle></DialogHeader><div className="space-y-4 py-4"><div className="space-y-1"><label className="text-xs font-bold uppercase">Mã</label><Input value={newCode} onChange={e => setNewCode(e.target.value)} /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-xs font-bold uppercase">Loại</label><Select value={newType} onValueChange={setNewType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="SHELF">Kệ</SelectItem><SelectItem value="BIN">Bin</SelectItem><SelectItem value="FLOOR">Sàn</SelectItem></SelectContent></Select></div><div className="space-y-1"><label className="text-xs font-bold uppercase">Sức chứa</label><Input type="number" value={newCapacity} onChange={e => setNewCapacity(e.target.value)} /></div></div><div className="space-y-1"><label className="text-xs font-bold uppercase">Mô tả</label><Input value={newDesc} onChange={e => setNewDesc(e.target.value)} /></div><Button className="w-full bg-indigo-600" onClick={handleSave}>Lưu thay đổi</Button></div></DialogContent></Dialog>
+            <Dialog open={openDialog} onOpenChange={setOpenDialog}><DialogContent><DialogHeader><DialogTitle>{editingLoc ? 'Sửa Vị Trí' : 'Thêm Vị Trí'}</DialogTitle></DialogHeader><div className="space-y-4 py-4"><div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-xs font-bold uppercase">Mã</label><Input value={newCode} onChange={e => setNewCode(e.target.value)} /></div><div className="space-y-1"><label className="text-xs font-bold uppercase">Phân vùng (Zone)</label><Input value={newZone} onChange={e => setNewZone(e.target.value)} placeholder="VD: ZONE-A" /></div></div><div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-xs font-bold uppercase">Loại</label><Select value={newType} onValueChange={setNewType}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="SHELF">Kệ</SelectItem><SelectItem value="BIN">Bin</SelectItem><SelectItem value="FLOOR">Sàn</SelectItem></SelectContent></Select></div><div className="space-y-1"><label className="text-xs font-bold uppercase">Sức chứa</label><Input type="number" value={newCapacity} onChange={e => setNewCapacity(e.target.value)} /></div></div><div className="space-y-1"><label className="text-xs font-bold uppercase">Mô tả</label><Input value={newDesc} onChange={e => setNewDesc(e.target.value)} /></div><Button className="w-full bg-indigo-600" onClick={handleSave}>Lưu thay đổi</Button></div></DialogContent></Dialog>
             <Dialog open={!!selectedLoc} onOpenChange={o => !o && setSelectedLoc(null)}><DialogContent className="max-w-2xl"><DialogHeader><DialogTitle>Thùng tại {selectedLoc?.code}</DialogTitle></DialogHeader><div className="space-y-4 max-h-[60vh] overflow-auto thin-scrollbar">{locBoxes.length ? locBoxes.map(b => (
                 <div key={b.id} className="flex items-center justify-between p-3 border rounded-xl hover:bg-slate-50 cursor-pointer" onClick={() => handleViewBoxItems(b)}>
                     <div className="flex items-center gap-3"><BoxIcon className="text-indigo-600" /><div><div className="font-bold">{b.code}</div><div className="text-[10px] text-slate-400 capitalize">{b.status}</div></div></div>
