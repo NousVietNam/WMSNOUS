@@ -29,7 +29,8 @@ BEGIN
     FROM outbound_orders
     WHERE inventory_type = 'BULK'
       AND (wave_id IS NULL)
-      AND is_approved = TRUE;
+      AND is_approved = TRUE
+      AND status NOT IN ('CANCELLED','COMPLETED','SHIPPED','ALLOCATED');
 
     IF v_unassigned_ids IS NULL THEN
         RETURN '[]'::JSONB;
