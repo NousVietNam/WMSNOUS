@@ -282,18 +282,20 @@ export default function OutboundListPage() {
 
                 // Lookup Staff
                 if (staffName) {
+                    const cleanStaff = staffName.toString().trim()
                     const { data: staff } = await supabase
                         .from('internal_staff')
                         .select('id')
-                        .or(`id.eq.${staffName},code.eq.${staffName},name.ilike.%${staffName}%`)
+                        .or(`id.eq.${cleanStaff},code.eq.${cleanStaff},name.ilike.%${cleanStaff}%`)
                         .limit(1)
                         .maybeSingle()
                     saleStaffId = staff?.id
                 }
 
                 if (orderType === 'SALE' || orderType === 'GIFT') {
-                    const customerName = firstRow['Khách Hàng (Tên/Mã)'] || firstRow['Khách Hàng (ID hoặc Tên)']
+                    let customerName = firstRow['Khách Hàng (Tên/Mã)'] || firstRow['Khách Hàng (ID hoặc Tên)']
                     if (customerName) {
+                        customerName = customerName.toString().trim()
                         const { data: customer } = await supabase
                             .from('customers')
                             .select('id')
@@ -302,13 +304,14 @@ export default function OutboundListPage() {
                             .maybeSingle()
 
                         if (!customer) {
-                            throw new Error(`Không tìm thấy khách hàng: ${customerName}`)
+                            throw new Error(`Không tìm thấy khách hàng: "${customerName}"`)
                         }
                         customerId = customer.id
                     }
                 } else {
-                    const destName = firstRow['Kho Đích (Tên/Mã)'] || firstRow['Kho Đích (ID hoặc Tên)']
+                    let destName = firstRow['Kho Đích (Tên/Mã)'] || firstRow['Kho Đích (ID hoặc Tên)']
                     if (destName) {
+                        destName = destName.toString().trim()
                         const { data: dest } = await supabase
                             .from('destinations')
                             .select('id')
@@ -317,7 +320,7 @@ export default function OutboundListPage() {
                             .maybeSingle()
 
                         if (!dest) {
-                            throw new Error(`Không tìm thấy kho đích: ${destName}`)
+                            throw new Error(`Không tìm thấy kho đích: "${destName}"`)
                         }
                         destinationId = dest.id
                     }
