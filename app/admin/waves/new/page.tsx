@@ -90,7 +90,7 @@ export default function NewWavePage() {
                 .eq('is_approved', true) // Only approved
                 .is('wave_id', null)     // Not in wave
                 .eq('inventory_type', 'BULK') // Bulk context
-                .not('status', 'in', '("CANCELLED","COMPLETED","SHIPPED")') // Valid status
+                .not('status', 'in', '("CANCELLED","COMPLETED","SHIPPED","ALLOCATED")') // Exclude Allocated orders as they might have individual jobs
                 .order('created_at', { ascending: false })
                 .limit(100)
 
