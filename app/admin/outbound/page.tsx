@@ -315,13 +315,29 @@ export default function OutboundListPage() {
                     if (customerName) {
                         const cleanName = customerName.toString().trim()
 
-                        // Priority 1: Exact Match ID/Code or ILIKE Name
-                        let { data: customer } = await supabase
-                            .from('customers')
-                            .select('id, default_discount')
-                            .or(`id.eq.${cleanName},code.eq.${cleanName},name.ilike.${cleanName}`) // Strict match by Code/ID/Name
-                            .limit(1)
-                            .maybeSingle()
+                        // Check if input is UUID
+                        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanName)
+
+                        let customer = null
+
+                        if (isUUID) {
+                            // If is UUID, strict check by ID
+                            const { data } = await supabase
+                                .from('customers')
+                                .select('id, default_discount')
+                                .eq('id', cleanName)
+                                .maybeSingle()
+                            customer = data
+                        } else {
+                            // If NOT UUID, check by Code or Name
+                            const { data } = await supabase
+                                .from('customers')
+                                .select('id, default_discount')
+                                .or(`code.eq.${cleanName},name.ilike.${cleanName}`)
+                                .limit(1)
+                                .maybeSingle()
+                            customer = data
+                        }
 
                         if (!customer) {
                             throw new Error(`Không tìm thấy khách hàng: "${customerName}"`)
