@@ -30,9 +30,13 @@ export async function POST(req: NextRequest) {
 async function handleMessage(message: any) {
     const chatId = message.chat.id;
 
-    // 1. Handle Photos (Barcode scan)
+    // 1. Handle Photos or Documents sent as images
     if (message.photo && message.photo.length > 0) {
         return handlePhoto(chatId, message.photo);
+    }
+
+    if (message.document && message.document.mime_type?.startsWith('image/')) {
+        return handlePhoto(chatId, [message.document], true);
     }
 
     const text = message.text || '';
@@ -61,29 +65,29 @@ async function handleMessage(message: any) {
     }
 }
 
-async function handlePhoto(chatId: number, photoSizes: any[]) {
-    // Large photo is usually the last one
-    const photo = photoSizes[photoSizes.length - 1];
+async function handlePhoto(chatId: number, photoSizes: any[], isDocument: boolean = false) {
+    // For photos, large photo is usually the last one. For documents, it's the object itself.
+    const photo = isDocument ? photoSizes[0] : photoSizes[photoSizes.length - 1];
     const fileId = photo.file_id;
 
-    await sendTelegramMessage(chatId, `🔄 <i>Đang xử lý ảnh và quét mã vạch...</i>`);
+    await sendTelegramMessage(chatId, `🔄 <i>Đang phân tích barcode...</i>`);
 
     try {
         // 1. Get file path
         const fileData = await getTelegramFile(fileId);
         if (!fileData.ok || !fileData.result.file_path) {
-            throw new Error('Could not get file path');
+            throw new Error('Không lấy được đường dẫn ảnh từ Telegram.');
         }
 
         // 2. Download
         const buffer = await downloadTelegramFile(fileData.result.file_path);
-        if (!buffer) throw new Error('Download failed');
+        if (!buffer) throw new Error('Không thể tải ảnh về server xử lý.');
 
         // 3. Decode Barcode
         const decodedCode = await decodeBarcodeFromBuffer(buffer);
 
         if (!decodedCode) {
-            return await sendTelegramMessage(chatId, `❌ <b>Không tìm thấy mã vạch:</b> Trong ảnh này không nhận diện được mã vạch nào rõ nét. Vui lòng chụp thẳng và rõ hơn.`);
+            return await sendTelegramMessage(chatId, `❌ <b>Không đọc được mã vạch:</b>\n- Hãy chắc chắn ảnh rõ nét, không bị lóa.\n- Chụp gần mã vạch hơn (nên chiếm 50% khung hình).\n- Đảm bảo mã vạch nằm ngang hoặc dọc.`);
         }
 
         await sendTelegramMessage(chatId, `✅ Đã quét được mã: <code>${decodedCode}</code>`);
@@ -91,9 +95,10 @@ async function handlePhoto(chatId: number, photoSizes: any[]) {
 
     } catch (error: any) {
         console.error('Photo processing error:', error);
-        await sendTelegramMessage(chatId, `❌ <b>Lỗi xử lý ảnh:</b> ${error.message}`);
+        await sendTelegramMessage(chatId, `❌ <b>Lỗi xử lý:</b> ${error.message}`);
     }
 }
+
 
 async function processLookup(chatId: number, code: string) {
     try {

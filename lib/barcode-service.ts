@@ -7,32 +7,49 @@ export async function decodeBarcodeFromBuffer(buffer: Buffer): Promise<string | 
         console.log('🖼 Processing image buffer for barcode...');
         const image = await jimp.read(buffer);
 
-        // Optimize image for barcode reading if needed
-        // grayscale() is often helpful
-        image.grayscale().contrast(0.5);
+        // Resize if too large to speed up and improve focus
+        if (image.bitmap.width > 1200) {
+            image.resize(1200, jimp.AUTO);
+        }
 
-        const result = await javascriptBarcodeReader({
-            image: image.bitmap,
-            width: image.bitmap.width,
-            height: image.bitmap.height,
-        });
-
+        // Attempt 1: Grayscale + Moderate Contrast
+        const img1 = image.clone().grayscale().contrast(0.6);
+        let result = await tryDecode(img1);
         if (result) {
             console.log(`✅ Decoded barcode: ${result}`);
             return result;
         }
 
-        // Try without grayscale/contrast just in case
-        const rawImage = await jimp.read(buffer);
-        const rawResult = await javascriptBarcodeReader({
-            image: rawImage.bitmap,
-            width: rawImage.bitmap.width,
-            height: rawImage.bitmap.height,
-        });
+        // Attempt 2: High Contrast + B&W Threshold (helps with some barcodes)
+        const img2 = image.clone().grayscale().contrast(0.9).posterize(2);
+        result = await tryDecode(img2);
+        if (result) {
+            console.log(`✅ Decoded barcode: ${result}`);
+            return result;
+        }
 
-        return rawResult || null;
+        // Attempt 3: Original but resized
+        result = await tryDecode(image);
+        if (result) {
+            console.log(`✅ Decoded barcode: ${result}`);
+        }
+        return result;
+
     } catch (error) {
         console.error('❌ Error decoding barcode:', error);
+        return null;
+    }
+}
+
+async function tryDecode(image: any): Promise<string | null> {
+    try {
+        const result = await javascriptBarcodeReader({
+            image: image.bitmap,
+            width: image.bitmap.width,
+            height: image.bitmap.height,
+        });
+        return result || null;
+    } catch {
         return null;
     }
 }
