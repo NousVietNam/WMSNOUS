@@ -40,7 +40,7 @@ export default function NewOutboundPage() {
     const [submitting, setSubmitting] = useState(false)
 
     // Header info
-    const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK'>('PIECE')
+    const [inventoryType, setInventoryType] = useState<'PIECE' | 'BULK'>('BULK')
     const [orderType, setOrderType] = useState<'SALE' | 'TRANSFER' | 'INTERNAL' | 'GIFT'>('SALE')
     const [transferType, setTransferType] = useState<'ITEM' | 'BOX'>('ITEM')
     const [customerId, setCustomerId] = useState<string>('')
