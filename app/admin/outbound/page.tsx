@@ -167,6 +167,7 @@ export default function OutboundListPage() {
 
             {
                 'Kho (Lẻ/Sỉ)': 'Lẻ',
+                'Mã Đơn Hàng': '',
                 'Loại': 'SALE',
                 'Khách Hàng (Tên/Mã)': 'Khách lẻ',
                 'Kho Đích (Tên/Mã)': '',
@@ -184,6 +185,7 @@ export default function OutboundListPage() {
             },
             {
                 'Kho (Lẻ/Sỉ)': 'Sỉ',
+                'Mã Đơn Hàng': '',
                 'Loại': 'TRANSFER',
                 'Khách Hàng (Tên/Mã)': '',
                 'Kho Đích (Tên/Mã)': 'CH-HANOI',
@@ -207,7 +209,7 @@ export default function OutboundListPage() {
         XLSX.utils.book_append_sheet(wb, ws, 'Template')
 
         ws['!cols'] = [
-            { wch: 10 }, { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 15 },
+            { wch: 15 }, { wch: 15 }, { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 15 },
             { wch: 12 }, { wch: 10 }, { wch: 25 }, { wch: 10 },
             { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 10 }, { wch: 10 }, { wch: 15 }
         ]
@@ -249,7 +251,14 @@ export default function OutboundListPage() {
         try {
             const grouped: Record<string, any[]> = {}
             for (const row of importData) {
-                const key = `${row['Loại']}_${row['Khách Hàng (ID hoặc Tên)'] || row['Khách Hàng (Tên/Mã)'] || ''}_${row['Kho Đích (ID hoặc Tên)'] || row['Kho Đích (Tên/Mã)'] || ''}`
+                // Determine Key: Use 'Mã Đơn Hàng' if provided, else group by details
+                let key = ''
+                if (row['Mã Đơn Hàng']) {
+                    key = row['Mã Đơn Hàng'].toString().trim()
+                } else {
+                    key = `${row['Loại']}_${row['Khách Hàng (ID hoặc Tên)'] || row['Khách Hàng (Tên/Mã)'] || ''}_${row['Kho Đích (ID hoặc Tên)'] || row['Kho Đích (Tên/Mã)'] || ''}`
+                }
+
                 if (!grouped[key]) grouped[key] = []
                 grouped[key].push(row)
             }
@@ -260,6 +269,7 @@ export default function OutboundListPage() {
             for (const [key, items] of Object.entries(grouped)) {
                 const firstRow = items[0]
                 const orderType = firstRow['Loại'] || 'SALE'
+                const forcedOrderCode = firstRow['Mã Đơn Hàng'] ? firstRow['Mã Đơn Hàng'].toString().trim() : null
 
                 // Inventory Type Logic
                 let inventoryType = 'PIECE'
@@ -279,6 +289,14 @@ export default function OutboundListPage() {
                 let customerId = null
                 let destinationId = null
                 let saleStaffId = null
+
+                // 4. Validate Code Exist
+                if (forcedOrderCode) {
+                    const { data: exist } = await supabase.from('outbound_orders').select('id').eq('code', forcedOrderCode).maybeSingle()
+                    if (exist) {
+                        throw new Error(`Mã đơn hàng "${forcedOrderCode}" đã tồn tại trên hệ thống!`)
+                    }
+                }
 
                 // Lookup Staff
                 if (staffName) {
@@ -300,7 +318,7 @@ export default function OutboundListPage() {
                         // Priority 1: Exact Match ID/Code or ILIKE Name
                         let { data: customer } = await supabase
                             .from('customers')
-                            .select('id')
+                            .select('id, default_discount')
                             .or(`id.eq.${cleanName},code.eq.${cleanName},name.ilike.${cleanName}`) // Strict match by Code/ID/Name
                             .limit(1)
                             .maybeSingle()
@@ -309,6 +327,13 @@ export default function OutboundListPage() {
                             throw new Error(`Không tìm thấy khách hàng: "${customerName}"`)
                         }
                         customerId = customer.id
+
+                        // Check Discount Mismatch Warning
+                        if (discountType === 'PERCENT' && customer.default_discount !== undefined && customer.default_discount !== null) {
+                            if (discountValue !== customer.default_discount) {
+                                priceWarnings.push(`Cảnh báo chiết khấu: Đơn ${forcedOrderCode || 'Mới'} của ${customerName}. Excel: ${discountValue}%, Mặc định: ${customer.default_discount}%`)
+                            }
+                        }
                     }
                 } else {
                     let destName = firstRow['Kho Đích (Tên/Mã)'] || firstRow['Kho Đích (ID hoặc Tên)']
@@ -379,7 +404,7 @@ export default function OutboundListPage() {
                     customerId, destinationId, saleStaffId,
                     discountType, discountValue, description, isBonus, isCalc,
                     orderItems, subtotal, orderCodePrefix: orderType,
-                    inventoryType // Pass it here
+                    inventoryType, forcedOrderCode // Pass forced code
                 }
             }
 
@@ -394,64 +419,71 @@ export default function OutboundListPage() {
 
             // PROCEED TO INSERT
             for (const [key, items] of Object.entries(grouped)) {
-                const data = (items as any)._readyData
-                if (!data || data.orderItems.length === 0) continue
+                try {
+                    const data = (items as any)._readyData
+                    if (!data || data.orderItems.length === 0) continue // Skip if failed validation or no items
 
-                // Generate Code
-                let prefix = ''
-                switch (data.orderCodePrefix) {
-                    case 'SALE': prefix = 'SO'; break;
-                    case 'TRANSFER': prefix = 'TO'; break;
-                    case 'INTERNAL': prefix = 'IO'; break;
-                    case 'GIFT': prefix = 'GO'; break;
-                    default: prefix = 'OT';
+                    // Generate Code OR Use Forced Code
+                    let orderCode = data.forcedOrderCode
+                    if (!orderCode) {
+                        let prefix = 'SO'
+                        if (data.orderCodePrefix === 'TRANSFER') prefix = 'TO'
+                        if (data.orderCodePrefix === 'INTERNAL') prefix = 'IO'
+                        if (data.orderCodePrefix === 'GIFT') prefix = 'GO'
+
+                        const { data: genCode, error: genError } = await supabase.rpc('generate_outbound_order_code', { prefix })
+                        if (genError) throw genError
+                        orderCode = genCode
+                    }
+
+                    // Calc Discount
+                    let discountAmount = 0
+                    if (data.discountType === 'PERCENT') {
+                        discountAmount = data.subtotal * (data.discountValue / 100)
+                    } else {
+                        discountAmount = data.discountValue
+                    }
+                    const total = Math.max(0, data.subtotal - discountAmount)
+
+                    const { data: newOrder, error: orderError } = await supabase
+                        .from('outbound_orders')
+                        .insert({
+                            code: orderCode,
+                            type: items[0]['Loại'] || 'SALE',
+                            transfer_type: 'ITEM',
+                            source: 'EXCEL',
+                            customer_id: data.customerId,
+                            destination_id: data.destinationId,
+                            sale_staff_id: data.saleStaffId,
+                            discount_type: data.discountType,
+                            discount_value: data.discountValue,
+                            discount_amount: discountAmount,
+                            subtotal: data.subtotal,
+                            total,
+                            description: data.description || null,
+                            note: items[0]['Ghi Chú'] || null,
+                            is_bonus_consideration: data.isBonus,
+                            is_bonus_calculation: data.isCalc,
+                            inventory_type: data.inventoryType
+                        })
+                        .select('id')
+                        .single()
+
+                    if (orderError) throw orderError
+
+                    const itemsToInsert = data.orderItems.map((item: any) => ({
+                        order_id: newOrder.id,
+                        ...item,
+                        picked_quantity: 0
+                    }))
+
+                    await supabase.from('outbound_order_items').insert(itemsToInsert)
+                    successCount++
+                } catch (batchError: any) {
+                    toast.error(`Lỗi xử lý đơn hàng "${key}": ${batchError.message}`)
+                    // Optionally, you might want to continue processing other batches or stop.
+                    // For now, we'll just log the error and continue.
                 }
-                const { data: codeData } = await supabase.rpc('generate_outbound_order_code', { prefix })
-                const orderCode = codeData || `ORD-${Date.now()}`
-
-                // Calc Discount
-                let discountAmount = 0
-                if (data.discountType === 'PERCENT') {
-                    discountAmount = data.subtotal * (data.discountValue / 100)
-                } else {
-                    discountAmount = data.discountValue
-                }
-                const total = Math.max(0, data.subtotal - discountAmount)
-
-                const { data: newOrder, error: orderError } = await supabase
-                    .from('outbound_orders')
-                    .insert({
-                        code: orderCode,
-                        type: items[0]['Loại'] || 'SALE',
-                        transfer_type: 'ITEM',
-                        source: 'EXCEL',
-                        customer_id: data.customerId,
-                        destination_id: data.destinationId,
-                        sale_staff_id: data.saleStaffId,
-                        discount_type: data.discountType,
-                        discount_value: data.discountValue,
-                        discount_amount: discountAmount,
-                        subtotal: data.subtotal,
-                        total,
-                        description: data.description || null,
-                        note: items[0]['Ghi Chú'] || null,
-                        is_bonus_consideration: data.isBonus,
-                        is_bonus_calculation: data.isCalc,
-                        inventory_type: data.inventoryType
-                    })
-                    .select('id')
-                    .single()
-
-                if (orderError) throw orderError
-
-                const itemsToInsert = data.orderItems.map((item: any) => ({
-                    order_id: newOrder.id,
-                    ...item,
-                    picked_quantity: 0
-                }))
-
-                await supabase.from('outbound_order_items').insert(itemsToInsert)
-                successCount++
             }
 
             toast.success(`Import thành công ${successCount} đơn hàng!`)
