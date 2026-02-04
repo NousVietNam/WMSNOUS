@@ -4,35 +4,22 @@ import { useState } from 'react';
 import { sendTestNotification } from '@/app/actions/telegram-actions';
 import { Bell, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 
 export function TelegramTestButton() {
     const [loading, setLoading] = useState(false);
-    const { toast } = useToast();
 
     const handleTest = async () => {
         setLoading(true);
         try {
             const res = await sendTestNotification();
             if (res.success) {
-                toast({
-                    title: "Thành công",
-                    description: res.message,
-                    variant: "default",
-                });
+                toast.success("Thành công: " + res.message);
             } else {
-                toast({
-                    title: "Thất bại",
-                    description: res.message,
-                    variant: "destructive",
-                });
+                toast.error("Thất bại: " + res.message);
             }
         } catch (error) {
-            toast({
-                title: "Lỗi",
-                description: "Không thể kết nối đến server.",
-                variant: "destructive",
-            });
+            toast.error("Lỗi: Không thể kết nối đến server.");
         } finally {
             setLoading(false);
         }
