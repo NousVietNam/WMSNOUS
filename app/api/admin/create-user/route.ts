@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export async function POST(req: NextRequest) {
     try {
-        const { email, name, role, password } = await req.json()
+        const { email, name, role, password, telegram_chat_id } = await req.json()
 
         // Validate input
         if (!email || !name || !password) {
@@ -50,7 +50,8 @@ export async function POST(req: NextRequest) {
                 id: authData.user.id,
                 email,
                 name,
-                role
+                role,
+                telegram_chat_id // Added
             })
 
         if (dbError) {
@@ -68,9 +69,11 @@ export async function POST(req: NextRequest) {
                 id: authData.user.id,
                 email,
                 name,
-                role
+                role,
+                telegram_chat_id
             }
         })
+
 
     } catch (error: any) {
         return NextResponse.json(

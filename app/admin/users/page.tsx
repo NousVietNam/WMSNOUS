@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { Users, Plus, Trash2, KeyRound, RefreshCw, Shield } from "lucide-react"
+import { Users, Plus, Trash2, KeyRound, RefreshCw, Shield, Edit, MessageSquare } from "lucide-react"
 import Link from "next/link"
 import { toast } from "sonner"
 
@@ -15,7 +15,8 @@ interface User {
     id: string
     email: string
     name: string
-    role: string // Now a string code
+    role: string
+    telegram_chat_id?: string
     created_at: string
 }
 
@@ -30,15 +31,18 @@ export default function UsersManagementPage() {
     const [roles, setRoles] = useState<Role[]>([])
     const [loading, setLoading] = useState(true)
     const [createOpen, setCreateOpen] = useState(false)
+    const [editOpen, setEditOpen] = useState(false)
     const [resetUserId, setResetUserId] = useState<string | null>(null)
     const [newPassword, setNewPassword] = useState("")
 
-    // Create form
+    // Create/Edit form
     const [formData, setFormData] = useState({
+        id: "",
         email: "",
         name: "",
-        role: "STAFF", // Default Code
-        password: "Welcome@2024"
+        role: "STAFF",
+        password: "Welcome@2024",
+        telegram_chat_id: ""
     })
 
     useEffect(() => {
@@ -47,14 +51,11 @@ export default function UsersManagementPage() {
 
     const fetchData = async () => {
         setLoading(true)
-        // 1. Fetch Users
         const usersReq = supabase
             .from('users')
             .select('*')
             .order('created_at', { ascending: false })
 
-        // 2. Fetch Roles (via API or Direct DB if possible)
-        // Since we created an API, let's use it or just direct DB since it's client
         const rolesReq = supabase
             .from('roles')
             .select('*')
@@ -86,16 +87,10 @@ export default function UsersManagementPage() {
             const result = await res.json()
 
             if (result.success) {
-                // Keep alert for Credentials as it needs to be copied
                 alert(`Tài khoản đã tạo thành công!\n\nEmail: ${formData.email}\nMật khẩu: ${formData.password}\n\nVui lòng COPY thông tin này gửi cho nhân viên.`)
                 toast.success("Đã tạo tài khoản mới")
                 setCreateOpen(false)
-                setFormData({
-                    email: "",
-                    name: "",
-                    role: "STAFF",
-                    password: "Welcome@2024"
-                })
+                resetForm()
                 fetchData()
             } else {
                 toast.error("Lỗi: " + result.error)
@@ -103,6 +98,57 @@ export default function UsersManagementPage() {
         } catch (e: any) {
             toast.error("Lỗi hệ thống: " + e.message)
         }
+    }
+
+    const handleUpdateUser = async () => {
+        try {
+            const res = await fetch('/api/admin/update-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: formData.id,
+                    name: formData.name,
+                    role: formData.role,
+                    telegram_chat_id: formData.telegram_chat_id
+                })
+            })
+
+            const result = await res.json()
+
+            if (result.success) {
+                toast.success("Đã cập nhật thông tin thành công")
+                setEditOpen(false)
+                resetForm()
+                fetchData()
+            } else {
+                toast.error("Lỗi: " + result.error)
+            }
+        } catch (e: any) {
+            toast.error("Lỗi hệ thống: " + e.message)
+        }
+    }
+
+    const resetForm = () => {
+        setFormData({
+            id: "",
+            email: "",
+            name: "",
+            role: "STAFF",
+            password: "Welcome@2024",
+            telegram_chat_id: ""
+        })
+    }
+
+    const openEdit = (user: User) => {
+        setFormData({
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            password: "",
+            telegram_chat_id: user.telegram_chat_id || ""
+        })
+        setEditOpen(true)
     }
 
     const handleResetPassword = async (userId: string) => {
@@ -169,7 +215,7 @@ export default function UsersManagementPage() {
             <main className="flex-1 p-6 space-y-6">
                 <div className="flex items-center justify-between">
                     <h1 className="text-2xl font-bold flex items-center gap-2">
-                        {/* <Users className="h-8 w-8 text-primary" /> */} Quản Lý Tài Khoản
+                        Quản Lý Tài Khoản
                     </h1>
                     <div className="flex gap-2">
                         <Link href="/admin/roles">
@@ -178,100 +224,39 @@ export default function UsersManagementPage() {
                             </Button>
                         </Link>
                         <Button variant="outline" onClick={fetchData}>
-                            Cloud Sync
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Làm mới
                         </Button>
-                        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-                            <DialogTrigger asChild>
-                                <Button>Tạo Tài Khoản</Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Tạo Tài Khoản Mới</DialogTitle>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    <div className="grid gap-2">
-                                        <Label>Email *</Label>
-                                        <Input
-                                            type="email"
-                                            value={formData.email}
-                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                            placeholder="user@example.com"
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label>Tên *</Label>
-                                        <Input
-                                            value={formData.name}
-                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                            placeholder="Nguyễn Văn A"
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label>Vai Trò</Label>
-                                        <Select
-                                            value={formData.role}
-                                            onValueChange={(val) => setFormData({ ...formData, role: val })}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {roles.length > 0 ? roles.map(r => (
-                                                    <SelectItem key={r.code} value={r.code}>
-                                                        {r.name} ({r.code})
-                                                    </SelectItem>
-                                                )) : (
-                                                    // Fallback if role fetch fails
-                                                    <>
-                                                        <SelectItem value="STAFF">Nhân Viên (STAFF)</SelectItem>
-                                                        <SelectItem value="ADMIN">Quản Lý (ADMIN)</SelectItem>
-                                                    </>
-                                                )}
-                                            </SelectContent>
-                                        </Select>
-                                        <p className="text-xs text-muted-foreground">Các vai trò được lấy từ cấu hình hệ thống</p>
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <Label>Mật Khẩu Mặc Định</Label>
-                                        <Input
-                                            value={formData.password}
-                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                        />
-                                        <p className="text-xs text-muted-foreground">
-                                            Nhân viên sẽ nhận được mật khẩu này để đăng nhập lần đầu
-                                        </p>
-                                    </div>
-                                </div>
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => setCreateOpen(false)}>Hủy</Button>
-                                    <Button onClick={handleCreateUser}>Tạo Tài Khoản</Button>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
+                        <Button onClick={() => { resetForm(); setCreateOpen(true); }}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Tạo Tài Khoản
+                        </Button>
                     </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-md border shadow-sm">
+                <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
                     <table className="w-full text-sm">
-                        <thead className="bg-slate-100 font-medium">
+                        <thead className="bg-slate-50 font-bold text-slate-700 border-b">
                             <tr>
-                                <th className="p-3 text-left">Email</th>
-                                <th className="p-3 text-left">Tên</th>
-                                <th className="p-3 text-left">Vai Trò</th>
-                                <th className="p-3 text-left">Ngày Tạo</th>
-                                <th className="p-3 text-right">Thao Tác</th>
+                                <th className="p-4 text-left">Email</th>
+                                <th className="p-4 text-left">Tên Nhân Viên</th>
+                                <th className="p-4 text-left">Vai Trò</th>
+                                <th className="p-4 text-left">Telegram ID</th>
+                                <th className="p-4 text-left">Ngày Tạo</th>
+                                <th className="p-4 text-right">Thao Tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
-                                        Đang tải...
+                                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                                        <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-slate-300" />
+                                        Đang tải dữ liệu...
                                     </td>
                                 </tr>
                             ) : users.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
                                         Chưa có tài khoản nào
                                     </td>
                                 </tr>
@@ -281,36 +266,58 @@ export default function UsersManagementPage() {
                                     const roleName = roleInfo ? roleInfo.name : user.role
 
                                     return (
-                                        <tr key={user.id} className="hover:bg-slate-50">
-                                            <td className="p-3 font-medium">{user.email}</td>
-                                            <td className="p-3">{user.name}</td>
-                                            <td className="p-3">
-                                                <span className={`px-2 py-1 rounded text-xs font-medium ${user.role === 'ADMIN'
-                                                    ? 'bg-purple-100 text-purple-800'
-                                                    : 'bg-blue-100 text-blue-800'
+                                        <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 font-medium text-slate-900">{user.email}</td>
+                                            <td className="p-4 font-bold text-indigo-700">{user.name}</td>
+                                            <td className="p-4">
+                                                <span className={`px-2 py-1 rounded text-[11px] font-black tracking-tight ${user.role === 'ADMIN'
+                                                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                                    : 'bg-blue-100 text-blue-800 border border-blue-200'
                                                     }`}>
-                                                    {roleName}
+                                                    {roleName.toUpperCase()}
                                                 </span>
                                             </td>
-                                            <td className="p-3">
+                                            <td className="p-4">
+                                                {user.telegram_chat_id ? (
+                                                    <div className="flex items-center gap-1.5 text-green-600 font-mono text-xs font-bold">
+                                                        <MessageSquare className="h-3 w-3" />
+                                                        {user.telegram_chat_id}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-slate-300 italic text-xs">Chưa cài đặt</span>
+                                                )}
+                                            </td>
+                                            <td className="p-4 text-slate-500 text-xs">
                                                 {new Date(user.created_at).toLocaleDateString('vi-VN')}
                                             </td>
-                                            <td className="p-3 text-right">
-                                                <div className="flex justify-end gap-2">
+                                            <td className="p-4 text-right">
+                                                <div className="flex justify-end gap-1">
                                                     <Button
                                                         size="sm"
-                                                        variant="outline"
-                                                        onClick={() => setResetUserId(user.id)}
+                                                        variant="ghost"
+                                                        className="h-8 w-8 p-0 text-blue-600 hover:bg-blue-50"
+                                                        onClick={() => openEdit(user)}
+                                                        title="Sửa thông tin"
                                                     >
-                                                        Reset MK
+                                                        <Edit className="h-4 w-4" />
                                                     </Button>
                                                     <Button
                                                         size="sm"
                                                         variant="ghost"
-                                                        className="text-destructive"
-                                                        onClick={() => openDeleteConfirm({ id: user.id, email: user.email })}
+                                                        className="h-8 w-8 p-0 text-amber-600 hover:bg-amber-50"
+                                                        onClick={() => setResetUserId(user.id)}
+                                                        title="Reset Mật khẩu"
                                                     >
-                                                        Xóa
+                                                        <KeyRound className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
+                                                        onClick={() => openDeleteConfirm({ id: user.id, email: user.email })}
+                                                        title="Xóa tài khoản"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>
                                             </td>
@@ -321,6 +328,82 @@ export default function UsersManagementPage() {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Create/Edit Dialog */}
+                <Dialog open={createOpen || editOpen} onOpenChange={(val) => { if (!val) { setCreateOpen(false); setEditOpen(false); } }}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>{createOpen ? 'Tạo Tài Khoản Mới' : 'Cập Nhật Thông Tin'}</DialogTitle>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid gap-2">
+                                <Label>Email</Label>
+                                <Input
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    placeholder="user@example.com"
+                                    disabled={editOpen}
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Tên Nhân Viên *</Label>
+                                <Input
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                    placeholder="Nhập tên..."
+                                />
+                            </div>
+                            <div className="grid gap-2">
+                                <Label>Vai Trò</Label>
+                                <Select
+                                    value={formData.role}
+                                    onValueChange={(val) => setFormData({ ...formData, role: val })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {roles.map(r => (
+                                            <SelectItem key={r.code} value={r.code}>
+                                                {r.name.toUpperCase()}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid gap-2">
+                                <Label className="flex items-center gap-2">
+                                    <MessageSquare className="h-4 w-4 text-blue-500" />
+                                    Telegram Chat ID
+                                </Label>
+                                <Input
+                                    value={formData.telegram_chat_id}
+                                    onChange={(e) => setFormData({ ...formData, telegram_chat_id: e.target.value })}
+                                    placeholder="Ví dụ: 8283078267"
+                                />
+                                <p className="text-[10px] text-muted-foreground italic">
+                                    Nhân viên gõ /myid với Bot để lấy ID này. Dùng để nhận Noti job.
+                                </p>
+                            </div>
+                            {createOpen && (
+                                <div className="grid gap-2">
+                                    <Label>Mật Khẩu Mặc Định</Label>
+                                    <Input
+                                        value={formData.password}
+                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => { setCreateOpen(false); setEditOpen(false); }}>Hủy</Button>
+                            <Button onClick={createOpen ? handleCreateUser : handleUpdateUser}>
+                                {createOpen ? 'Lưu & Tạo' : 'Lưu Thay Đổi'}
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Reset Password Dialog */}
                 <Dialog open={!!resetUserId} onOpenChange={(open) => !open && setResetUserId(null)}>
@@ -337,21 +420,11 @@ export default function UsersManagementPage() {
                                     onChange={(e) => setNewPassword(e.target.value)}
                                     placeholder="Password123@"
                                 />
-                                <p className="text-xs text-muted-foreground">
-                                    Nhân viên sẽ sử dụng mật khẩu này để đăng nhập
-                                </p>
                             </div>
                         </div>
                         <DialogFooter>
-                            <Button variant="outline" onClick={() => {
-                                setResetUserId(null)
-                                setNewPassword("")
-                            }}>
-                                Hủy
-                            </Button>
-                            <Button onClick={() => resetUserId && handleResetPassword(resetUserId)}>
-                                Xác Nhận Reset
-                            </Button>
+                            <Button variant="outline" onClick={() => { setResetUserId(null); setNewPassword(""); }}>Hủy</Button>
+                            <Button onClick={() => resetUserId && handleResetPassword(resetUserId)}>Xác Nhận Reset</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
@@ -364,15 +437,10 @@ export default function UsersManagementPage() {
                         </DialogHeader>
                         <div className="py-4">
                             <p>Bạn có chắc chắn muốn xóa tài khoản <strong>{userToDelete?.email}</strong>?</p>
-                            <p className="text-sm text-muted-foreground mt-2">Hành động này không thể hoàn tác.</p>
                         </div>
                         <DialogFooter>
-                            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
-                                Hủy
-                            </Button>
-                            <Button variant="destructive" onClick={confirmDeleteUser}>
-                                Xóa Vĩnh Viễn
-                            </Button>
+                            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>Hủy</Button>
+                            <Button variant="destructive" onClick={confirmDeleteUser}>Xóa Vĩnh Viễn</Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

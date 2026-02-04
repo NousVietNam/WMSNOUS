@@ -6,20 +6,22 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { supabase } from "@/lib/supabase"
-import { Search, Trash2, Package, Loader2, RefreshCw } from "lucide-react"
+import { Search, Trash2, Package, Loader2, RefreshCw, UserPlus } from "lucide-react"
 import { toast } from "sonner"
 import Link from "next/link"
 
 import { JobDetailDialog } from "./job-detail-dialog"
-import { ExceptionTab } from "./ExceptionTab" // New Component
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs" // Need to install or use if available
+import { ExceptionTab } from "./ExceptionTab"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function PickingJobsPage() {
     const [jobs, setJobs] = useState<any[]>([])
+    const [staffs, setStaffs] = useState<any[]>([])
     const [loading, setLoading] = useState(true)
     const [filterStatus, setFilterStatus] = useState("ALL")
     const [searchTerm, setSearchTerm] = useState("")
     const [deletingId, setDeletingId] = useState<string | null>(null)
+    const [assigningId, setAssigningId] = useState<string | null>(null)
 
     // Detail Dialog State
     const [detailId, setDetailId] = useState<string | null>(null)
@@ -27,6 +29,7 @@ export default function PickingJobsPage() {
 
     useEffect(() => {
         fetchJobs()
+        fetchStaffs()
     }, [])
 
     const fetchJobs = async () => {
@@ -44,6 +47,7 @@ export default function PickingJobsPage() {
                     code,
                     zone,
                     user:users!fk_picking_jobs_user(name),
+                    assigned_to,
                     assignee:users!fk_picking_jobs_assignee(name),
                     outbound_order:outbound_orders(
                         code, 
@@ -63,6 +67,37 @@ export default function PickingJobsPage() {
             toast.error("Lỗi tải danh sách: " + error.message)
         } finally {
             setLoading(false)
+        }
+    }
+
+    const fetchStaffs = async () => {
+        const { data } = await supabase
+            .from('users')
+            .select('id, name')
+            .in('role', ['STAFF', 'ADMIN'])
+            .order('name')
+        if (data) setStaffs(data)
+    }
+
+    const handleAssign = async (jobId: string, staffId: string) => {
+        setAssigningId(jobId)
+        try {
+            const res = await fetch('/api/picking-jobs/assign', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jobId, staffId })
+            })
+            const result = await res.json()
+            if (result.success) {
+                toast.success(result.message)
+                fetchJobs()
+            } else {
+                toast.error("Lỗi gán việc: " + result.error)
+            }
+        } catch (error: any) {
+            toast.error("Lỗi kết nối: " + error.message)
+        } finally {
+            setAssigningId(null)
         }
     }
 
@@ -98,7 +133,8 @@ export default function PickingJobsPage() {
         const search = searchTerm.toLowerCase()
         const matchSearch = orderCode.toLowerCase().includes(search) ||
             customerName.toLowerCase().includes(search) ||
-            destinationName.toLowerCase().includes(search)
+            destinationName.toLowerCase().includes(search) ||
+            job.code?.toLowerCase().includes(search)
         return matchStatus && matchSearch
     })
 
@@ -107,6 +143,7 @@ export default function PickingJobsPage() {
             case 'PENDING': return <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200 uppercase text-[10px]">Chờ Xử Lý</Badge>
             case 'PLANNED': return <Badge variant="outline" className="bg-slate-100 text-slate-600 border-slate-200 uppercase text-[10px]">Đã Lên Kế Hoạch</Badge>
             case 'OPEN': return <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200 uppercase text-[10px]">Mới Tạo</Badge>
+            case 'ASSIGNED': return <Badge variant="outline" className="bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]">Đã Giao Việc</Badge>
             case 'IN_PROGRESS': return <Badge variant="outline" className="bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]">Đang Lấy</Badge>
             case 'PICKING': return <Badge variant="outline" className="bg-indigo-100 text-indigo-800 border-indigo-200 uppercase text-[10px]">Đang Lấy</Badge>
             case 'COMPLETED': return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 uppercase text-[10px]">Hoàn Thành</Badge>
@@ -148,27 +185,20 @@ export default function PickingJobsPage() {
                 </div>
             </div>
 
-
-
             <Tabs defaultValue="jobs" className="w-full">
                 <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
                     <TabsTrigger value="jobs">Danh Sách Jobs</TabsTrigger>
                     <TabsTrigger value="exceptions" className="flex items-center gap-2">
                         Ngoại Lệ / Báo Thiếu
-                        {/* Optional Badge for Open Exceptions count could go here */}
                     </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="jobs" className="space-y-4 pt-4">
-                    {/* Re-use existing filters here if we want them ONLY for jobs, or keep global? For simplicity, we keep global filters above for now if they apply, but 'status' applies differently. 
-                        Let's move Filters INSIDE this tab if they are Job-specific. The current code has filters OUTSIDE. 
-                        Refactoring filters inside is cleaner. */}
-
                     <div className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-lg border shadow-sm">
                         <div className="flex-1 relative">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input
-                                placeholder="Tìm mã đơn, tên khách/kho..."
+                                placeholder="Tìm mã job, đơn, tên khách..."
                                 className="pl-8"
                                 value={searchTerm}
                                 onChange={e => setSearchTerm(e.target.value)}
@@ -181,6 +211,7 @@ export default function PickingJobsPage() {
                                     <SelectItem value="ALL">Tất cả</SelectItem>
                                     <SelectItem value="PENDING">Chờ Xử Lý</SelectItem>
                                     <SelectItem value="OPEN">Mới Tạo</SelectItem>
+                                    <SelectItem value="ASSIGNED">Đã Giao</SelectItem>
                                     <SelectItem value="IN_PROGRESS">Đang Lấy</SelectItem>
                                     <SelectItem value="COMPLETED">Hoàn Thành</SelectItem>
                                 </SelectContent>
@@ -195,10 +226,9 @@ export default function PickingJobsPage() {
                                     <th className="p-3 text-left">Mã Đơn / Phiếu</th>
                                     <th className="p-3 text-left">Loại Job</th>
                                     <th className="p-3 text-left">Thông Tin Nguồn/Đích</th>
-                                    <th className="p-3 text-center">Tasks</th>
                                     <th className="p-3 text-center">Tiến Độ</th>
                                     <th className="p-3 text-center">SL Items</th>
-                                    <th className="p-3 text-left">Nhân Viên</th>
+                                    <th className="p-3 text-left min-w-[150px]">Nhân Viên</th>
                                     <th className="p-3 text-center">Trạng Thái</th>
                                     <th className="p-3 text-center">Bắt đầu</th>
                                     <th className="p-3 text-center">Thời gian</th>
@@ -208,9 +238,9 @@ export default function PickingJobsPage() {
                             </thead>
                             <tbody className="divide-y">
                                 {loading ? (
-                                    <tr><td colSpan={10} className="p-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></td></tr>
+                                    <tr><td colSpan={11} className="p-8 text-center text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></td></tr>
                                 ) : filteredJobs.length === 0 ? (
-                                    <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Không tìm thấy job nào.</td></tr>
+                                    <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Không tìm thấy job nào.</td></tr>
                                 ) : (
                                     filteredJobs.map(job => {
                                         const order = job.outbound_order
@@ -222,25 +252,18 @@ export default function PickingJobsPage() {
                                         const code = job.code || (isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : `PICK-${order?.code || 'N/A'}`)
                                         const link = isWave ? `/admin/waves/${job.wave_id || ''}` : `/admin/outbound/${job.outbound_order_id || ''}`
 
-                                        // Fix: Check Destination for Transfer Orders
-                                        const destinationName = order?.destination?.name
-                                        const customerName = order?.customer?.name
-
                                         const info = isWave
                                             ? `Wave: ${wave?.code || 'N/A'} | Zone: ${job.zone || 'N/A'}`
                                             : (isManual ? 'Upload thủ công' : (
                                                 isTransfer
-                                                    ? (destinationName || 'Kho nội bộ')
-                                                    : (customerName || 'Khách lẻ')
+                                                    ? (order?.destination?.name || 'Kho nội bộ')
+                                                    : (order?.customer?.name || 'Khách lẻ')
                                             ))
 
                                         const tasks = (job as any).picking_tasks || []
                                         const totalTasks = tasks.length
                                         const completedTasks = tasks.filter((t: any) => t.status === 'COMPLETED').length
                                         const totalItems = tasks.reduce((sum: number, t: any) => sum + (t.quantity || 0), 0)
-
-                                        // Show Assigned User (Staff)
-                                        const staffName = job.assignee?.name || job.user?.name || '---'
 
                                         return (
                                             <tr key={job.id} className="hover:bg-slate-50">
@@ -261,33 +284,25 @@ export default function PickingJobsPage() {
                                                         >
                                                             {code}
                                                         </button>
-                                                        {!isManual && (
-                                                            <Link href={link} className="text-xs text-slate-400 hover:text-slate-600 ml-1">
-                                                                [Source]
-                                                            </Link>
-                                                        )}
                                                     </div>
                                                 </td>
                                                 <td className="p-3 font-mono text-xs">
                                                     {job.type === 'WAVE_PICK' ? (
-                                                        <Badge className="bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-100 ring-1 ring-purple-400/30">Nhặt Wave (Zoning)</Badge>
+                                                        <Badge className="bg-purple-100 text-purple-800 border-purple-200">Nhặt Wave</Badge>
                                                     ) : job.type === 'BOX_PICK' ? (
-                                                        <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200">Lấy Nguyên Thùng</Badge>
+                                                        <Badge variant="outline">Lấy Thùng</Badge>
                                                     ) : (
-                                                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Lấy Lẻ (Item)</Badge>
+                                                        <Badge variant="outline">Lấy Lẻ</Badge>
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-slate-600 truncate max-w-[200px]" title={info}>{info}</td>
                                                 <td className="p-3 text-center">
-                                                    <span className="text-sm font-medium text-slate-700">{totalTasks}</span>
-                                                </td>
-                                                <td className="p-3 text-center">
                                                     {totalTasks > 0 ? (
                                                         <div className="flex items-center justify-center gap-2">
-                                                            <span className="text-sm font-medium text-slate-700">{completedTasks}/{totalTasks}</span>
-                                                            <div className="w-16 bg-slate-200 rounded-full h-2">
+                                                            <span className="text-xs font-bold">{completedTasks}/{totalTasks}</span>
+                                                            <div className="w-12 bg-slate-200 rounded-full h-1.5">
                                                                 <div
-                                                                    className="bg-green-500 h-2 rounded-full transition-all"
+                                                                    className="bg-green-500 h-1.5 rounded-full transition-all"
                                                                     style={{ width: `${(completedTasks / totalTasks) * 100}%` }}
                                                                 />
                                                             </div>
@@ -299,17 +314,36 @@ export default function PickingJobsPage() {
                                                 <td className="p-3 text-center">
                                                     <span className="text-sm font-semibold text-blue-700">{totalItems}</span>
                                                 </td>
-                                                <td className="p-3 text-slate-600 text-sm font-medium text-indigo-600">
-                                                    {staffName}
+                                                <td className="p-3">
+                                                    {job.status === 'COMPLETED' ? (
+                                                        <span className="text-sm font-medium text-slate-600">{job.assignee?.name || job.user?.name || '---'}</span>
+                                                    ) : (
+                                                        <Select
+                                                            value={job.assigned_to || "unassigned"}
+                                                            onValueChange={(val) => handleAssign(job.id, val)}
+                                                            disabled={assigningId === job.id}
+                                                        >
+                                                            <SelectTrigger className="h-8 text-xs font-semibold bg-indigo-50 border-indigo-100 text-indigo-700">
+                                                                {assigningId === job.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <UserPlus className="h-3 w-3 mr-1" />}
+                                                                <SelectValue placeholder="Giao việc..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="unassigned">-- Chưa giao --</SelectItem>
+                                                                {staffs.map(s => (
+                                                                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    )}
                                                 </td>
                                                 <td className="p-3 text-center">{getStatusBadge(job.status)}</td>
-                                                <td className="p-3 text-center text-xs font-medium text-slate-500">
+                                                <td className="p-3 text-center text-[10px] font-medium text-slate-500">
                                                     {job.started_at ? new Date(job.started_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '---'}
                                                 </td>
-                                                <td className="p-3 text-center text-xs font-bold text-indigo-600">
+                                                <td className="p-3 text-center text-[10px] font-bold text-indigo-600">
                                                     {formatDuration(job.started_at, job.completed_at || null)}
                                                 </td>
-                                                <td className="p-3 text-right text-slate-500 text-xs">
+                                                <td className="p-3 text-right text-slate-500 text-[10px]">
                                                     {new Date(job.created_at).toLocaleDateString('vi-VN')}
                                                     <br />
                                                     <span className="opacity-60">{new Date(job.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</span>
@@ -318,10 +352,9 @@ export default function PickingJobsPage() {
                                                     <Button
                                                         variant="ghost"
                                                         size="sm"
-                                                        className="h-8 w-8 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                                        className="h-8 w-8 p-0 text-red-600 hover:bg-red-50"
                                                         onClick={() => handleDelete(job.id, job.type)}
                                                         disabled={deletingId === job.id}
-                                                        title="Hủy Job & Hoàn kho"
                                                     >
                                                         {deletingId === job.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                                                     </Button>
@@ -333,7 +366,6 @@ export default function PickingJobsPage() {
                             </tbody>
                         </table>
                     </div>
-
                 </TabsContent>
 
                 <TabsContent value="exceptions" className="pt-4">
@@ -346,6 +378,6 @@ export default function PickingJobsPage() {
                 open={showDetail}
                 onOpenChange={setShowDetail}
             />
-        </div >
+        </div>
     )
 }
