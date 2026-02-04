@@ -13,6 +13,15 @@ export type TelegramMessage = {
     chat: TelegramChat;
     date: number;
     text?: string;
+    photo?: TelegramPhotoSize[];
+};
+
+export type TelegramPhotoSize = {
+    file_id: string;
+    file_unique_id: string;
+    width: number;
+    height: number;
+    file_size?: number;
 };
 
 export type TelegramUser = {
@@ -37,7 +46,7 @@ export type TelegramCallbackQuery = {
 
 // --- CORE FUNCTIONS ---
 
-const getBotToken = () => {
+export const getBotToken = () => {
     return process.env.TELEGRAM_BOT_TOKEN || '8120608586:AAE0uucBViozDMdc_O0HBFJzWmk5nHNMhUs';
 };
 
@@ -79,6 +88,28 @@ export async function sendTelegramMessage(chatId: number | string, text: string,
 }
 
 /**
+ * Get File info from Telegram (to get file_path)
+ */
+export async function getTelegramFile(fileId: string) {
+    const token = getBotToken();
+    const url = `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`;
+    const response = await fetch(url, { cache: 'no-store' });
+    return await response.json();
+}
+
+/**
+ * Download a file from Telegram as Buffer
+ */
+export async function downloadTelegramFile(filePath: string): Promise<Buffer | null> {
+    const token = getBotToken();
+    const url = `https://api.telegram.org/file/bot${token}/${filePath}`;
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const arrayBuffer = await response.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+}
+
+/**
  * Set the Webhook URL for the bot
  */
 export async function setTelegramWebhook(url: string, secretToken?: string) {
@@ -109,3 +140,4 @@ export async function getTelegramWebhookInfo() {
     const response = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, { cache: 'no-store' });
     return await response.json();
 }
+
