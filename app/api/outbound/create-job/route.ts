@@ -22,7 +22,7 @@ export async function POST(request: Request) {
             .single()
 
         if (order?.inventory_type === 'BULK') {
-            return NextResponse.json({ success: false, error: 'Cannot create Retail Job for BULK order. Use Wave Planning instead.' }, { status: 400 })
+            return NextResponse.json({ success: false, error: 'Đơn hàng KHO SỈ không thể tạo Job lẻ. Vui lòng sử dụng tính năng Tạo Wave (Lên kế hoạch)!' }, { status: 400 })
         }
 
         const { data, error } = await supabase.rpc('create_picking_job_for_outbound', {
