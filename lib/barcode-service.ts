@@ -1,15 +1,15 @@
 
-import jimp from 'jimp';
-import javascriptBarcodeReader from 'javascript-barcode-reader';
+import * as Jimp from 'jimp';
+const javascriptBarcodeReader = require('javascript-barcode-reader');
 
 export async function decodeBarcodeFromBuffer(buffer: Buffer): Promise<string | null> {
     try {
         console.log('🖼 Processing image buffer for barcode...');
-        const image = await jimp.read(buffer);
+        const image = await (Jimp as any).read(buffer);
 
         // Resize if too large to speed up and improve focus
         if (image.bitmap.width > 1200) {
-            image.resize(1200, jimp.AUTO);
+            image.resize(1200, (Jimp as any).AUTO);
         }
 
         // Attempt 1: Grayscale + Moderate Contrast
