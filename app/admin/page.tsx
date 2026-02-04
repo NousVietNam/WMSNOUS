@@ -5,6 +5,7 @@ import { DashboardStats } from "@/components/dashboard/DashboardStats"
 import { DashboardCharts } from "@/components/dashboard/DashboardCharts"
 import { RecentActivity } from "@/components/dashboard/RecentActivity"
 import { RefreshCcw, TrendingUp } from "lucide-react"
+import { TelegramTestButton } from "@/components/TelegramTestButton"
 
 export default function AdminDashboardPage() {
     const [data, setData] = useState<any>(null)
@@ -41,19 +42,22 @@ export default function AdminDashboardPage() {
                         </h2>
                         <p className="text-slate-600 font-medium">Tổng quan hoạt động kho hàng & đơn hàng</p>
                     </div>
-                    <button
-                        onClick={fetchData}
-                        disabled={loading}
-                        className={`
-                            glass-strong px-4 py-2 rounded-lg font-medium text-slate-700
-                            hover:scale-105 hover:elevation-md transition-all
-                            flex items-center gap-2
-                            ${loading ? 'opacity-50' : ''}
-                        `}
-                    >
-                        <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                        Làm Mới
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <TelegramTestButton />
+                        <button
+                            onClick={fetchData}
+                            disabled={loading}
+                            className={`
+                                glass-strong px-4 py-2 rounded-lg font-medium text-slate-700
+                                hover:scale-105 hover:elevation-md transition-all
+                                flex items-center gap-2
+                                ${loading ? 'opacity-50' : ''}
+                            `}
+                        >
+                            <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                            Làm Mới
+                        </button>
+                    </div>
                 </div>
 
                 {/* Stats Cards */}

@@ -5,11 +5,12 @@ import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { MobileHeader } from "@/components/mobile/MobileHeader"
 import { supabase } from "@/lib/supabase"
-import { Package, Check, X, RefreshCw } from "lucide-react"
+import { Package, Check, X, RefreshCw, AlertTriangle } from "lucide-react"
 
 import { QRScanner } from "@/components/mobile/QRScanner"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { PickExceptionModal } from "./PickExceptionModal"
 
 // Types
 type PickingTask = {
@@ -68,6 +69,7 @@ export default function DoPickingPage() {
     const [jobCode, setJobCode] = useState<string | null>(null)
     const [selectedProduct, setSelectedProduct] = useState<any | null>(null)
     const [transferType, setTransferType] = useState<'BOX' | 'ITEM'>('ITEM')
+    const [exceptionTask, setExceptionTask] = useState<any>(null)
 
     // Derived State
     const jobStats = (() => {
@@ -357,13 +359,67 @@ export default function DoPickingPage() {
         }
     }
 
+    const handleConfirmShortage = async (qty: number, reason: string) => {
+        if (!exceptionTask) return
+        setIsConfirmingBox(true)
+        try {
+            // New Flow: Request Approval
+            const { data, error } = await supabase.rpc('request_picking_approval', {
+                p_task_id: exceptionTask.id,
+                p_actual_qty: qty,
+                p_reason: reason,
+                p_user_id: userId
+            })
+
+            if (error) throw error
+            if (!data.success) throw new Error(data.error)
+
+            toast.success("Đã gửi yêu cầu! Đang chờ Thủ kho duyệt...")
+            setExceptionTask(null)
+            fetchTasks()
+        } catch (e: any) {
+            toast.error(e.message)
+        } finally {
+            setIsConfirmingBox(false)
+        }
+    }
+
+    const handleConfirmSwap = async (newBoxCode: string) => {
+        if (!exceptionTask) return
+
+        // Find new box ID
+        setIsConfirmingBox(true) // Re-use loading state
+        try {
+            // 1. Resolve Box Code to ID
+            const { data: boxData, error: boxError } = await supabase.from('boxes').select('id').eq('code', newBoxCode).single()
+            if (boxError || !boxData) throw new Error("Không tìm thấy Box code: " + newBoxCode)
+
+            const { data, error } = await supabase.rpc('swap_and_pick', {
+                p_task_id: exceptionTask.id,
+                p_new_box_id: boxData.id,
+                p_outbox_id: activeOutbox?.id,
+                p_user_id: userId
+            })
+
+            if (error) throw error
+            if (!data.success) throw new Error(data.error)
+
+            toast.success("Đã hoán đổi & lấy hàng thành công!")
+            setExceptionTask(null)
+            fetchTasks()
+        } catch (e: any) {
+            toast.error("Lỗi: " + e.message)
+        } finally {
+            setIsConfirmingBox(false)
+        }
+    }
+
+    // ... complete job logic ...
     const handleCompleteJob = async () => {
         const confirm = window.confirm("Xác nhận hoàn thành Job này? " + (jobType === 'WAVE_PICK' ? "Xe Đẩy sẽ được chuyển sang khu vực SORTING." : "Thùng hàng sẽ được chuyển ra GATE-OUT và PXK sẽ được tạo tự động."))
         if (!confirm) return
 
         try {
-            // For Wave Pick, we might need a different API or just use complete
-            // Assuming complete logic handles Wave Job status update
             const res = await fetch('/api/picking/complete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -422,6 +478,9 @@ export default function DoPickingPage() {
                         <h3 className="font-bold text-yellow-800 text-lg">Mở khóa Thùng {activeGroup.boxCode}</h3>
                         <form onSubmit={(e) => { e.preventDefault(); validateBoxCode(scanInput) }} className="flex gap-2">
                             <input ref={scanInputRef} placeholder="Nhập mã..." value={scanInput} onChange={e => setScanInput(e.target.value)} className="flex-1 h-10 px-3 rounded border" />
+                            <button type="button" onClick={() => { setScannerMode('BOX_UNLOCK'); setShowScanner(true) }} className="h-10 w-10 bg-slate-100 text-slate-600 rounded flex items-center justify-center border hover:bg-slate-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-scan-barcode"><path d="M3 7V5a2 2 0 0 1 2-2h2" /><path d="M17 3h2a2 2 0 0 1 2 2v2" /><path d="M21 17v2a2 2 0 0 1-2 2h-2" /><path d="M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M8 7h8v10H8z" /></svg>
+                            </button>
                             <button type="submit" className="h-10 px-4 bg-yellow-400 font-bold rounded">OK</button>
                         </form>
                     </div>
@@ -470,11 +529,34 @@ export default function DoPickingPage() {
                                         </div>
                                         <div className="text-[11px] text-slate-500 leading-tight mt-0.5 line-clamp-1">{group.product.name}</div>
                                     </div>
-                                    <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2">
                                         <div className="text-right">
                                             <div className="text-2xl font-black text-slate-900">{group.totalQty}</div>
                                             <div className="text-[9px] uppercase font-bold text-slate-400">Số lượng</div>
                                         </div>
+
+                                        {/* Exception Button */}
+                                        {!isDone && (
+                                            <>
+                                                {group.tasks.some(t => t.status === 'PENDING_APPROVAL') ? (
+                                                    <div className="h-10 px-3 rounded-xl flex items-center justify-center border-2 border-yellow-200 bg-yellow-50 text-yellow-600 font-bold text-xs animate-pulse">
+                                                        CHỜ DUYỆT
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            const taskToReport = group.tasks.find(t => t.status !== 'COMPLETED');
+                                                            if (taskToReport) setExceptionTask({ ...taskToReport, quantity: group.totalQty });
+                                                        }}
+                                                        className="h-10 w-10 rounded-xl flex items-center justify-center border-2 border-orange-200 bg-orange-50 text-orange-600 active:scale-95"
+                                                    >
+                                                        <AlertTriangle className="h-5 w-5" />
+                                                    </button>
+                                                )}
+                                            </>
+                                        )}
+
                                         <div
                                             onClick={() => {
                                                 if (transferType !== 'BOX' && !isDone) {
@@ -608,6 +690,17 @@ export default function DoPickingPage() {
                         HOÀN THÀNH JOB
                     </button>
                 </div>
+            )}
+
+            {activeBoxId && (
+                <PickExceptionModal
+                    isOpen={!!exceptionTask}
+                    onClose={() => setExceptionTask(null)}
+                    task={exceptionTask}
+                    onConfirmShortage={handleConfirmShortage}
+                    onConfirmSwap={handleConfirmSwap}
+                    isSubmitting={isConfirmingBox} // Re-using loading state
+                />
             )}
 
             {showScanner && <QRScanner onScan={handleScan} onClose={() => setShowScanner(false)} />}

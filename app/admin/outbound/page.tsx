@@ -31,6 +31,7 @@ type OutboundOrder = {
 
     outbound_order_items?: any[]
     inventory_type?: 'PIECE' | 'BULK'
+    picking_jobs?: { picking_exceptions: { count: number }[] }[]
 }
 
 type Customer = { id: string; name: string; code?: string }
@@ -120,7 +121,10 @@ export default function OutboundListPage() {
                 destinations (id, name, code),
                 sale_staff:internal_staff (id, name, code),
                 outbound_order_items (id, quantity),
-                pick_waves (id, code, status)
+                pick_waves (id, code, status),
+                picking_jobs (
+                    picking_exceptions (count)
+                )
             `, { count: 'exact' })
             .order('created_at', { ascending: false })
 
@@ -956,6 +960,13 @@ export default function OutboundListPage() {
                                             {order.code}
                                         </Link>
                                         <div className="text-xs text-gray-400">{order.transfer_type}</div>
+                                        {/* Shortage Indicator */}
+                                        {order.picking_jobs?.some(j => (j.picking_exceptions?.[0]?.count || 0) > 0) && (
+                                            <div className="mt-1 inline-flex items-center gap-1 bg-red-100 text-red-700 px-1.5 py-0.5 rounded text-[10px] font-bold border border-red-200">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+                                                THIẾU
+                                            </div>
+                                        )}
                                     </td>
                                     {filterInventoryType === 'BULK' && (
                                         <td className="px-3 py-2">
