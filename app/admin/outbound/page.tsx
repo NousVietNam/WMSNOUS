@@ -295,13 +295,26 @@ export default function OutboundListPage() {
                 if (orderType === 'SALE' || orderType === 'GIFT') {
                     let customerName = firstRow['Khách Hàng (Tên/Mã)'] || firstRow['Khách Hàng (ID hoặc Tên)']
                     if (customerName) {
-                        customerName = customerName.toString().trim()
-                        const { data: customer } = await supabase
+                        const cleanName = customerName.toString().trim()
+
+                        // Priority 1: Exact Match ID/Code or ILIKE Name
+                        let { data: customer } = await supabase
                             .from('customers')
                             .select('id')
-                            .or(`id.eq.${customerName},code.eq.${customerName},name.ilike.%${customerName}%`)
+                            .or(`id.eq.${cleanName},code.eq.${cleanName},name.ilike.${cleanName}`) // Try exact match first for ID/Code
                             .limit(1)
                             .maybeSingle()
+
+                        // Priority 2: Fuzzy Search if not found
+                        if (!customer) {
+                            const { data: fuzzy } = await supabase
+                                .from('customers')
+                                .select('id')
+                                .ilike('name', `%${cleanName}%`)
+                                .limit(1)
+                                .maybeSingle()
+                            customer = fuzzy
+                        }
 
                         if (!customer) {
                             throw new Error(`Không tìm thấy khách hàng: "${customerName}"`)
