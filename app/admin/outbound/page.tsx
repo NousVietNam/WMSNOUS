@@ -328,7 +328,7 @@ export default function OutboundListPage() {
                             // If is UUID, strict check by ID
                             const { data } = await supabase
                                 .from('customers')
-                                .select('id, default_discount')
+                                .select('id, default_discount, sale_staff_id')
                                 .eq('id', cleanName)
                                 .maybeSingle()
                             customer = data
@@ -336,7 +336,7 @@ export default function OutboundListPage() {
                             // If NOT UUID, check by Code or Name
                             const { data } = await supabase
                                 .from('customers')
-                                .select('id, default_discount')
+                                .select('id, default_discount, sale_staff_id')
                                 .or(`code.eq.${cleanName},name.ilike.${cleanName}`)
                                 .limit(1)
                                 .maybeSingle()
@@ -347,6 +347,21 @@ export default function OutboundListPage() {
                             throw new Error(`Không tìm thấy khách hàng: "${customerName}"`)
                         }
                         customerId = customer.id
+
+                        // Check Staff Mismatch Warning (Only if staff was found in file)
+                        if (saleStaffId && customer.sale_staff_id && saleStaffId !== customer.sale_staff_id) {
+                            // Fetch names for clearer warning? Or just warn about mismatch.
+                            // We already have 'cleanStaff' from earlier block, let's use it.
+                            // Need to fetch customer's staff name? Maybe too expensive. Just warn.
+                            importWarnings.push(`Cảnh báo NVKD: Nhân viên trong file ("${staffName}") KHÔNG KHỚP với nhân viên phụ trách của khách hàng này.`)
+                        } else if (!saleStaffId && customer.sale_staff_id) {
+                            // Optionally auto-fill staff if missing in file? 
+                            // User request didn't ask for auto-fill, just check mismatch.
+                            // But usually if missing in file, we might want to use customer's staff.
+                            // Let's just stick to "Check mismatch" for now.
+                        }
+
+                        // Check Discount Mismatch Warning
 
                         // Check Discount Mismatch Warning
                         if (discountType === 'PERCENT' && customer.default_discount !== undefined && customer.default_discount !== null) {
