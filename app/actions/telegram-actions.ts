@@ -3,29 +3,30 @@
 import { sendTelegramMessage } from '@/lib/telegram';
 
 export async function sendTestNotification() {
-    const chatId = process.env.TELEGRAM_CHAT_ID;
+    // FALLBACK HARDCODE: Use the known ID if env is missing
+    const chatId = process.env.TELEGRAM_CHAT_ID || '8283078267';
 
-    console.log('--- DEBUG TELEGRAM ---');
-    console.log('CHAT_ID:', chatId);
-    console.log('TOKEN_EXISTS:', !!process.env.TELEGRAM_BOT_TOKEN);
-    console.log('ENV KEYS:', Object.keys(process.env).filter(k => k.startsWith('TELEGRAM')));
+    console.log('--- SERVER ACTION: sendTestNotification ---');
+    console.log('Target Chat ID:', chatId);
 
     if (!chatId) {
-        return { success: false, message: `Chưa cấu hình TELEGRAM_CHAT_ID. (Found keys: ${Object.keys(process.env).filter(k => k.startsWith('TELEGRAM')).join(', ')})` };
+        return { success: false, message: 'Chưa có Chat ID' };
     }
 
     try {
         const result = await sendTelegramMessage(
             chatId,
-            `🔔 <b>Kiểm Tra Hệ Thống</b>\n\nĐây là tin nhắn test từ WMS App.\nNếu bạn nhận được tin này, hệ thống thông báo đã hoạt động tốt! ✅`
+            `🔔 <b>Kiểm Tra Kết Nối WMS</b>\n\n✅ Server Action hoạt động tốt.\n✅ Telegram API kết nối thành công.\n\nTime: ${new Date().toISOString()}`
         );
 
         if (result && result.ok) {
-            return { success: true, message: 'Đã gửi tin nhắn thành công!' };
+            return { success: true, message: 'Đã gửi tin nhắn (OK 200)' };
         } else {
-            return { success: false, message: `Lỗi Telegram: ${result?.description || 'Unknown error'}` };
+            console.error('Telegram Error Result:', result);
+            return { success: false, message: `Lỗi API Telegram: ${result?.description || 'Unknown'}` };
         }
     } catch (error: any) {
-        return { success: false, message: `Lỗi hệ thống: ${error.message}` };
+        console.error('Server Action Crash:', error);
+        return { success: false, message: `Lỗi Server: ${error.message}` };
     }
 }

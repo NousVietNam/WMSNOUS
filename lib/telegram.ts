@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-
 // Types for Telegram Objects (Simplified)
 export type TelegramUpdate = {
     update_id: number;
@@ -40,29 +37,44 @@ export type TelegramCallbackQuery = {
 
 // --- CORE FUNCTIONS ---
 
+const getBotToken = () => {
+    return process.env.TELEGRAM_BOT_TOKEN || '8120608586:AAE0uucBViozDMdc_O0HBFJzWmk5nHNMhUs';
+};
+
 /**
  * Send a text message to a chat
  */
 export async function sendTelegramMessage(chatId: number | string, text: string, parseMode: 'Markdown' | 'HTML' = 'HTML') {
-    if (!TELEGRAM_BOT_TOKEN) {
-        console.warn('TELEGRAM_BOT_TOKEN is not set');
-        return null;
+    const token = getBotToken();
+    if (!token) {
+        console.error('❌ TELEGRAM_BOT_TOKEN is missing');
+        return { ok: false, description: 'Missing Token' };
     }
 
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+
     try {
-        const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {
+        const body = JSON.stringify({
+            chat_id: chatId,
+            text: text,
+            parse_mode: parseMode,
+        });
+
+        console.log(`🚀 Sending Telegram to ${chatId} via ${url.replace(token, '******')}`);
+
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: chatId,
-                text: text,
-                parse_mode: parseMode,
-            }),
+            body: body,
+            cache: 'no-store' // Ensure no caching
         });
-        return await response.json();
-    } catch (error) {
-        console.error('Error sending Telegram message:', error);
-        return null;
+
+        const data = await response.json();
+        console.log('✅ Telegram Response:', data);
+        return data;
+    } catch (error: any) {
+        console.error('❌ Error sending Telegram message:', error);
+        return { ok: false, description: error.message };
     }
 }
 
@@ -70,19 +82,19 @@ export async function sendTelegramMessage(chatId: number | string, text: string,
  * Set the Webhook URL for the bot
  */
 export async function setTelegramWebhook(url: string, secretToken?: string) {
-    if (!TELEGRAM_BOT_TOKEN) {
-        throw new Error('TELEGRAM_BOT_TOKEN is not set');
-    }
+    const token = getBotToken();
+    if (!token) throw new Error('TELEGRAM_BOT_TOKEN is not set');
 
     const payload: any = { url: url };
     if (secretToken) {
         payload.secret_token = secretToken;
     }
 
-    const response = await fetch(`${TELEGRAM_API_URL}/setWebhook`, {
+    const response = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        cache: 'no-store'
     });
 
     return await response.json();
@@ -92,7 +104,8 @@ export async function setTelegramWebhook(url: string, secretToken?: string) {
  * Get current Webhook info
  */
 export async function getTelegramWebhookInfo() {
-    if (!TELEGRAM_BOT_TOKEN) return null;
-    const response = await fetch(`${TELEGRAM_API_URL}/getWebhookInfo`);
+    const token = getBotToken();
+    if (!token) return null;
+    const response = await fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, { cache: 'no-store' });
     return await response.json();
 }
