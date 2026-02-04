@@ -23,9 +23,8 @@ export async function POST(request: Request) {
             .eq('id', orderId)
             .single()
 
-        if (order?.inventory_type === 'BULK') {
-            return NextResponse.json({ success: false, error: 'Cannot allocate BULK order with Retail Allocation logic.' }, { status: 400 })
-        }
+        // Logic split moved to RPC
+
 
         const { data, error } = await supabase.rpc('allocate_outbound', {
             p_order_id: orderId
