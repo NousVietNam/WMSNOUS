@@ -41,8 +41,8 @@ export default function PickingJobsPage() {
                     completed_at,
                     code,
                     zone,
-                    user:users!user_id(name),
-                    assignee:users!assigned_to(name),
+                    user:users!fk_picking_jobs_user(name),
+                    assignee:users!fk_picking_jobs_assignee(name),
                     outbound_order:outbound_orders(
                         code, 
                         type,

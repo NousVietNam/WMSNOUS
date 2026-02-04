@@ -41,7 +41,7 @@ export default function PickingJobsPage() {
                 ),
                 pick_waves (code),
                 view_picking_job_progress (total_tasks, completed_tasks),
-                users (name)
+                assignee:users!fk_picking_jobs_assignee (name)
             `)
             .in('status', ['OPEN', 'IN_PROGRESS', 'PENDING'])
             .order('created_at', { ascending: false })
@@ -62,8 +62,11 @@ export default function PickingJobsPage() {
     }
 
     const filteredJobs = jobs.filter(job => {
+        // Fix: Explicitly handle null/undefined assigned_to
+        const isUnassigned = job.assigned_to === null || job.assigned_to === undefined
+
         if (filterOnlyAvail) {
-            return !job.assigned_to
+            return isUnassigned
         }
         return true
     })
@@ -150,7 +153,7 @@ export default function PickingJobsPage() {
                                     {job.assigned_to && job.assigned_to !== session?.user?.id ? (
                                         <button className="w-full h-11 bg-slate-300 text-slate-500 rounded-lg font-bold cursor-not-allowed flex items-center justify-center gap-2">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                                            NHẬN BỞI {job.users?.name?.toUpperCase() || 'NGƯỜI KHÁC'}
+                                            NHẬN BỞI {job.assignee?.name?.toUpperCase() || 'NGƯỜI KHÁC'}
                                         </button>
                                     ) : (
                                         <Link href={`/mobile/picking/${job.id}`} onClick={() => handleTakeJob(job.id)} className={`block w-full h-11 rounded-lg font-black shadow-sm flex items-center justify-center gap-2 transition-transform active:scale-95 ${job.type === 'WAVE_PICK' ? (job.status === 'OPEN' ? 'bg-purple-600 text-white active:bg-purple-700' : 'bg-white text-purple-700 border-2 border-purple-600') : (job.status === 'OPEN' ? 'bg-indigo-600 text-white active:bg-indigo-700' : 'bg-white text-slate-700 border border-slate-300 active:bg-slate-50')}`}>

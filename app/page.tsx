@@ -28,9 +28,9 @@ export default function DashboardPage() {
         { count: boxesTotal },
         { data: itemsData }
       ] = await Promise.all([
-        supabase.from('orders').select('*', { count: 'exact', head: true }),
-        supabase.from('orders').select('*', { count: 'exact', head: true }).in('status', ['PICKING', 'ALLOCATED']),
-        supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'COMPLETED'),
+        supabase.from('outbound_orders').select('*', { count: 'exact', head: true }),
+        supabase.from('outbound_orders').select('*', { count: 'exact', head: true }).in('status', ['PICKING', 'ALLOCATED', 'READY_TO_PICK']),
+        supabase.from('outbound_orders').select('*', { count: 'exact', head: true }).in('status', ['COMPLETED', 'SHIPPED']),
         supabase.from('locations').select('*', { count: 'exact', head: true }),
         supabase.from('boxes').select('*', { count: 'exact', head: true }),
         supabase.from('inventory_items').select('quantity') // Sum needed
