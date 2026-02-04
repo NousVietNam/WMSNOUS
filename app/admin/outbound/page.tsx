@@ -164,7 +164,7 @@ export default function OutboundListPage() {
     // Download Excel Template
     const handleDownloadTemplate = () => {
         const template = [
-        const template = [
+
             {
                 'Kho (Lẻ/Sỉ)': 'Lẻ',
                 'Loại': 'SALE',
