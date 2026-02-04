@@ -41,9 +41,15 @@ export default function PickingJobsPage() {
                     completed_at,
                     code,
                     zone,
-                    user:users(name),
-                    outbound_order:outbound_orders(code, inventory_type, customer:customers(name)),
-                    transfer:outbound_orders!outbound_order_id(code, destination:destinations(name)),
+                    user:users!user_id(name),
+                    assignee:users!assigned_to(name),
+                    outbound_order:outbound_orders(
+                        code, 
+                        type,
+                        inventory_type, 
+                        customer:customers(name),
+                        destination:destinations(name)
+                    ),
                     wave:pick_waves(code),
                     picking_tasks(id, status, quantity)
                 `)
@@ -86,8 +92,11 @@ export default function PickingJobsPage() {
         const matchStatus = filterStatus === 'ALL' || job.status === filterStatus
         const orderCode = job.outbound_order?.code || ''
         const customerName = job.outbound_order?.customer?.name || ''
+        const destinationName = job.outbound_order?.destination?.name || ''
         const search = searchTerm.toLowerCase()
-        const matchSearch = orderCode.toLowerCase().includes(search) || customerName.toLowerCase().includes(search)
+        const matchSearch = orderCode.toLowerCase().includes(search) ||
+            customerName.toLowerCase().includes(search) ||
+            destinationName.toLowerCase().includes(search)
         return matchStatus && matchSearch
     })
 
@@ -195,22 +204,33 @@ export default function PickingJobsPage() {
                                 const code = job.code || (isManual ? `JOB-${job.id.slice(0, 8).toUpperCase()}` : `PICK-${order?.code || 'N/A'}`)
                                 const link = isWave ? `/admin/waves/${job.wave_id || ''}` : `/admin/outbound/${job.outbound_order_id || ''}`
 
+                                // Fix: Check Destination for Transfer Orders
+                                const destinationName = order?.destination?.name
+                                const customerName = order?.customer?.name
+
                                 const info = isWave
                                     ? `Wave: ${wave?.code || 'N/A'} | Zone: ${job.zone || 'N/A'}`
-                                    : (isManual ? 'Upload thủ công' : (order?.customer?.name || 'N/A'))
+                                    : (isManual ? 'Upload thủ công' : (
+                                        isTransfer
+                                            ? (destinationName || 'Kho nội bộ')
+                                            : (customerName || 'Khách lẻ')
+                                    ))
 
                                 const tasks = (job as any).picking_tasks || []
                                 const totalTasks = tasks.length
                                 const completedTasks = tasks.filter((t: any) => t.status === 'COMPLETED').length
                                 const totalItems = tasks.reduce((sum: number, t: any) => sum + (t.quantity || 0), 0)
 
+                                // Show Assigned User (Staff)
+                                const staffName = job.assignee?.name || job.user?.name || '---'
+
                                 return (
                                     <tr key={job.id} className="hover:bg-slate-50">
                                         <td className="p-3 font-medium">
                                             <div className="flex items-center gap-2">
                                                 <span className={`text-[10px] px-1.5 py-0.5 font-bold rounded border ${isWave ? 'bg-purple-600 text-white border-purple-700' :
-                                                        isManual ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                                            isTransfer ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'
+                                                    isManual ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                        isTransfer ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-blue-50 text-blue-700 border-blue-200'
                                                     }`}>
                                                     {isWave ? 'WAVE' : (isManual ? 'MANUAL' : (isTransfer ? 'TRANSFER' : 'ORDER'))}
                                                 </span>
@@ -239,7 +259,7 @@ export default function PickingJobsPage() {
                                                 <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">Lấy Lẻ (Item)</Badge>
                                             )}
                                         </td>
-                                        <td className="p-3 text-slate-600">{info}</td>
+                                        <td className="p-3 text-slate-600 truncate max-w-[200px]" title={info}>{info}</td>
                                         <td className="p-3 text-center">
                                             <span className="text-sm font-medium text-slate-700">{totalTasks}</span>
                                         </td>
@@ -261,7 +281,9 @@ export default function PickingJobsPage() {
                                         <td className="p-3 text-center">
                                             <span className="text-sm font-semibold text-blue-700">{totalItems}</span>
                                         </td>
-                                        <td className="p-3 text-slate-600 text-sm">{job.user?.name || '---'}</td>
+                                        <td className="p-3 text-slate-600 text-sm font-medium text-indigo-600">
+                                            {staffName}
+                                        </td>
                                         <td className="p-3 text-center">{getStatusBadge(job.status)}</td>
                                         <td className="p-3 text-center text-xs font-medium text-slate-500">
                                             {job.started_at ? new Date(job.started_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '---'}
