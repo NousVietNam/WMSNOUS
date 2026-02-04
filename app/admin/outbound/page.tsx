@@ -460,7 +460,7 @@ export default function OutboundListPage() {
 
             // CHECK WARNINGS
             if (importWarnings.length > 0) {
-                const msg = `CẢNH BÁO SAI GIÁ:\n${importWarnings.join('\n')}\n\nBạn có muốn tiếp tục import với giá sai lệch này không?`
+                const msg = `⚠️ TỔNG HỢP CẢNH BÁO IMPORT (${importWarnings.length}):\n\n${importWarnings.join('\n')}\n\nBạn có muốn BỎ QUA các cảnh báo trên và TIẾP TỤC tạo đơn không?`
                 if (!window.confirm(msg)) {
                     setImporting(false)
                     return
