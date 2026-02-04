@@ -301,20 +301,9 @@ export default function OutboundListPage() {
                         let { data: customer } = await supabase
                             .from('customers')
                             .select('id')
-                            .or(`id.eq.${cleanName},code.eq.${cleanName},name.ilike.${cleanName}`) // Try exact match first for ID/Code
+                            .or(`id.eq.${cleanName},code.eq.${cleanName},name.ilike.${cleanName}`) // Strict match by Code/ID/Name
                             .limit(1)
                             .maybeSingle()
-
-                        // Priority 2: Fuzzy Search if not found
-                        if (!customer) {
-                            const { data: fuzzy } = await supabase
-                                .from('customers')
-                                .select('id')
-                                .ilike('name', `%${cleanName}%`)
-                                .limit(1)
-                                .maybeSingle()
-                            customer = fuzzy
-                        }
 
                         if (!customer) {
                             throw new Error(`Không tìm thấy khách hàng: "${customerName}"`)
