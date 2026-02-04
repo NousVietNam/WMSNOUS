@@ -283,8 +283,23 @@ export default function OutboundListPage() {
                 const discountType = firstRow['Loại Giảm Giá'] === 'FIXED' ? 'FIXED' : 'PERCENT'
                 const discountValue = Number(firstRow['Giá trị GG']) || 0
                 const description = firstRow['Diễn Giải']
-                const isBonus = (firstRow['Xét Thưởng (Y/N)'] || '').toUpperCase() === 'Y'
+                const isbonus = (firstRow['Xét Thưởng (Y/N)'] || '').toUpperCase() === 'Y'
                 const isCalc = (firstRow['Tính Thưởng (Y/N)'] || '').toUpperCase() === 'Y'
+
+                // Check for Discount Consistency in the whole group
+                let mixedDiscount = false
+                for (const item of items) {
+                    const itemDiscType = item['Loại Giảm Giá'] === 'FIXED' ? 'FIXED' : 'PERCENT'
+                    const itemDiscVal = Number(item['Giá trị GG']) || 0
+                    if (itemDiscType !== discountType || itemDiscVal !== discountValue) {
+                        mixedDiscount = true
+                        break;
+                    }
+                }
+
+                if (mixedDiscount) {
+                    importWarnings.push(`Cảnh báo Đơn ${forcedOrderCode || key}: Các dòng hàng có mức chiết khấu khác nhau. Hệ thống sẽ lấy mức chiết khấu của dòng đầu tiên (${discountValue}${discountType === 'PERCENT' ? '%' : ''}).`)
+                }
 
                 let customerId = null
                 let destinationId = null
