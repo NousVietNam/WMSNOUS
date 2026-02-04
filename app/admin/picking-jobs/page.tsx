@@ -42,7 +42,7 @@ export default function PickingJobsPage() {
                     code,
                     zone,
                     user:users!user_id(name),
-                    assignee:users!picking_jobs_assigned_to_fkey(name),
+                    assignee:users!assigned_to(name),
                     outbound_order:outbound_orders(
                         code, 
                         type,
