@@ -264,7 +264,7 @@ export default function OutboundListPage() {
             }
 
             let successCount = 0
-            const priceWarnings: string[] = []
+            const importWarnings: string[] = []
 
             for (const [key, items] of Object.entries(grouped)) {
                 const firstRow = items[0]
@@ -308,6 +308,10 @@ export default function OutboundListPage() {
                         .limit(1)
                         .maybeSingle()
                     saleStaffId = staff?.id
+
+                    if (!saleStaffId) {
+                        importWarnings.push(`Cảnh báo nhân viên: Không tìm thấy nhân viên "${cleanStaff}" của đơn ${forcedOrderCode || key}.`)
+                    }
                 }
 
                 if (orderType === 'SALE' || orderType === 'GIFT') {
@@ -347,7 +351,7 @@ export default function OutboundListPage() {
                         // Check Discount Mismatch Warning
                         if (discountType === 'PERCENT' && customer.default_discount !== undefined && customer.default_discount !== null) {
                             if (discountValue !== customer.default_discount) {
-                                priceWarnings.push(`Cảnh báo chiết khấu: Đơn ${forcedOrderCode || 'Mới'} của ${customerName}. Excel: ${discountValue}%, Mặc định: ${customer.default_discount}%`)
+                                importWarnings.push(`Cảnh báo chiết khấu: Đơn ${forcedOrderCode || 'Mới'} của ${customerName}. Excel: ${discountValue}%, Mặc định: ${customer.default_discount}%`)
                             }
                         }
                     }
@@ -425,8 +429,8 @@ export default function OutboundListPage() {
             }
 
             // CHECK WARNINGS
-            if (priceWarnings.length > 0) {
-                const msg = `CẢNH BÁO SAI GIÁ:\n${priceWarnings.join('\n')}\n\nBạn có muốn tiếp tục import với giá sai lệch này không?`
+            if (importWarnings.length > 0) {
+                const msg = `CẢNH BÁO SAI GIÁ:\n${importWarnings.join('\n')}\n\nBạn có muốn tiếp tục import với giá sai lệch này không?`
                 if (!window.confirm(msg)) {
                     setImporting(false)
                     return
