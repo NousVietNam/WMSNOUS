@@ -269,13 +269,16 @@ export default function OutboundListPage() {
 
             let successCount = 0
             const importWarnings: string[] = []
+            const priceWarnings: string[] = []
 
             for (const [key, items] of Object.entries(grouped)) {
                 const firstRow = items[0]
                 const orderType = firstRow['Loại'] || 'SALE'
                 const forcedOrderCode = firstRow['Mã Đơn Hàng'] ? firstRow['Mã Đơn Hàng'].toString().trim() : null
 
-                // Inventory Type Logic
+                let customerId: any = null
+                let destinationId: any = null
+                let saleStaffId: any = null
                 let inventoryType = 'PIECE'
                 const rawInvType = (firstRow['Kho (Lẻ/Sỉ)'] || '').toString().trim().toUpperCase()
                 if (rawInvType === 'SỈ' || rawInvType === 'BULK' || rawInvType === 'WHOLESALE') {
@@ -287,7 +290,7 @@ export default function OutboundListPage() {
                 const discountType = firstRow['Loại Giảm Giá'] === 'FIXED' ? 'FIXED' : 'PERCENT'
                 const discountValue = Number(firstRow['Giá trị GG']) || 0
                 const description = firstRow['Diễn Giải']
-                const isbonus = (firstRow['Xét Thưởng (Y/N)'] || '').toUpperCase() === 'Y'
+                const isBonus = (firstRow['Xét Thưởng (Y/N)'] || '').toUpperCase() === 'Y'
                 const isCalc = (firstRow['Tính Thưởng (Y/N)'] || '').toUpperCase() === 'Y'
 
                 // Check for Discount Consistency in the whole group
@@ -305,9 +308,6 @@ export default function OutboundListPage() {
                     importWarnings.push(`Cảnh báo Đơn ${forcedOrderCode || key}: Các dòng hàng có mức chiết khấu khác nhau. Hệ thống sẽ lấy mức chiết khấu của dòng đầu tiên (${discountValue}${discountType === 'PERCENT' ? '%' : ''}).`)
                 }
 
-                let customerId = null
-                let destinationId = null
-                let saleStaffId = null
 
                 // 4. Validate Code Exist
                 if (forcedOrderCode) {
@@ -392,13 +392,26 @@ export default function OutboundListPage() {
                 } else {
                     let destName = firstRow['Kho Đích (Tên/Mã)'] || firstRow['Kho Đích (ID hoặc Tên)']
                     if (destName) {
-                        destName = destName.toString().trim()
-                        const { data: dest } = await supabase
-                            .from('destinations')
-                            .select('id')
-                            .or(`id.eq.${destName},code.eq.${destName},name.ilike.%${destName}%`)
-                            .limit(1)
-                            .maybeSingle()
+                        const cleanDest = destName.toString().trim()
+                        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanDest)
+
+                        let dest = null
+                        if (isUUID) {
+                            const { data } = await supabase
+                                .from('destinations')
+                                .select('id')
+                                .eq('id', cleanDest)
+                                .maybeSingle()
+                            dest = data
+                        } else {
+                            const { data } = await supabase
+                                .from('destinations')
+                                .select('id')
+                                .or(`code.eq.${cleanDest},name.ilike.${cleanDest}`)
+                                .limit(1)
+                                .maybeSingle()
+                            dest = data
+                        }
 
                         if (!dest) {
                             throw new Error(`Không tìm thấy kho đích: "${destName}"`)
@@ -463,8 +476,9 @@ export default function OutboundListPage() {
             }
 
             // CHECK WARNINGS
-            if (importWarnings.length > 0) {
-                const msg = `⚠️ TỔNG HỢP CẢNH BÁO IMPORT (${importWarnings.length}):\n\n${importWarnings.join('\n')}\n\nBạn có muốn BỎ QUA các cảnh báo trên và TIẾP TỤC tạo đơn không?`
+            const allWarnings = [...importWarnings, ...priceWarnings]
+            if (allWarnings.length > 0) {
+                const msg = `⚠️ TỔNG HỢP CẢNH BÁO IMPORT (${allWarnings.length}):\n\n${allWarnings.join('\n')}\n\nBạn có muốn BỎ QUA các cảnh báo trên và TIẾP TỤC tạo đơn không?`
                 if (!window.confirm(msg)) {
                     setImporting(false)
                     return
