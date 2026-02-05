@@ -176,6 +176,18 @@ body {
   }
 }
 
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.5s ease-out forwards;
+}
+
 /* Alarm Cyan Highlighting Animation */
 @keyframes fast-blink {
 

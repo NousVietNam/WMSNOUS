@@ -17,7 +17,27 @@ import {
 } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowRight, Box, BrainCircuit, Check, Layers, Loader2, Sparkles, Calendar, User, RefreshCw, Filter } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+    ArrowRight,
+    Box,
+    BrainCircuit,
+    Check,
+    Layers,
+    Loader2,
+    Sparkles,
+    Calendar,
+    User,
+    RefreshCw,
+    Filter,
+    ShoppingBag,
+    TrendingUp,
+    Zap,
+    ChevronDown,
+    LayoutGrid,
+    Info,
+    ArrowLeft
+} from "lucide-react"
 import { toast } from "sonner"
 import { useAuth } from "@/components/auth/AuthProvider"
 import { format } from "date-fns"
@@ -180,13 +200,11 @@ export default function NewWavePage() {
             if (error) throw error
 
             // Transform to Matrix
-            // 1. Get unique SKUs
             const uniqueSKUs = Array.from(new Set(data.map((item: any) => item.product?.sku))).sort()
 
-            // 2. Build Rows (Order -> { SKU: Qty })
             const rows: any[] = selectedOrders.map(orderId => {
                 const orderItems = data.filter((item: any) => item.order_id === orderId)
-                const rowData: any = { id: orderId } // Temp id for linking
+                const rowData: any = { id: orderId }
 
                 rowData.items = uniqueSKUs.reduce((acc: any, sku: any) => {
                     const match = orderItems.find((i: any) => i.product?.sku === sku)
@@ -219,302 +237,360 @@ export default function NewWavePage() {
     }
 
     return (
-        <div className="p-8 max-w-7xl mx-auto min-h-screen pb-20">
-            <div className="flex items-center gap-4 mb-8">
-                <Button variant="ghost" onClick={() => router.back()}>&larr; Quay lại</Button>
-                <h1 className="text-3xl font-bold gradient-text">Tạo Mẻ Soạn Hàng (Wave Picking)</h1>
+        <div className="p-8 max-w-7xl mx-auto space-y-10 min-h-screen pb-40">
+            {/* Header / Wizard Progress */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 animate-fade-in">
+                <div className="space-y-4">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => router.push('/admin/waves')}
+                        className="text-slate-500 hover:text-slate-900 group pl-0"
+                    >
+                        <ArrowLeft className="h-4 w-4 mr-2 group-hover:-translate-x-1 transition-transform" />
+                        Quay lại Quản lý Wave
+                    </Button>
+                    <div className="space-y-1">
+                        <h1 className="text-4xl font-black tracking-tighter gradient-text">Thiết Kế Đợt Soạn Mới</h1>
+                        <p className="text-slate-500 font-medium">Lựa chọn chiến lược gom đơn tối ưu theo SKU overlap (Jaccard Index).</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center bg-white p-1 rounded-2xl border shadow-sm">
+                    {[
+                        { label: 'Chọn Đơn', status: selectedOrders.length > 0 ? 'done' : 'active' },
+                        { label: 'Kiểm Tra', status: selectedOrders.length > 0 ? 'active' : 'pending' },
+                        { label: 'Khởi Tạo', status: 'pending' }
+                    ].map((step, idx) => (
+                        <div key={idx} className="flex items-center">
+                            <div className={`
+                               flex items-center gap-2 px-4 py-2 rounded-xl transition-all
+                               ${step.status === 'active' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' :
+                                    step.status === 'done' ? 'text-indigo-600' : 'text-slate-300'}
+                           `}>
+                                <div className={`
+                                   h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold border
+                                   ${step.status === 'active' ? 'bg-white text-indigo-600 border-white' :
+                                        step.status === 'done' ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-100'}
+                               `}>
+                                    {step.status === 'done' ? <Check className="h-3 w-3" /> : idx + 1}
+                                </div>
+                                <span className="text-xs font-black uppercase tracking-widest leading-none">{step.label}</span>
+                            </div>
+                            {idx < 2 && <div className="w-4 h-[1px] bg-slate-100 mx-1" />}
+                        </div>
+                    ))}
+                </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Left Panel: Tabs */}
-                <div className="lg:col-span-2 space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                <div className="lg:col-span-8 space-y-10">
                     <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                        <TabsList className="mb-4 grid w-full grid-cols-2">
-                            <TabsTrigger value="suggestions" className="flex items-center gap-2">
-                                <BrainCircuit className="h-4 w-4" /> Gợi Ý Thông Minh
+                        <TabsList className="bg-slate-100/50 p-1.5 rounded-2xl border border-slate-200/50 mb-8 w-fit gap-1">
+                            <TabsTrigger
+                                value="suggestions"
+                                className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-indigo-600 font-bold transition-all"
+                            >
+                                <Sparkles className="h-4 w-4 mr-2 text-indigo-500" />
+                                Gợi Ý Thông Minh
                             </TabsTrigger>
-                            <TabsTrigger value="manual" className="flex items-center gap-2">
-                                <Filter className="h-4 w-4" /> Chọn Thủ Công
+                            <TabsTrigger
+                                value="manual"
+                                className="rounded-xl px-6 py-2.5 data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-indigo-600 font-bold transition-all"
+                            >
+                                <LayoutGrid className="h-4 w-4 mr-2" />
+                                Chọn Thủ Công
                             </TabsTrigger>
                         </TabsList>
 
-                        {/* TAB 1: SUGGESTIONS */}
-                        <TabsContent value="suggestions" className="space-y-6">
-                            <div className="flex items-center justify-between">
+                        <TabsContent value="suggestions" className="space-y-6 animate-fade-in-up mt-0">
+                            <div className="flex items-center justify-between pb-2">
                                 <div className="space-y-1">
-                                    <h2 className="text-lg font-bold text-slate-800">Cụm Đơn Hàng Đề Xuất</h2>
-                                    <p className="text-sm text-slate-500">Tự động gom nhóm dựa trên độ trùng lặp sản phẩm (Jaccard Index).</p>
+                                    <h3 className="font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                        <BrainCircuit className="h-5 w-5 text-indigo-500" />
+                                        Best Strategy Clusters
+                                    </h3>
+                                    <p className="text-xs text-slate-400 font-medium">Hệ thống AI đã tính toán phân nhóm dựa trên độ tương đồng SKUs.</p>
                                 </div>
-                                <Button variant="outline" size="sm" onClick={fetchSuggestions} disabled={loadingSuggestions}>
-                                    {loadingSuggestions ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="h-3 w-3 mr-2" /> Quét Lại</>}
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={fetchSuggestions}
+                                    className="rounded-full bg-white border-indigo-100 text-indigo-600 font-bold hover:bg-indigo-50"
+                                >
+                                    <RefreshCw className={`h-3.5 w-3.5 mr-2 ${loadingSuggestions ? 'animate-spin' : ''}`} />
+                                    Tính toán lại
                                 </Button>
                             </div>
 
-                            <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-900 shadow-sm flex gap-4 items-start animate-in fade-in slide-in-from-top-2 duration-500">
-                                <div className="bg-white p-2 rounded-lg shadow-sm border border-indigo-100">
-                                    <BrainCircuit className="h-6 w-6 text-indigo-600" />
-                                </div>
-                                <div className="space-y-2">
-                                    <h3 className="font-bold text-indigo-950 flex items-center gap-2">
-                                        Cơ chế Gợi Ý Logic (Wave Analytics)
-                                    </h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div className="space-y-1">
-                                            <p className="font-bold text-xs uppercase tracking-wider text-indigo-500">1. Size Bucketing</p>
-                                            <p className="text-xs leading-relaxed opacity-80">Phân nhóm đơn theo quy mô (XS, S, M, L) dựa trên tổng số lượng để đảm bảo các wave có độ nặng tương đồng.</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="font-bold text-xs uppercase tracking-wider text-indigo-500">2. SKU Overlap</p>
-                                            <p className="text-xs leading-relaxed opacity-80">Sử dụng chỉ số <b>Jaccard Index</b> để đo độ trùng mã hàng. Càng trùng nhiều SKU, càng nhặt nhanh vì giảm di chuyển kệ.</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="font-bold text-xs uppercase tracking-wider text-indigo-500">3. Seed Filtering</p>
-                                            <p className="text-xs leading-relaxed opacity-80">Hệ thống chọn đơn hàng lớn nhất làm "gốc" (Seed) và tìm các đơn "vệ tinh" có độ tương quan &gt; 20% xung quanh.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
                             {loadingSuggestions ? (
-                                <div className="p-12 text-center bg-white rounded-xl border border-dashed">
-                                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-400 mb-4" />
-                                    <p className="text-slate-500">Hệ thống đang phân tích SKU Overlap & Size Bucketing...</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-40 rounded-3xl" />)}
                                 </div>
                             ) : suggestions.length === 0 ? (
-                                <div className="p-12 text-center bg-white rounded-xl border border-dashed">
-                                    <Sparkles className="h-12 w-12 mx-auto text-slate-300 mb-4" />
-                                    <p className="text-slate-500 text-lg font-medium">Không tìm thấy đơn hàng Sỉ nào đủ điều kiện.</p>
-                                    <p className="text-slate-400 text-sm mt-2 max-w-md mx-auto">
-                                        Lưu ý: Hệ thống chỉ gợi ý các đơn hàng có trạng thái <b>CHỜ XỬ LÝ & ĐÃ DUYỆT</b> (Pending & Approved) và chưa được Gom nhóm.
-                                    </p>
-                                    <Button variant="outline" className="mt-4" onClick={() => setActiveTab('manual')}>
-                                        Thử Chọn Thủ Công
-                                    </Button>
+                                <div className="bg-slate-50 border border-dashed border-slate-200 rounded-3xl p-12 text-center space-y-4">
+                                    <div className="h-16 w-16 bg-white rounded-full flex items-center justify-center mx-auto shadow-sm">
+                                        <Filter className="h-8 w-8 text-slate-300" />
+                                    </div>
+                                    <p className="text-slate-500 font-medium">Không tìm thấy tổ hợp đơn hàng phù hợp hiện tại.</p>
+                                    <Button variant="ghost" className="text-indigo-600 font-bold" onClick={() => setActiveTab('manual')}>Chuyển sang chọn thủ công</Button>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {suggestions.map((cluster, idx) => (
                                         <Card
                                             key={idx}
-                                            className={`cursor-pointer hover:border-indigo-400 transition-all ${selectedCluster === cluster ? 'ring-2 ring-indigo-500 bg-indigo-50/50' : 'bg-white'}`}
                                             onClick={() => handleSelectCluster(cluster)}
+                                            className={`
+                                                cursor-pointer rounded-3xl border transition-all duration-300 relative overflow-hidden group
+                                                ${selectedCluster === cluster
+                                                    ? 'border-indigo-500 ring-4 ring-indigo-50 bg-indigo-50/20'
+                                                    : 'bg-white hover:border-indigo-200 hover:-translate-y-1 hover:shadow-2xl hover:shadow-indigo-500/5'}
+                                            `}
                                         >
-                                            <CardHeader className="pb-2">
+                                            <div className="p-6 space-y-4">
                                                 <div className="flex justify-between items-start">
-                                                    <Badge className="bg-indigo-600">
-                                                        {cluster.count} Đơn
-                                                    </Badge>
-                                                    {selectedCluster === cluster && (
-                                                        <div className="text-xs font-bold text-indigo-700 flex items-center gap-1">
-                                                            <Check className="h-4 w-4" /> Đang Chọn
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <CardTitle className="text-lg pt-2 flex items-center gap-2">
-                                                    <Layers className="h-5 w-5 text-slate-500" />
-                                                    Nhóm Gợi Ý #{idx + 1}
-                                                </CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                                <div className="space-y-3 mt-2">
-                                                    <div className="flex justify-between text-sm border-b pb-2 border-dashed">
-                                                        <span className="text-slate-500">Tổng sản phẩm:</span>
-                                                        <span className="font-bold text-slate-700">{cluster.total_items?.toLocaleString() || '-'}</span>
+                                                    <div className="space-y-1">
+                                                        <Badge variant="outline" className={`font-mono text-[9px] font-black ${cluster.bucket === 'XS' ? 'bg-sky-50 text-sky-600' :
+                                                            cluster.bucket === 'S' ? 'bg-emerald-50 text-emerald-600' :
+                                                                cluster.bucket === 'M' ? 'bg-indigo-50 text-indigo-600' : 'bg-rose-50 text-rose-600'
+                                                            }`}>
+                                                            SIZE {cluster.bucket}
+                                                        </Badge>
+                                                        <h4 className="text-lg font-black text-slate-900 leading-tight">Gom Nhóm #{idx + 1}</h4>
                                                     </div>
-                                                    <div className="flex justify-between text-sm border-b pb-2 border-dashed">
-                                                        <span className="text-slate-500">Số loại (SKU):</span>
-                                                        <span className="font-bold text-slate-700">{cluster.unique_skus?.toLocaleString() || '-'}</span>
-                                                    </div>
-                                                    <div className="text-sm">
-                                                        <span className="text-slate-500 block mb-1">Top sản phẩm chính:</span>
-                                                        <p className="font-medium text-slate-800 text-xs line-clamp-2" title={cluster.top_skus}>
-                                                            {cluster.top_skus || "N/A"}
-                                                        </p>
+                                                    <div className={`h-10 w-10 rounded-2xl flex items-center justify-center transition-all ${selectedCluster === cluster ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600'
+                                                        }`}>
+                                                        {selectedCluster === cluster ? <Check className="h-5 w-5" /> : <ChevronDown className="h-5 w-5 group-hover:rotate-180 transition-transform" />}
                                                     </div>
                                                 </div>
-                                            </CardContent>
+
+                                                <div className="grid grid-cols-2 gap-3 pt-2">
+                                                    <div className="bg-white/50 p-2 rounded-xl border border-slate-100">
+                                                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest block">Đơn Hàng</span>
+                                                        <span className="text-xl font-black text-slate-900">{cluster.count}</span>
+                                                    </div>
+                                                    <div className="bg-white/50 p-2 rounded-xl border border-slate-100">
+                                                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-widest block">Sản Phẩm</span>
+                                                        <span className="text-xl font-black text-slate-900">{cluster.total_items}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-1">
+                                                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">SKUs Tiêu Biểu</span>
+                                                    <p className="text-[11px] font-mono text-slate-600 font-bold truncate">
+                                                        {cluster.top_skus}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className={`h-1.5 w-full mt-auto ${selectedCluster === cluster ? 'bg-indigo-500' : 'bg-slate-50'}`} />
                                         </Card>
                                     ))}
                                 </div>
                             )}
                         </TabsContent>
 
-                        {/* TAB 2: MANUAL */}
-                        <TabsContent value="manual" className="space-y-6">
-                            <div className="flex items-center justify-between">
+                        <TabsContent value="manual" className="animate-fade-in-up mt-0 space-y-6">
+                            <div className="flex items-center justify-between pb-2">
                                 <div className="space-y-1">
-                                    <h2 className="text-lg font-bold text-slate-800">Danh Sách Đơn Chờ (KHO SỈ)</h2>
-                                    <p className="text-sm text-slate-500">
-                                        Chọn thủ công các đơn hàng để tạo Wave. Chỉ hiện đơn <b>Chờ xử lý</b> và <b>Đã duyệt</b>.
-                                    </p>
+                                    <h3 className="font-black text-slate-800 tracking-tight flex items-center gap-2">
+                                        <LayoutGrid className="h-5 w-5 text-indigo-500" />
+                                        Manual Order Selection
+                                    </h3>
+                                    <p className="text-xs text-slate-400 font-medium">Danh sách các đơn hàng PENDING & ĐÃ DUYỆT (KHO SỈ).</p>
                                 </div>
-                                <Button variant="outline" size="sm" onClick={fetchAvailableOrders} disabled={loadingAvailable}>
-                                    {loadingAvailable ? <Loader2 className="h-4 w-4 animate-spin" /> : <><RefreshCw className="h-3 w-3 mr-2" /> Làm Mới</>}
-                                </Button>
+                                <div className="flex items-center gap-2">
+                                    <Badge variant="secondary" className="bg-slate-100 text-slate-600 px-3 py-1 font-bold rounded-full">
+                                        {availableOrders.length} Sẵn sàng
+                                    </Badge>
+                                </div>
                             </div>
 
-                            {loadingAvailable ? (
-                                <div className="p-12 text-center bg-white rounded-xl border border-dashed">
-                                    <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-400 mb-4" />
-                                    <p className="text-slate-500">Đang tải danh sách đơn...</p>
-                                </div>
-                            ) : availableOrders.length === 0 ? (
-                                <div className="p-12 text-center bg-white rounded-xl border border-dashed">
-                                    <Box className="h-12 w-12 mx-auto text-slate-300 mb-4" />
-                                    <p className="text-slate-500">Không có đơn hàng nào khả dụng.</p>
-                                </div>
-                            ) : (
-                                <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+                            <div className="bg-white rounded-3xl border shadow-xl shadow-slate-200/50 overflow-hidden relative">
+                                <div className="max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200">
                                     <Table>
-                                        <TableHeader className="bg-slate-50">
-                                            <TableRow>
-                                                <TableHead className="w-12 text-center">
+                                        <TableHeader className="bg-slate-50/50 sticky top-0 z-20 backdrop-blur-md">
+                                            <TableRow className="hover:bg-transparent border-b">
+                                                <TableHead className="w-12 text-center px-4">
                                                     <Checkbox
                                                         checked={selectedOrders.length === availableOrders.length && availableOrders.length > 0}
                                                         onCheckedChange={handleSelectAll}
+                                                        className="data-[state=checked]:bg-indigo-600"
                                                     />
                                                 </TableHead>
-                                                <TableHead>Mã Đơn</TableHead>
-                                                <TableHead>Khách Hàng</TableHead>
-                                                <TableHead>Ngày Tạo</TableHead>
-                                                <TableHead className="text-center">Số Loại</TableHead>
-                                                <TableHead className="text-right">Tổng SL</TableHead>
+                                                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Order Code</TableHead>
+                                                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Customer</TableHead>
+                                                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400 text-center">Items</TableHead>
+                                                <TableHead className="font-black text-[10px] uppercase tracking-widest text-slate-400">Created</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {availableOrders.map(order => {
-                                                const isSelected = selectedOrders.includes(order.id)
-                                                // Calculate total qty from items if available, or fetch
-                                                // Assuming items are fetched with select outbound_order_items(id, quantity)
-                                                const totalQty = order.outbound_order_items?.reduce((s: number, i: any) => s + i.quantity, 0) || 0
-                                                const itemCount = order.outbound_order_items?.length || 0
-
-                                                return (
-                                                    <TableRow key={order.id} className={isSelected ? 'bg-indigo-50/50' : ''}>
-                                                        <TableCell className="text-center">
-                                                            <Checkbox
-                                                                checked={isSelected}
-                                                                onCheckedChange={() => handleToggleOrder(order.id)}
-                                                            />
-                                                        </TableCell>
-                                                        <TableCell className="font-medium text-indigo-700">
-                                                            {order.code}
-                                                        </TableCell>
-                                                        <TableCell>
-                                                            <div className="flex items-center gap-2">
-                                                                <User className="h-3 w-3 text-slate-400" />
-                                                                {order.customers?.name || "Khách lẻ"}
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className="text-slate-500 text-sm">
-                                                            <div className="flex items-center gap-2">
-                                                                <Calendar className="h-3 w-3" />
-                                                                {format(new Date(order.created_at), 'dd/MM/yyyy HH:mm')}
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell className="text-center">
-                                                            <Badge variant="secondary">{itemCount}</Badge>
-                                                        </TableCell>
-                                                        <TableCell className="text-right font-bold text-slate-700">
-                                                            {totalQty.toLocaleString()}
-                                                        </TableCell>
-                                                    </TableRow>
-                                                )
-                                            })}
+                                            {loadingAvailable ? (
+                                                [1, 2, 3, 4, 5].map(i => (
+                                                    <TableRow key={i}><TableCell colSpan={5} className="p-8"><Skeleton className="h-8 w-full rounded-lg" /></TableCell></TableRow>
+                                                ))
+                                            ) : availableOrders.length === 0 ? (
+                                                <TableRow><TableCell colSpan={5} className="p-20 text-center text-slate-400 italic">Không tìm thấy đơn hàng khả dụng.</TableCell></TableRow>
+                                            ) : (
+                                                availableOrders.map((order) => {
+                                                    const isChecked = selectedOrders.includes(order.id)
+                                                    return (
+                                                        <TableRow
+                                                            key={order.id}
+                                                            onClick={() => handleToggleOrder(order.id)}
+                                                            className={`
+                                                                cursor-pointer transition-colors group
+                                                                ${isChecked ? 'bg-indigo-50/50 hover:bg-indigo-100/50' : 'hover:bg-slate-50/50'}
+                                                            `}
+                                                        >
+                                                            <TableCell className="text-center px-4" onClick={(e) => e.stopPropagation()}>
+                                                                <Checkbox
+                                                                    checked={isChecked}
+                                                                    onCheckedChange={() => handleToggleOrder(order.id)}
+                                                                    className="data-[state=checked]:bg-indigo-600"
+                                                                />
+                                                            </TableCell>
+                                                            <TableCell className="font-mono font-black text-slate-900 text-sm">{order.code}</TableCell>
+                                                            <TableCell className="max-w-[150px] truncate font-bold text-slate-600 text-xs">
+                                                                {order.customers?.name || '---'}
+                                                            </TableCell>
+                                                            <TableCell className="text-center">
+                                                                <div className="inline-flex items-center justify-center h-7 w-12 rounded-lg bg-white border border-slate-100 font-mono text-sm font-black text-slate-800 shadow-sm group-hover:border-indigo-200">
+                                                                    {order.outbound_order_items?.reduce((s: number, i: any) => s + i.quantity, 0) || 0}
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell className="text-xs font-medium text-slate-400">
+                                                                {format(new Date(order.created_at), 'dd/MM HH:mm')}
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    )
+                                                })
+                                            )}
                                         </TableBody>
                                     </Table>
                                 </div>
-                            )}
+                            </div>
                         </TabsContent>
                     </Tabs>
-
-                    {/* Matrix View (Shared) */}
-                    {(selectedOrders.length > 0) && matrixData && (
-                        <div className="animate-fade-in-up pt-4 border-t">
-                            <h3 className="text-lg font-bold text-slate-700 mb-3 flex items-center gap-2">
-                                <Box className="h-5 w-5 text-indigo-600" />
-                                Ma Trận Đơn Hàng (Wave Matrix)
-                            </h3>
-                            <div className="bg-white rounded-xl border shadow-sm overflow-hidden overflow-x-auto">
-                                <Table>
-                                    <TableHeader className="bg-slate-50">
-                                        <TableRow>
-                                            <TableHead className="w-[120px] bg-slate-100 sticky left-0 z-10 font-bold">Mã Đơn</TableHead>
-                                            {matrixData.headers.map(sku => (
-                                                <TableHead key={sku} className="text-center font-mono text-xs px-2 min-w-[80px]">{sku}</TableHead>
-                                            ))}
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {matrixData.rows.map(row => (
-                                            <TableRow key={row.id}>
-                                                <TableCell className="font-medium bg-slate-50 sticky left-0 z-10 border-r">{row.code}</TableCell>
-                                                {matrixData.headers.map(sku => (
-                                                    <TableCell key={sku} className={`text-center p-2 border-l border-slate-50 ${getCellColor(row.items[sku])}`}>
-                                                        {row.items[sku] > 0 ? row.items[sku] : '-'}
-                                                    </TableCell>
-                                                ))}
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                            <p className="text-xs text-slate-500 mt-2 text-right">* Các cột sáng màu là những sản phẩm trùng lặp.</p>
-                        </div>
-                    )}
                 </div>
 
-                {/* Right Panel: Preview & Action */}
-                <div className="lg:col-span-1">
-                    <div className="sticky top-8 space-y-4">
-                        <Card className="glass-strong border-indigo-100 shadow-xl">
-                            <CardHeader className="bg-indigo-50/50 border-b border-indigo-100">
-                                <CardTitle className="text-indigo-900 flex items-center gap-2">
-                                    <Box className="h-5 w-5" />
-                                    Wave Preview
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="pt-6 space-y-6">
-                                <div className="space-y-2">
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Số lượng đơn:</span>
-                                        <span className="font-bold text-lg">{selectedOrders.length}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Phân loại:</span>
-                                        <span className="font-bold text-purple-600">KHO SỈ (BULK)</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-slate-500">Chế độ:</span>
-                                        <Badge variant="secondary" className="text-[10px]">
-                                            {selectedCluster ? 'SMART SUGGEST' : 'MANUAL PICK'}
-                                        </Badge>
-                                    </div>
+                <div className="lg:col-span-4 sticky top-8 space-y-6">
+                    {/* Insights Card */}
+                    <Card className="rounded-[2.5rem] border-slate-200/60 shadow-xl overflow-hidden glass-strong group">
+                        <CardHeader className="bg-indigo-600 overflow-hidden relative p-8">
+                            <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-125 transition-all duration-700">
+                                <Zap className="h-24 w-24 text-white rotate-12" />
+                            </div>
+                            <CardTitle className="text-white flex items-center gap-3 font-black text-2xl tracking-tighter">
+                                <Sparkles className="h-6 w-6 text-yellow-300 fill-yellow-300" />
+                                Wave Insights
+                            </CardTitle>
+                            <p className="text-indigo-100/80 text-xs font-medium mt-2">Lựa chọn của bạn ảnh hưởng trực tiếp đến hiệu quả di chuyển của xe nâng.</p>
+                        </CardHeader>
+                        <CardContent className="p-8 space-y-8 bg-white/20">
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-baseline">
+                                    <span className="text-slate-500 font-bold uppercase text-[10px] tracking-widest">Selected Orders</span>
+                                    <span className="text-3xl font-black text-indigo-600">{selectedOrders.length}</span>
                                 </div>
+                                <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden p-0.5">
+                                    <div
+                                        className="h-full gradient-primary rounded-full transition-all duration-500"
+                                        style={{ width: `${Math.min((selectedOrders.length / 40) * 100, 100)}%` }}
+                                    />
+                                </div>
+                                <div className="flex justify-between items-center text-[9px] text-slate-400 font-black uppercase">
+                                    <span>Single Pick</span>
+                                    <span>Wave Max (40)</span>
+                                </div>
+                            </div>
 
-                                <div className="pt-4 border-t border-slate-100">
-                                    <Button
-                                        className="w-full gradient-primary text-white font-bold h-12 shadow-lg hover:shadow-xl transition-all hover:scale-[1.02]"
-                                        disabled={selectedOrders.length === 0 || creating}
-                                        onClick={handleCreateWave}
-                                    >
-                                        {creating ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Đang Tạo...
-                                            </>
-                                        ) : (
-                                            <>
-                                                Tạo Wave Ngay <ArrowRight className="ml-2 h-5 w-5" />
-                                            </>
-                                        )}
-                                    </Button>
-                                    <p className="text-xs text-center text-slate-400 mt-2">
-                                        Hệ thống sẽ gom {selectedOrders.length} đơn này vào một mẻ xử lý chung.
-                                    </p>
+                            <div className="space-y-4 pt-4 border-t border-slate-100">
+                                <div className="flex gap-4">
+                                    <div className="h-10 w-10 shrink-0 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600">
+                                        <Layers className="h-5 w-5" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h5 className="text-xs font-black text-slate-800">Bucketing Strategy</h5>
+                                        <p className="text-[10px] text-slate-500 leading-relaxed">Đơn hàng được nhóm theo kích thước (XS, S, M, L) để đồng bộ phương tiện vận tải.</p>
+                                    </div>
                                 </div>
-                            </CardContent>
-                        </Card>
-                    </div>
+                                <div className="flex gap-4">
+                                    <div className="h-10 w-10 shrink-0 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
+                                        <TrendingUp className="h-5 w-5" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <h5 className="text-xs font-black text-slate-800">SKU Overlap (Jaccard)</h5>
+                                        <p className="text-[10px] text-slate-500 leading-relaxed">Tối ưu hiệu quả nhặt hàng bằng cách gom các đơn có chung danh mục sản phẩm.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Matrix Preview if selection exists */}
+                            {selectedOrders.length > 0 && matrixData && (
+                                <div className="pt-6 space-y-4">
+                                    <button
+                                        onClick={() => setMatrixOpen(!matrixOpen)}
+                                        className="w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-200/50 hover:bg-white hover:shadow-md transition-all group/btn"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <LayoutGrid className="h-4 w-4 text-slate-400 group-hover/btn:text-indigo-500" />
+                                            <span className="text-xs font-black text-slate-700 tracking-tight">Overlap Matrix Preview</span>
+                                        </div>
+                                        <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${matrixOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+
+                                    {matrixOpen && (
+                                        <div className="bg-white rounded-2xl border border-slate-100 p-2 max-h-[300px] overflow-auto animate-fade-in scrollbar-thin scrollbar-thumb-slate-100">
+                                            <Table className="text-[10px]">
+                                                <TableHeader>
+                                                    <TableRow className="bg-slate-50/50">
+                                                        <TableHead className="w-20 font-black text-slate-400 uppercase tracking-tighter">Order</TableHead>
+                                                        {matrixData.headers.map((h, i) => (
+                                                            <TableHead key={i} className="text-center font-black p-1 truncate max-w-[50px]">{h}</TableHead>
+                                                        ))}
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {matrixData.rows.map((row, i) => (
+                                                        <TableRow key={i} className="hover:bg-slate-50/50">
+                                                            <TableCell className="font-mono font-bold text-slate-600 p-1">{row.code}</TableCell>
+                                                            {matrixData.headers.map((h, j) => {
+                                                                const qty = row.items[h] || 0
+                                                                return (
+                                                                    <TableCell key={j} className={`text-center p-1 border-l ${qty > 0 ? 'bg-indigo-50/50 text-indigo-600 font-bold' : 'text-slate-100'}`}>
+                                                                        {qty > 0 ? qty : '·'}
+                                                                    </TableCell>
+                                                                )
+                                                            })}
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="pt-4">
+                                <Button
+                                    className="w-full rounded-2xl h-14 font-black uppercase tracking-widest text-sm gradient-primary shadow-xl shadow-indigo-500/30 hover:scale-[1.02] active:scale-95 transition-all group"
+                                    onClick={handleCreateWave}
+                                    disabled={creating || selectedOrders.length === 0}
+                                >
+                                    {creating ? (
+                                        <Loader2 className="h-5 w-5 animate-spin" />
+                                    ) : (
+                                        <>
+                                            Khởi tạo {selectedOrders.length} Đơn
+                                            <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                                        </>
+                                    )}
+                                </Button>
+                                <p className="text-[9px] text-center text-slate-400 mt-4 font-bold uppercase tracking-widest">Hệ thống sẽ tự động chỉ định phương tiện</p>
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
         </div>
