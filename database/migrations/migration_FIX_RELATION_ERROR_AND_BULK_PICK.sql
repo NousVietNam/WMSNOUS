@@ -33,7 +33,8 @@ BEGIN
         INTO v_task FROM picking_tasks pt 
         JOIN picking_jobs pj ON pt.job_id = pj.id
         LEFT JOIN boxes b ON pt.box_id = b.id
-        WHERE pt.id = v_task_id FOR UPDATE;
+        WHERE pt.id = v_task_id 
+        FOR UPDATE OF pt, pj;
 
         IF v_task IS NULL OR v_task.status = 'COMPLETED' THEN CONTINUE; END IF;
         v_outbound_order_id := v_task.outbound_order_id;
