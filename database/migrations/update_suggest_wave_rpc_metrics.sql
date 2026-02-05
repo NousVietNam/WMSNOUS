@@ -30,7 +30,7 @@ BEGIN
     WHERE inventory_type = 'BULK'
       AND (wave_id IS NULL)
       AND is_approved = TRUE
-      AND status NOT IN ('CANCELLED','COMPLETED','SHIPPED','ALLOCATED');
+      AND status = 'PENDING';
 
     IF v_unassigned_ids IS NULL THEN
         RETURN '[]'::JSONB;
