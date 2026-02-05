@@ -397,7 +397,7 @@ export default function BoxesPage() {
             code,
             status: 'OPEN',
             type: isCart ? 'CART' : 'STORAGE',
-            inventory_type: 'PIECE', // Carts hold pieces usually
+            inventory_type: isCart ? 'PIECE' : inventoryType,
             location_id: receivingLocId
         }))
 
