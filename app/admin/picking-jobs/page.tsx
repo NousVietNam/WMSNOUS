@@ -315,8 +315,10 @@ export default function PickingJobsPage() {
                                                     <span className="text-sm font-semibold text-blue-700">{totalItems}</span>
                                                 </td>
                                                 <td className="p-3">
-                                                    {job.status === 'COMPLETED' ? (
-                                                        <span className="text-sm font-medium text-slate-600">{job.assignee?.name || job.user?.name || '---'}</span>
+                                                    {job.status !== 'PLANNED' ? (
+                                                        <span className="text-sm font-medium text-slate-600">
+                                                            {job.assignee?.name || (job.assigned_to ? 'Đang xác định...' : '---')}
+                                                        </span>
                                                     ) : (
                                                         <Select
                                                             value={job.assigned_to || "unassigned"}

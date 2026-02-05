@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
         // 1. Get Job & Staff info
         const { data: job, error: jobErr } = await supabaseAdmin
             .from('picking_jobs')
-            .select('code, zone, type')
+            .select('code, zone, type, status')
             .eq('id', jobId)
             .single()
 
@@ -31,6 +31,14 @@ export async function POST(req: NextRequest) {
 
         if (jobErr || !job) throw new Error('Job not found')
         if (staffErr || !staff) throw new Error('Staff not found')
+
+        // Check if job status is PLANNED
+        if (job.status !== 'PLANNED') {
+            return NextResponse.json({
+                success: false,
+                error: `Chỉ có thể phân người cho các job ở trạng thái 'Đã lên kế hoạch' (PLANNED). Trạng thái hiện tại: ${job.status}`
+            }, { status: 400 })
+        }
 
         // 2. Update Job
         const { error: updateErr } = await supabaseAdmin
