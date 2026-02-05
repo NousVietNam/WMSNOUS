@@ -315,7 +315,7 @@ export default function PickingJobsPage() {
                                                     <span className="text-sm font-semibold text-blue-700">{totalItems}</span>
                                                 </td>
                                                 <td className="p-3">
-                                                    {job.status !== 'PLANNED' ? (
+                                                    {job.status !== 'OPEN' ? (
                                                         <span className="text-sm font-medium text-slate-600">
                                                             {job.assignee?.name || (job.assigned_to ? 'Đang xác định...' : '---')}
                                                         </span>

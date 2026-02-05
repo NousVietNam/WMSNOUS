@@ -19,7 +19,9 @@ export default function PickingJobsPage() {
 
     const fetchJobs = async () => {
         setLoading(true)
-        // Fetch jobs that are OPEN or IN_PROGRESS
+        if (!session?.user?.id) return
+
+        // Fetch jobs: (OPEN/IN_PROGRESS/etc) OR (PLANNED and assigned to ME)
         const { data, error } = await supabase
             .from('picking_jobs')
             .select(`
@@ -43,7 +45,7 @@ export default function PickingJobsPage() {
                 view_picking_job_progress (total_tasks, completed_tasks),
                 assignee:users!fk_picking_jobs_assignee (name)
             `)
-            .in('status', ['OPEN', 'IN_PROGRESS', 'PENDING'])
+            .in('status', ['OPEN', 'ASSIGNED', 'IN_PROGRESS', 'PICKING', 'PICKED', 'PENDING'])
             .order('created_at', { ascending: false })
 
         if (!error && data) setJobs(data)
@@ -123,7 +125,7 @@ export default function PickingJobsPage() {
                                         </div>
                                         <span className={`px-2 py-1 rounded text-[10px] font-black tracking-wider ${job.status === 'OPEN' ? 'bg-green-500 text-white shadow-sm' : 'bg-blue-600 text-white shadow-sm'
                                             }`}>
-                                            {job.status === 'OPEN' ? 'MỚI' : 'ĐANG LÀM'}
+                                            {job.status === 'OPEN' ? 'MỚI' : job.status === 'ASSIGNED' ? 'ĐƯỢC GIAO' : 'ĐANG LÀM'}
                                         </span>
                                     </div>
                                     <div className="flex items-center gap-3 text-sm text-slate-600 mt-3">
@@ -156,8 +158,8 @@ export default function PickingJobsPage() {
                                             NHẬN BỞI {job.assignee?.name?.toUpperCase() || 'NGƯỜI KHÁC'}
                                         </button>
                                     ) : (
-                                        <Link href={`/mobile/picking/${job.id}`} onClick={() => handleTakeJob(job.id)} className={`block w-full h-11 rounded-lg font-black shadow-sm flex items-center justify-center gap-2 transition-transform active:scale-95 ${job.type === 'WAVE_PICK' ? (job.status === 'OPEN' ? 'bg-purple-600 text-white active:bg-purple-700' : 'bg-white text-purple-700 border-2 border-purple-600') : (job.status === 'OPEN' ? 'bg-indigo-600 text-white active:bg-indigo-700' : 'bg-white text-slate-700 border border-slate-300 active:bg-slate-50')}`}>
-                                            {job.status === 'OPEN' ? 'BẮT ĐẦU NGAY' : 'TIẾP TỤC CÔNG VIỆC'}
+                                        <Link href={`/mobile/picking/${job.id}`} onClick={() => handleTakeJob(job.id)} className={`block w-full h-11 rounded-lg font-black shadow-sm flex items-center justify-center gap-2 transition-transform active:scale-95 ${job.type === 'WAVE_PICK' ? (['OPEN', 'ASSIGNED'].includes(job.status) ? 'bg-purple-600 text-white active:bg-purple-700' : 'bg-white text-purple-700 border-2 border-purple-600') : (['OPEN', 'ASSIGNED'].includes(job.status) ? 'bg-indigo-600 text-white active:bg-indigo-700' : 'bg-white text-slate-700 border border-slate-300 active:bg-slate-50')}`}>
+                                            {['OPEN', 'ASSIGNED'].includes(job.status) ? 'BẮT ĐẦU NGAY' : 'TIẾP TỤC CÔNG VIỆC'}
                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
                                         </Link>
                                     )}

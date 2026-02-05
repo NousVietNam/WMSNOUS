@@ -32,11 +32,11 @@ export async function POST(req: NextRequest) {
         if (jobErr || !job) throw new Error('Job not found')
         if (staffErr || !staff) throw new Error('Staff not found')
 
-        // Check if job status is PLANNED
-        if (job.status !== 'PLANNED') {
+        // Check if job status is OPEN
+        if (job.status !== 'OPEN') {
             return NextResponse.json({
                 success: false,
-                error: `Chỉ có thể phân người cho các job ở trạng thái 'Đã lên kế hoạch' (PLANNED). Trạng thái hiện tại: ${job.status}`
+                error: `Chỉ có thể phân người cho các job ở trạng thái 'Mới Tạo' (OPEN). Trạng thái hiện tại: ${job.status}`
             }, { status: 400 })
         }
 
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
             .from('picking_jobs')
             .update({
                 assigned_to: staffId,
-                status: 'ASSIGNED' // New status or keep OPEN
+                status: 'ASSIGNED'
             })
             .eq('id', jobId)
 
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
                 `📌 Mã Job: <code>${job.code}</code>\n` +
                 `📍 Vùng: <b>${job.zone || 'N/A'}</b>\n` +
                 `🛠 Loại: ${job.type}\n\n` +
-                `👉 Vui lòng mở App Mobile để bắt đầu nhặt hàng!`
+                `👉 Sếp đã gán công việc này cho bạn. Vui lòng mở App Mobile để bắt đầu nhặt hàng!`
 
             await sendTelegramMessage(staff.telegram_chat_id, message)
             console.log(`✅ Sent assignment noti to ${staff.name} (${staff.telegram_chat_id})`)
