@@ -59,7 +59,7 @@ export default function NewWavePage() {
         setLoadingSuggestions(true)
         try {
             // Call Smart Suggestion RPC
-            const { data, error } = await supabase.rpc('suggest_bulk_waves', {
+            const { data, error } = await supabase.rpc('suggest_bulk_waves_v4', {
                 p_min_similarity: 0.2, // 20% overlap minimum
                 p_max_orders: 20       // Max 20 orders per wave
             })
