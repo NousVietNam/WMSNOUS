@@ -1,7 +1,5 @@
-
--- Migration: Smart Multi-Order Status Transition (Wave Awareness)
--- Description: Updates specific Orders to PACKED ONLY when ALL their jobs across ALL zones are completed.
--- Handles mixed Wave Pick jobs.
+-- Migration: Fix Ambiguous Quantity in Job Completion
+-- Description: Resolves "column reference 'quantity' is ambiguous" in complete_picking_job RPC.
 
 CREATE OR REPLACE FUNCTION complete_picking_job(
     p_job_id UUID,
@@ -17,7 +15,7 @@ DECLARE
     v_pending_tasks INT;
     v_gate_out_id UUID;
     v_order_id UUID;
-    v_order_ids UUID[]; -- Danh sách các đơn hàng có trong Job này
+    v_order_ids UUID[];
     v_remaining_jobs INT;
     v_pxk_code TEXT;
     v_shipment_id UUID;
@@ -25,13 +23,13 @@ DECLARE
     v_source_type TEXT;
     v_order_code TEXT;
 BEGIN
-    -- 1. Lấy thông tin Job
+    -- 1. Get Job Info
     SELECT * INTO v_job FROM picking_jobs WHERE id = p_job_id FOR UPDATE;
     IF v_job IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Không tìm thấy Job');
     END IF;
 
-    -- 2. Kiểm tra task hiện tại trong Job
+    -- 2. Validation
     SELECT count(*), count(*) FILTER (WHERE status != 'COMPLETED') 
     INTO v_task_count, v_pending_tasks 
     FROM picking_tasks WHERE job_id = p_job_id;
@@ -41,15 +39,15 @@ BEGIN
     END IF;
 
     IF v_pending_tasks > 0 THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Còn ' || v_pending_tasks || ' món hàng trong Job này chưa nhặt xong');
+        RETURN jsonb_build_object('success', false, 'error', 'Còn ' || v_pending_tasks || ' món hàng chưa nhặt xong');
     END IF;
 
-    -- 3. Đánh dấu Job HOÀN TẤT
+    -- 3. Mark Job COMPLETE
     UPDATE picking_jobs 
     SET status = 'COMPLETED', completed_at = NOW()
     WHERE id = p_job_id;
 
-    -- 4. Di dời Hàng/Hộp ra GATE-OUT
+    -- 4. Move Boxes to GATE-OUT
     SELECT id INTO v_gate_out_id FROM locations WHERE code = 'GATE-OUT' LIMIT 1;
     IF v_gate_out_id IS NOT NULL THEN
         IF v_job.type = 'ITEM_PICK' OR v_job.type = 'WAVE_PICK' THEN
@@ -61,17 +59,17 @@ BEGIN
         END IF;
     END IF;
 
-    -- 5. Lọc danh sách Đơn hàng bị ảnh hưởng bởi Job này (Hỗ trợ Wave trộn nhiều đơn)
+    -- 5. Identify affected Orders
     SELECT array_agg(DISTINCT ooi.order_id) INTO v_order_ids
     FROM picking_tasks pt
     JOIN outbound_order_items ooi ON pt.order_item_id = ooi.id
     WHERE pt.job_id = p_job_id;
 
-    -- 6. Duyệt từng Đơn hàng để check trạng thái tổng thể
+    -- 6. Synchronize Order Status
     IF v_order_ids IS NOT NULL THEN
         FOREACH v_order_id IN ARRAY v_order_ids
         LOOP
-            -- Kiểm tra xem Đơn hàng này còn Job nào khác CHƯA XONG không (trong toàn bộ Wave hoặc Single)
+            -- Check if any jobs for this order are still pending
             SELECT COUNT(*) INTO v_remaining_jobs
             FROM picking_jobs pj
             JOIN picking_tasks pt ON pj.id = pt.job_id
@@ -79,14 +77,13 @@ BEGIN
             WHERE ooi.order_id = v_order_id
             AND pj.status NOT IN ('COMPLETED', 'CANCELLED');
 
-            -- Nếu đơn này KHÔNG còn Job nào đang chờ (tất cả các Zone đã nhặt xong đơn này)
             IF v_remaining_jobs = 0 THEN
-                -- A. Chốt Trạng thái sang PACKED
+                -- A. Mark as PACKED
                 UPDATE outbound_orders 
                 SET status = 'PACKED', updated_at = NOW() 
                 WHERE id = v_order_id AND status != 'CANCELLED';
 
-                -- B. Tạo Phiếu Xuất Kho (Tự động hóa luồng Ship)
+                -- B. Create Shipment
                 SELECT 
                     CASE WHEN type = 'SALE' THEN 'ORDER' ELSE 'TRANSFER' END,
                     COALESCE(code, 'UNKNOWN')
@@ -95,6 +92,7 @@ BEGIN
 
                 v_pxk_code := generate_pxk_code();
                 
+                -- FIXED: Use pt.quantity to avoid ambiguity with ooi.quantity
                 SELECT SUM(pt.quantity) INTO v_item_count 
                 FROM picking_tasks pt 
                 JOIN outbound_order_items ooi ON pt.order_item_id = ooi.id
@@ -109,6 +107,6 @@ BEGIN
         END LOOP;
     END IF;
 
-    RETURN jsonb_build_object('success', true, 'message', 'Job completed and order statuses synchronized.');
+    RETURN jsonb_build_object('success', true, 'message', 'Hoàn thành Job và cập nhật trạng thái đơn hàng.');
 END;
 $$;

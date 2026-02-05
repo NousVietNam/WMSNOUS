@@ -107,7 +107,7 @@ BEGIN
 
                     v_pxk_code := generate_pxk_code();
                     
-                    SELECT SUM(quantity) INTO v_item_count 
+                    SELECT SUM(pt.quantity) INTO v_item_count 
                     FROM picking_tasks pt 
                     JOIN outbound_order_items ooi ON pt.order_item_id = ooi.id
                     WHERE ooi.order_id = v_order_id;
