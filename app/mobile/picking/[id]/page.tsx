@@ -363,16 +363,20 @@ export default function DoPickingPage() {
         if (!exceptionTask) return
         setIsConfirmingBox(true)
         try {
-            // New Flow: Request Approval
-            const { data, error } = await supabase.rpc('request_picking_approval', {
-                p_task_id: exceptionTask.id,
-                p_actual_qty: qty,
-                p_reason: reason,
-                p_user_id: userId
+            // Updated Flow: Call API to trigger Telegram notification
+            const res = await fetch('/api/picking/request-approval', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    p_task_id: exceptionTask.id,
+                    p_actual_qty: qty,
+                    p_reason: reason,
+                    p_user_id: userId
+                })
             })
 
-            if (error) throw error
-            if (!data.success) throw new Error(data.error)
+            const data = await res.json()
+            if (!res.ok || !data.success) throw new Error(data.error || "Lỗi gửi yêu cầu")
 
             toast.success("Đã gửi yêu cầu! Đang chờ Thủ kho duyệt...")
             setExceptionTask(null)
