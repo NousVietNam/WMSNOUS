@@ -90,7 +90,7 @@ export default function NewWavePage() {
                 .eq('is_approved', true) // Only approved
                 .is('wave_id', null)     // Not in wave
                 .eq('inventory_type', 'BULK') // Bulk context
-                .not('status', 'in', '("CANCELLED","COMPLETED","SHIPPED","ALLOCATED")') // Exclude Allocated orders as they might have individual jobs
+                .eq('status', 'PENDING')      // Only Pending (Wait for processing)
                 .order('created_at', { ascending: false })
                 .limit(100)
 
@@ -250,6 +250,31 @@ export default function NewWavePage() {
                                 </Button>
                             </div>
 
+                            <div className="bg-indigo-50/50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-900 shadow-sm flex gap-4 items-start animate-in fade-in slide-in-from-top-2 duration-500">
+                                <div className="bg-white p-2 rounded-lg shadow-sm border border-indigo-100">
+                                    <BrainCircuit className="h-6 w-6 text-indigo-600" />
+                                </div>
+                                <div className="space-y-2">
+                                    <h3 className="font-bold text-indigo-950 flex items-center gap-2">
+                                        Cơ chế Gợi Ý Logic (Wave Analytics)
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="space-y-1">
+                                            <p className="font-bold text-xs uppercase tracking-wider text-indigo-500">1. Size Bucketing</p>
+                                            <p className="text-xs leading-relaxed opacity-80">Phân nhóm đơn theo quy mô (XS, S, M, L) dựa trên tổng số lượng để đảm bảo các wave có độ nặng tương đồng.</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="font-bold text-xs uppercase tracking-wider text-indigo-500">2. SKU Overlap</p>
+                                            <p className="text-xs leading-relaxed opacity-80">Sử dụng chỉ số <b>Jaccard Index</b> để đo độ trùng mã hàng. Càng trùng nhiều SKU, càng nhặt nhanh vì giảm di chuyển kệ.</p>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="font-bold text-xs uppercase tracking-wider text-indigo-500">3. Seed Filtering</p>
+                                            <p className="text-xs leading-relaxed opacity-80">Hệ thống chọn đơn hàng lớn nhất làm "gốc" (Seed) và tìm các đơn "vệ tinh" có độ tương quan &gt; 20% xung quanh.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {loadingSuggestions ? (
                                 <div className="p-12 text-center bg-white rounded-xl border border-dashed">
                                     <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-400 mb-4" />
@@ -260,7 +285,7 @@ export default function NewWavePage() {
                                     <Sparkles className="h-12 w-12 mx-auto text-slate-300 mb-4" />
                                     <p className="text-slate-500 text-lg font-medium">Không tìm thấy đơn hàng Sỉ nào đủ điều kiện.</p>
                                     <p className="text-slate-400 text-sm mt-2 max-w-md mx-auto">
-                                        Lưu ý: Hệ thống chỉ gợi ý các đơn hàng có trạng thái <b>ĐÃ DUYỆT (Approved)</b> và chưa được Gom nhóm.
+                                        Lưu ý: Hệ thống chỉ gợi ý các đơn hàng có trạng thái <b>CHỜ XỬ LÝ & ĐÃ DUYỆT</b> (Pending & Approved) và chưa được Gom nhóm.
                                     </p>
                                     <Button variant="outline" className="mt-4" onClick={() => setActiveTab('manual')}>
                                         Thử Chọn Thủ Công
@@ -320,7 +345,7 @@ export default function NewWavePage() {
                                 <div className="space-y-1">
                                     <h2 className="text-lg font-bold text-slate-800">Danh Sách Đơn Chờ (KHO SỈ)</h2>
                                     <p className="text-sm text-slate-500">
-                                        Chọn thủ công các đơn hàng để tạo Wave. Chỉ hiện đơn đã duyệt.
+                                        Chọn thủ công các đơn hàng để tạo Wave. Chỉ hiện đơn <b>Chờ xử lý</b> và <b>Đã duyệt</b>.
                                     </p>
                                 </div>
                                 <Button variant="outline" size="sm" onClick={fetchAvailableOrders} disabled={loadingAvailable}>

@@ -26,8 +26,8 @@ BEGIN
     SELECT array_agg(id) INTO v_unassigned_ids
     FROM outbound_orders
     WHERE inventory_type = 'BULK'
-      -- AND status = 'APPROVED' -- REMOVED: User confirmed Pending is OK if Approved flag is set
-      AND (wave_id IS NULL)
+      AND status = 'PENDING'
+      AND wave_id IS NULL
       AND is_approved = TRUE; -- Key condition
 
     IF v_unassigned_ids IS NULL THEN

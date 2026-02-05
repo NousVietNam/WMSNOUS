@@ -36,16 +36,20 @@ BEGIN
     VALUES (v_code, p_inventory_type, p_user_id, p_description)
     RETURNING id INTO v_wave_id;
     
-    -- 3. Link Orders (Transactional)
     IF p_order_ids IS NOT NULL AND array_length(p_order_ids, 1) > 0 THEN
+        -- Only update orders that are PENDING, APPROVED, and NOT already in a wave
         UPDATE outbound_orders
         SET wave_id = v_wave_id
-        WHERE id = ANY(p_order_ids);
+        WHERE id = ANY(p_order_ids)
+          AND status = 'PENDING'
+          AND is_approved = TRUE
+          AND wave_id IS NULL;
         
         GET DIAGNOSTICS v_orders_count = ROW_COUNT;
         
-        IF v_orders_count = 0 THEN
-            RAISE EXCEPTION 'No valid orders found to link to wave.';
+        -- Strict Validation: Ensure all requested orders were linked
+        IF v_orders_count < array_length(p_order_ids, 1) THEN
+            RAISE EXCEPTION 'Một số đơn hàng không hợp lệ để tạo Wave (Phải ở trạng thái PENDING, ĐÃ DUYỆT và chưa thuộc Wave nào).';
         END IF;
     END IF;
 

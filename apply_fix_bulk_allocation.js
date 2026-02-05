@@ -8,7 +8,7 @@ const supabase = createClient(
 );
 
 async function runFix() {
-    const sqlPath = 'database/migrations/fix_picking_lock_error.sql';
+    const sqlPath = 'database/migrations/fix_allocate_outbound_bulk_support.sql';
     const sql = fs.readFileSync(sqlPath, 'utf8');
 
     console.log(`🚀 Applying: ${sqlPath}...`);
