@@ -1,31 +1,18 @@
-
 const { Client } = require('pg');
+require('dotenv').config({ path: '.env.local' });
 
-async function checkTables() {
-    const connectionString = "postgresql://postgres.syjqmspmlctadbaeqyxb:Chien6677-28%3D@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres";
-    const client = new Client({ connectionString, ssl: { rejectUnauthorized: false } });
+async function run() {
+    const client = new Client({ connectionString: process.env.DATABASE_URL });
+    await client.connect();
 
-    try {
-        await client.connect();
-        const res = await client.query(`
-            SELECT table_schema, table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = 'public' AND table_name = 'users';
-        `);
-        console.log('Public tables:', res.rows);
+    // Check outbound_orders
+    const ob = await client.query("SELECT code FROM outbound_orders WHERE code = 'INB-0126-1117'");
+    console.log("outbound_orders with INB:", ob.rows);
 
-        const cols = await client.query(`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_schema = 'auth' AND table_name = 'users';
-        `);
-        console.log('Auth users columns:', cols.rows.map(r => r.column_name));
+    // Any picking_jobs?
+    const pj = await client.query("SELECT code FROM picking_jobs WHERE code = 'INB-0126-1117'");
+    console.log("picking_jobs with INB:", pj.rows);
 
-    } catch (err) {
-        console.error(err);
-    } finally {
-        await client.end();
-    }
+    client.end();
 }
-
-checkTables();
+run();

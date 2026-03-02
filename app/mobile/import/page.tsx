@@ -30,12 +30,14 @@ export default function ImportPage() {
             // For this demo, let's assume we have a way to find product or just insert if we are loose
             // But schema requires UUID.
             // Let's first search for the product
-            // 1. Get Product ID from SKU
+            // 1. Get Product ID from SKU or Barcode
+            const cleanSku = sku.replace(/\s+/g, '')
             const { data: product, error: prodError } = await supabase
                 .from('products')
-                .select('id, name') // Fetch name too
-                .eq('sku', sku)
-                .single()
+                .select('id, name, sku, barcode') // Fetch name too
+                .or(`sku.eq."${cleanSku}",barcode.eq."${cleanSku}"`)
+                .limit(1)
+                .maybeSingle()
 
             // If product doesn't exist, for this demo we might fail or allow creating (too complex for now)
             // Let's assume user scans a valid SKU. If not found, we might need a fallback or alert.
@@ -102,7 +104,7 @@ export default function ImportPage() {
                 to_box_id: box.id,
                 to_location_id: receivingLoc?.id, // Default to Receiving
                 quantity: parseInt(quantity),
-                sku: sku, // Fix: Populate top-level SKU
+                sku: product?.sku || cleanSku, // Fix: Populate top-level SKU
                 // details: Removed as requested
                 user_id: session?.user?.id,
                 created_at: new Date().toISOString()

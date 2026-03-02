@@ -161,15 +161,34 @@ function BulkPutAwayContent() {
 
     // Checking product info for preview
     const checkProduct = async (code: string) => {
-        const { data: product } = await supabase
-            .from('products')
-            .select('id, sku, barcode, name')
-            .or(`sku.eq.${code},barcode.eq.${code}`)
-            .single()
+        // Remove ALL whitespace, not just trimmed ones
+        const cleanCode = code?.replace(/\s+/g, '')?.trim()
+        if (!cleanCode) return null
 
-        if (product) {
-            setScannedProduct({ id: product.id, name: product.name, sku: product.sku, barcode: product.barcode })
-            return product
+        try {
+            const { data: products, error } = await supabase
+                .from('products')
+                .select('id, sku, barcode, name')
+                .or(`sku.eq."${cleanCode}",barcode.eq."${cleanCode}"`)
+
+            if (error) {
+                console.error("Error checking product:", error)
+                return null
+            }
+
+            if (products && products.length > 1) {
+                alert(`⚠️ CẢNH BÁO: Tìm thấy ${products.length} sản phẩm trùng mã "${cleanCode}"!\n\n${products.map(p => `- ${p.name} (${p.sku})`).join('\n')}\n\nVui lòng kiểm tra lại dữ liệu Master Data.`)
+                return null // Stop processing to force user to fix data
+            }
+
+            const product = products?.[0] || null
+
+            if (product) {
+                setScannedProduct({ id: product.id, name: product.name, sku: product.sku, barcode: product.barcode })
+                return product
+            }
+        } catch (e) {
+            console.error("Exception checking product:", e)
         }
         return null
     }
@@ -177,16 +196,31 @@ function BulkPutAwayContent() {
     // Step 2: Add Items locally
     const handleAddItem = async () => {
         if (!sku) return
+        const cleanSku = sku.replace(/\s+/g, '')?.trim()
+        if (!cleanSku) return
 
         setLoading(true)
         let product = scannedProduct as any
-        if (!product || (product.sku !== sku && product.barcode !== sku)) {
-            const { data: fetched } = await supabase
+
+        // Force refresh if mismatch or null
+        if (!product || (product.sku !== cleanSku && product.barcode !== cleanSku)) {
+            const { data: products, error } = await supabase
                 .from('products')
                 .select('id, sku, barcode, name')
-                .or(`sku.eq.${sku},barcode.eq.${sku}`)
-                .single()
-            product = fetched
+                .or(`sku.eq."${cleanSku}",barcode.eq."${cleanSku}"`)
+
+            if (error) {
+                console.error("Fetch error:", error)
+                alert(`Lỗi tìm sản phẩm: ${error.message}`)
+                return
+            }
+
+            if (products && products.length > 1) {
+                alert(`⚠️ CẢNH BÁO: Tìm thấy ${products.length} sản phẩm trùng mã "${cleanSku}"!\n\n${products.map(p => `- ${p.name} (${p.sku})`).join('\n')}\n\nVui lòng kiểm tra lại dữ liệu Master Data.`)
+                setLoading(false)
+                return
+            }
+            product = products?.[0] || null
         }
 
         if (!product) {
@@ -380,7 +414,10 @@ function BulkPutAwayContent() {
                                         value={sku}
                                         onChange={(val) => {
                                             setSku(val)
-                                            if (val.length > 3) checkProduct(val)
+                                            // Auto-clean if possible, but keep raw input visible if user wants? 
+                                            // Better to clean ONLY for checkProduct to avoid forcing cursor jumps
+                                            const cleanVal = val.replace(/\s+/g, '')
+                                            if (cleanVal.length > 3) checkProduct(cleanVal)
                                             else setScannedProduct(null)
                                         }}
                                         onEnter={handleAddItem}

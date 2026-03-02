@@ -1,4 +1,3 @@
-
 -- Create a real-time view for Product Availability
 -- MAINTAINABILITY NOTES:
 -- 1. Warehouses: This view automatically sums Quantity across ALL warehouses. No change needed when adding warehouses.

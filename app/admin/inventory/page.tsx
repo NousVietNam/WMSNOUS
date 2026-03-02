@@ -305,20 +305,20 @@ export default function InventoryPage() {
                 supabase.rpc('get_inventory_filter_options', getParams('month'))
             ])
 
-            if (locData?.[0]) setLocations((locData[0].locations || []).sort())
-            if (boxData?.[0]) setBoxes((boxData[0].boxes || []).sort())
-            if (brandData?.[0]) setBrands((brandData[0].brands || []).sort())
-            if (targetData?.[0]) setTargets((targetData[0].targets || []).sort())
-            if (groupData?.[0]) setProductGroups((groupData[0].product_groups || []).sort())
-            if (seasonData?.[0]) setSeasons((seasonData[0].seasons || []).sort())
+            const cleanOptions = (options: any[]) => (options || [])
+                .filter(opt => opt !== null && opt !== undefined && opt !== '')
+                .map(opt => String(opt))
+                .sort()
+
+            if (locData?.[0]) setLocations(cleanOptions(locData[0].locations))
+            if (boxData?.[0]) setBoxes(cleanOptions(locData[0].boxes))
+            if (brandData?.[0]) setBrands(cleanOptions(brandData[0].brands))
+            if (targetData?.[0]) setTargets(cleanOptions(targetData[0].targets))
+            if (groupData?.[0]) setProductGroups(cleanOptions(groupData[0].product_groups))
+            if (seasonData?.[0]) setSeasons(cleanOptions(seasonData[0].seasons))
 
             if (monthData?.[0]) {
-                const rawMonths = monthData[0].months || []
-                // Keep raw strings to match database values exactly
-                const uniqueMonths = rawMonths
-                    .filter((m: any) => m !== null && m !== undefined && m !== '')
-                    .map((m: any) => String(m)) // Ensure string
-
+                const uniqueMonths = cleanOptions(monthData[0].months)
                 // Sort numerically if possible, otherwise alphabetically
                 setMonths(uniqueMonths.sort((a: string, b: string) => {
                     const numA = parseFloat(a)
